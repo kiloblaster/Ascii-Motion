@@ -91,6 +91,26 @@ const projectId = projects[0].id; // ascii-motion-v2
 const projectId = 'oguswervkjazuhzthfzg'; // This is an old/wrong ID!
 ```
 
+**⚠️ IMPORTANT: Edge Function Deployment**
+Always use **Supabase MCP tools** for Edge Function deployment, NOT the Supabase CLI.
+The CLI requires interactive browser authentication which doesn't work in automated environments.
+
+```typescript
+// ✅ CORRECT: Deploy via MCP
+mcp_supabase_deploy_edge_function({
+  project_id: projectId,
+  name: "function-name",
+  files: [{ name: "index.ts", content: "..." }]
+});
+
+// ❌ WRONG: CLI commands (require interactive auth)
+// supabase login
+// supabase functions deploy
+```
+
+**Edge Function Location:** `packages/premium/supabase/functions/`
+See `packages/premium/supabase/README.md` for deployment details.
+
 **If you accidentally commit sensitive IDs, run:**
 ```bash
 npx tsx packages/premium/scripts/sanitize-project-ids.ts
