@@ -82,17 +82,18 @@ export const useWelcomeDialog = () => {
     
     // Mark as checked immediately to prevent re-runs
     setHasChecked(true);
-    // Check URL parameters - skip welcome if this is a remix or manage-projects flow
+    // Check URL parameters - skip welcome if this is a remix, manage-projects, or auth flow
     const params = new URLSearchParams(window.location.search)
     const isRemix = params.get('remix') === 'true'
     const manageProjects = params.get('manage-projects') === 'true'
     const authAction = params.get('action') // signup, signin, or upgrade
+    const billingInterval = params.get('interval') // monthly or annual (indicates upgrade flow)
     
     // Check sessionStorage flag (set by AccountButton for auth actions)
+    // Note: Don't remove the flag here - let it persist for the full render cycle
+    // to handle React StrictMode double-mounting
     const skipWelcome = sessionStorage.getItem('skip-welcome')
     if (skipWelcome === 'true') {
-      // Clear the flag so it doesn't persist
-      sessionStorage.removeItem('skip-welcome')
       return
     }
     
@@ -100,8 +101,9 @@ export const useWelcomeDialog = () => {
     const path = window.location.pathname
     const isAuthPath = path === '/auth/signup' || path === '/auth/login'
     
-    // Skip welcome dialog for any auth-related actions
-    if (isRemix || manageProjects || isAuthPath || authAction) {
+    // Skip welcome dialog for any auth-related actions or upgrade flows
+    // Check billingInterval too in case authAction was cleaned from URL
+    if (isRemix || manageProjects || isAuthPath || authAction || billingInterval) {
       return
     }
     

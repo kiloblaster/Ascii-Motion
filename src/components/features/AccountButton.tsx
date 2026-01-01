@@ -92,6 +92,14 @@ export function AccountButton() {
         cleanupUrl();
       }
     }
+    
+    // Clean up the skip-welcome flag after a delay to ensure WelcomeDialog has checked it
+    // This handles React StrictMode double-mounting
+    if (action) {
+      setTimeout(() => {
+        sessionStorage.removeItem('skip-welcome');
+      }, 1000);
+    }
   }, [user]);
 
   // When user becomes authenticated with a pending upgrade, show upgrade dialog
