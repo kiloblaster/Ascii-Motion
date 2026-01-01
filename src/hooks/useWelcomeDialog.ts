@@ -86,12 +86,22 @@ export const useWelcomeDialog = () => {
     const params = new URLSearchParams(window.location.search)
     const isRemix = params.get('remix') === 'true'
     const manageProjects = params.get('manage-projects') === 'true'
+    const authAction = params.get('action') // signup, signin, or upgrade
+    
+    // Check sessionStorage flag (set by AccountButton for auth actions)
+    const skipWelcome = sessionStorage.getItem('skip-welcome')
+    if (skipWelcome === 'true') {
+      // Clear the flag so it doesn't persist
+      sessionStorage.removeItem('skip-welcome')
+      return
+    }
     
     // Also skip for auth deep links (signup/login from marketing site)
     const path = window.location.pathname
     const isAuthPath = path === '/auth/signup' || path === '/auth/login'
     
-    if (isRemix || manageProjects || isAuthPath) {
+    // Skip welcome dialog for any auth-related actions
+    if (isRemix || manageProjects || isAuthPath || authAction) {
       return
     }
     

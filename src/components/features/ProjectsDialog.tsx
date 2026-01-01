@@ -14,7 +14,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useCloudProject } from '@ascii-motion/premium';
+import { useCloudProject, useAuth, UpgradeDialog } from '@ascii-motion/premium';
 import type { CloudProject } from '@ascii-motion/premium';
 import {
   Dialog,
@@ -58,6 +58,7 @@ import {
   FolderOpen,
   FileText,
   ChevronDown,
+  Sparkles,
   ChevronRight,
   Undo2,
   Check,
@@ -107,6 +108,10 @@ export function ProjectsDialog({
   const [trashExpanded, setTrashExpanded] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const [showRealUpgradeDialog, setShowRealUpgradeDialog] = useState(false);
+  
+  // Get auth for upgrade dialog
+  const { user, getAccessToken } = useAuth();
 
   // Load projects list from database
   const loadProjectsList = useCallback(async () => {
@@ -329,10 +334,13 @@ export function ProjectsDialog({
               Open, manage, and upload your projects • {getProjectLimit().current}/{getProjectLimit().max === Infinity ? '∞' : getProjectLimit().max} projects used
             </p>
             {!isProUser() && (
-              <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <span>Upgrade to Pro for unlimited storage</span>
-                <Badge variant="secondary">Coming Soon</Badge>
-              </div>
+              <button
+                onClick={() => setShowRealUpgradeDialog(true)}
+                className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <Sparkles className="h-3 w-3" />
+                <span className="hover:underline">Upgrade to Pro for unlimited storage</span>
+              </button>
             )}
           </div>
         </DialogHeader>
@@ -677,7 +685,13 @@ export function ProjectsDialog({
                     <p className="text-xs text-muted-foreground mb-2">
                       Available to Pro users
                     </p>
-                    <Badge variant="secondary">Coming Soon</Badge>
+                    <button
+                      onClick={() => setShowRealUpgradeDialog(true)}
+                      className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      <span className="hover:underline">Upgrade to Pro</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -686,15 +700,29 @@ export function ProjectsDialog({
         </div>
       </DialogContent>
 
-      {/* Upgrade to Pro Dialog */}
+      {/* Upgrade to Pro Dialog (when limit reached) */}
       <UpgradeToProDialog
         open={showUpgradeDialog}
         onOpenChange={setShowUpgradeDialog}
         onManageProjects={() => {
           // Dialog is already open, just close upgrade dialog
         }}
+        onUpgrade={() => {
+          setShowRealUpgradeDialog(true);
+        }}
         currentProjects={getProjectLimit().current}
         maxProjects={getProjectLimit().max === Infinity ? 3 : getProjectLimit().max}
+      />
+      
+      {/* Real Upgrade Dialog (Stripe checkout) */}
+      <UpgradeDialog
+        open={showRealUpgradeDialog}
+        onOpenChange={setShowRealUpgradeDialog}
+        getAccessToken={getAccessToken}
+        isAuthenticated={!!user}
+        onAuthRequired={() => {
+          setShowRealUpgradeDialog(false);
+        }}
       />
     </Dialog>
   );

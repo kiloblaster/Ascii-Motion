@@ -31,24 +31,25 @@ import { useAdminProjectLoader } from './hooks/useAdminProjectLoader'
 /**
  * Auth Redirect Component
  * Handles deep links from marketing site (/auth/signup, /auth/login)
- * Redirects to root and opens the appropriate dialog
+ * Redirects to root with action param and opens the appropriate dialog
  */
 function AuthRedirect({ type }: { type: 'signup' | 'login' }) {
   const navigate = useNavigate()
   
   useEffect(() => {
-    // Navigate to root first
-    navigate('/', { replace: true })
+    // Preserve any returnTo param from marketing site
+    const params = new URLSearchParams(window.location.search)
+    const returnTo = params.get('returnTo')
     
-    // Then dispatch event to open the appropriate dialog
-    // Use setTimeout to ensure navigation completes first
-    setTimeout(() => {
-      if (type === 'signup') {
-        window.dispatchEvent(new CustomEvent('openSignUpDialog'))
-      } else {
-        window.dispatchEvent(new CustomEvent('open-signin-dialog'))
-      }
-    }, 100)
+    // Navigate to root with action param (this skips welcome dialog)
+    const actionParam = type === 'signup' ? 'signup' : 'signin'
+    const newParams = new URLSearchParams()
+    newParams.set('action', actionParam)
+    if (returnTo) {
+      newParams.set('returnTo', returnTo)
+    }
+    
+    navigate(`/?${newParams.toString()}`, { replace: true })
   }, [navigate, type])
   
   // Return the editor page while redirecting (prevents flash)

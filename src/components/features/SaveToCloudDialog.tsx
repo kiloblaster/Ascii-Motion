@@ -14,7 +14,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useAuth, useCloudProject, validateProjectName, validateProjectDescription, sanitizeString } from '@ascii-motion/premium';
+import { useAuth, useCloudProject, validateProjectName, validateProjectDescription, sanitizeString, UpgradeDialog } from '@ascii-motion/premium';
 import type { UserProfile } from '@ascii-motion/premium';
 import { useCloudProjectActions } from '../../hooks/useCloudProjectActions';
 import { useExportDataCollector } from '../../utils/exportDataCollector';
@@ -42,7 +42,7 @@ interface SaveToCloudDialogProps {
 }
 
 export function SaveToCloudDialog({ open, onOpenChange }: SaveToCloudDialogProps) {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const exportData = useExportDataCollector();
   const { handleSaveToCloud, saveProgress, saveProgressMessage } = useCloudProjectActions();
   const { getUserProfile, listProjects } = useCloudProject();
@@ -61,6 +61,7 @@ export function SaveToCloudDialog({ open, onOpenChange }: SaveToCloudDialogProps
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [projectCount, setProjectCount] = useState(0);
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const [showRealUpgradeDialog, setShowRealUpgradeDialog] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
 
@@ -263,7 +264,7 @@ export function SaveToCloudDialog({ open, onOpenChange }: SaveToCloudDialogProps
         </DialogFooter>
       </DialogContent>
 
-      {/* Upgrade to Pro Dialog */}
+      {/* Upgrade to Pro Dialog (when limit reached) */}
       <UpgradeToProDialog
         open={showUpgradeDialog}
         onOpenChange={setShowUpgradeDialog}
@@ -272,8 +273,22 @@ export function SaveToCloudDialog({ open, onOpenChange }: SaveToCloudDialogProps
           onOpenChange(false);
           setShowProjectsDialog(true);
         }}
+        onUpgrade={() => {
+          setShowRealUpgradeDialog(true);
+        }}
         currentProjects={projectCount}
         maxProjects={userProfile?.subscriptionTier?.maxProjects === -1 ? 3 : userProfile?.subscriptionTier?.maxProjects || 3}
+      />
+      
+      {/* Real Upgrade Dialog (Stripe checkout) */}
+      <UpgradeDialog
+        open={showRealUpgradeDialog}
+        onOpenChange={setShowRealUpgradeDialog}
+        getAccessToken={getAccessToken}
+        isAuthenticated={!!user}
+        onAuthRequired={() => {
+          setShowRealUpgradeDialog(false);
+        }}
       />
     </Dialog>
   );

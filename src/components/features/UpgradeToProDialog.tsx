@@ -17,13 +17,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Sparkles, FolderOpen } from 'lucide-react';
 
 interface UpgradeToProDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onManageProjects: () => void;
+  onUpgrade: () => void;
   currentProjects: number;
   maxProjects: number;
 }
@@ -32,6 +32,7 @@ export function UpgradeToProDialog({
   open,
   onOpenChange,
   onManageProjects,
+  onUpgrade,
   currentProjects,
   maxProjects,
 }: UpgradeToProDialogProps) {
@@ -43,7 +44,6 @@ export function UpgradeToProDialog({
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
               <DialogTitle>Upgrade to Pro</DialogTitle>
-              <Badge variant="secondary" className="ml-2">Coming Soon</Badge>
             </div>
           </div>
           <DialogDescription className="pt-2">
@@ -69,10 +69,6 @@ export function UpgradeToProDialog({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-purple-500">✓</span>
-                <span>Version history</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-purple-500">✓</span>
                 <span>Priority support</span>
               </li>
             </ul>
@@ -94,8 +90,12 @@ export function UpgradeToProDialog({
             <FolderOpen className="h-4 w-4 mr-2" />
             Manage Projects
           </Button>
-          <Button onClick={() => onOpenChange(false)}>
-            Got it
+          <Button onClick={() => {
+            onUpgrade();
+            onOpenChange(false);
+          }}>
+            <Sparkles className="h-4 w-4 mr-2" />
+            Upgrade to Pro
           </Button>
         </DialogFooter>
       </DialogContent>
