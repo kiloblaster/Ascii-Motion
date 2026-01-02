@@ -63,6 +63,7 @@ import {
   Undo2,
   Check,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import { ProjectCanvasPreview } from './ProjectCanvasPreview';
 import { UpgradeToProDialog } from './UpgradeToProDialog';
@@ -111,7 +112,28 @@ export function ProjectsDialog({
   const [showRealUpgradeDialog, setShowRealUpgradeDialog] = useState(false);
   
   // Get auth for upgrade dialog
-  const { user, getAccessToken } = useAuth();
+  const { user, profile, getAccessToken } = useAuth();
+
+  // Check if subscription is pending cancellation (active but will end)
+  const isPendingCancellation = (() => {
+    if (!profile?.subscription_status || !profile?.subscription_current_period_end) return false;
+    // "canceled" status means subscription is ending at period end
+    // Also check if period end is in the future
+    return (
+      profile.subscription_status === 'canceled' && 
+      new Date(profile.subscription_current_period_end) > new Date()
+    );
+  })();
+
+  const subscriptionEndDate = profile?.subscription_current_period_end 
+    ? new Date(profile.subscription_current_period_end).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : null;
+
+  const projectsAtRisk = projects.length > 3 ? projects.length - 3 : 0;
 
   // Load projects list from database
   const loadProjectsList = useCallback(async () => {
@@ -344,6 +366,28 @@ export function ProjectsDialog({
             )}
           </div>
         </DialogHeader>
+
+        {/* Pending Cancellation Warning Banner */}
+        {isPendingCancellation && projectsAtRisk > 0 && (
+          <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm space-y-1">
+              <p className="font-medium text-yellow-500">
+                Your Pro subscription ends on {subscriptionEndDate}
+              </p>
+              <p className="text-muted-foreground">
+                After this date, only your 3 most recently edited projects will remain accessible.
+                {projectsAtRisk > 0 && ` ${projectsAtRisk} project${projectsAtRisk !== 1 ? 's' : ''} will be archived for 60 days.`}
+              </p>
+              <button
+                onClick={() => setShowRealUpgradeDialog(true)}
+                className="text-xs text-yellow-400 hover:text-yellow-300 hover:underline transition-colors cursor-pointer"
+              >
+                Restart subscription to keep all projects →
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Upload Button */}
         <div className="flex gap-2">

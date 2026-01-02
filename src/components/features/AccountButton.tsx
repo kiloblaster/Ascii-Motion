@@ -15,7 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useAuth, SignUpDialog, SignInDialog, PasswordResetDialog, AccountSettingsDialog, ProfileSettingsDialog, useAdminCheckContext, AdminProjectViewerDialog, UpgradeDialog } from '@ascii-motion/premium';
+import { useAuth, SignUpDialog, SignInDialog, PasswordResetDialog, AccountSettingsDialog, ProfileSettingsDialog, useAdminCheckContext, AdminProjectViewerDialog, UpgradeDialog, useCloudProject } from '@ascii-motion/premium';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAdminProjectLoader } from '@/hooks/useAdminProjectLoader';
@@ -23,6 +23,7 @@ import { useAdminProjectLoader } from '@/hooks/useAdminProjectLoader';
 export function AccountButton() {
   const { user, profile, loading, signOut, getAccessToken } = useAuth();
   const { isAdmin } = useAdminCheckContext();
+  const { listProjects } = useCloudProject();
   const { loadProjectSession } = useAdminProjectLoader();
   const [showSignUp, setShowSignUp] = useState(false);
   const [showSignIn, setShowSignIn] = useState(false);
@@ -30,11 +31,27 @@ export function AccountButton() {
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [pendingUpgradeInterval, setPendingUpgradeInterval] = useState<'monthly' | 'annual' | null>(null);
+  const [projectCount, setProjectCount] = useState(0);
   
   // Track if we have a pending upgrade flow (user signed up from upgrade action)
   const pendingUpgradeAfterAuth = useRef(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showAdminProjectViewer, setShowAdminProjectViewer] = useState(false);
+
+  // Fetch project count when account settings opens and user is Pro
+  useEffect(() => {
+    const fetchProjectCount = async () => {
+      if (showAccountSettings && user && profile?.subscription_tier?.name?.toLowerCase() === 'pro') {
+        try {
+          const projects = await listProjects();
+          setProjectCount(projects.length);
+        } catch (error) {
+          console.error('Failed to fetch project count:', error);
+        }
+      }
+    };
+    fetchProjectCount();
+  }, [showAccountSettings, user, profile?.subscription_tier?.name, listProjects]);
 
   // Listen for custom event to open signup dialog
   useEffect(() => {
@@ -280,6 +297,7 @@ export function AccountButton() {
         onAccountDeleted={() => {
           toast.success('Account deleted successfully');
         }}
+        projectCount={projectCount}
       />
 
       {/* Profile Settings Dialog */}

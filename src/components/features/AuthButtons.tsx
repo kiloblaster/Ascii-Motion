@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useAuth, SignUpDialog, SignInDialog, PasswordResetDialog, UserMenu, AccountSettingsDialog } from '@ascii-motion/premium';
+import { useAuth, SignUpDialog, SignInDialog, PasswordResetDialog, UserMenu, AccountSettingsDialog, useCloudProject } from '@ascii-motion/premium';
 import { LogIn, UserPlus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCloudDialogState } from '@/hooks/useCloudDialogState';
