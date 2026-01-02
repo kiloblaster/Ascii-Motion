@@ -22,6 +22,8 @@ export interface WelcomeCTA {
   variant?: 'default' | 'outline' | 'ghost';
 }
 
+import type React from 'react';
+
 export interface WelcomeSecondaryCTA {
   text: string;
   href: string; // External link URL
@@ -30,7 +32,7 @@ export interface WelcomeSecondaryCTA {
 export interface WelcomeTab {
   id: string;
   title: string;
-  description: string;
+  description: React.ReactNode;
   cta?: WelcomeCTA;
   secondaryCta?: WelcomeSecondaryCTA;
   media: WelcomeMedia;

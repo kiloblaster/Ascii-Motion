@@ -320,7 +320,20 @@ const createWelcomeTabs = (
   {
     id: 'cloud',
     title: 'Cloud Storage',
-    description: 'Create a free account to store up to 3 projects for editing later. Coming soon: Paid accounts to allow for unlimited storage.',
+    description: (
+      <>
+        Create a free account to save up to 3 projects for editing later. Upgrade to a{' '}
+        <a
+          href="https://www.ascii-motion.com/pricing"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline font-medium"
+        >
+          Pro account
+        </a>{' '}
+        for unlimited cloud storage.
+      </>
+    ),
     cta: {
       text: 'Create Free Account',
       action: () => {
