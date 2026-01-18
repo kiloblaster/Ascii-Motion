@@ -92,7 +92,8 @@ export const useGradientFillTool = () => {
         ellipsePoint: ellipsePoint || undefined,
         definition,
         fillArea,
-        cellAspectRatio
+        cellAspectRatio,
+        getCell // Pass getCell to preserve existing values for disabled properties
       });
       
       setPreview(gradientCells);
