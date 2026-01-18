@@ -12,6 +12,7 @@ export interface GradientOptions {
   definition: GradientDefinition;
   fillArea: Set<string>; // Cell keys to apply gradient to
   cellAspectRatio?: number; // cellWidth / cellHeight for proper circular gradients
+  getCell?: (x: number, y: number) => Cell | undefined; // For preserving existing cell values when properties are disabled
 }
 
 /**
@@ -19,20 +20,30 @@ export interface GradientOptions {
  * Applies gradient to a set of cell positions based on gradient definition
  */
 export const calculateGradientCells = (options: GradientOptions): Map<string, Cell> => {
-  const { startPoint, endPoint, ellipsePoint, definition, fillArea, cellAspectRatio = 1.0 } = options;
+  const { startPoint, endPoint, ellipsePoint, definition, fillArea, cellAspectRatio = 1.0, getCell } = options;
   const result = new Map<string, Cell>();
+  
+  // Default values for empty/missing cells
+  const defaultCell: Cell = { char: ' ', color: '#FFFFFF', bgColor: 'transparent' };
   
   fillArea.forEach(cellKey => {
     const [x, y] = cellKey.split(',').map(Number);
     const position = calculatePositionOnGradient(x, y, startPoint, endPoint, ellipsePoint, definition.type, cellAspectRatio);
     
+    // Get existing cell values (for preserving disabled properties)
+    const existingCell = getCell ? getCell(x, y) : undefined;
+    
     const gradientCell: Cell = {
+      // When property is disabled, preserve existing value or use default for empty cells
       char: definition.character.enabled ? 
-        sampleGradientProperty(position, definition.character, x, y) : ' ',
+        sampleGradientProperty(position, definition.character, x, y) : 
+        (existingCell?.char ?? defaultCell.char),
       color: definition.textColor.enabled ? 
-        sampleGradientProperty(position, definition.textColor, x, y) : '#FFFFFF',
+        sampleGradientProperty(position, definition.textColor, x, y) : 
+        (existingCell?.color ?? defaultCell.color),
       bgColor: definition.backgroundColor.enabled ? 
-        sampleGradientProperty(position, definition.backgroundColor, x, y) : 'transparent'
+        sampleGradientProperty(position, definition.backgroundColor, x, y) : 
+        (existingCell?.bgColor ?? defaultCell.bgColor)
     };
     
     result.set(cellKey, gradientCell);
