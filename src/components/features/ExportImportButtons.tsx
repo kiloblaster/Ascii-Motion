@@ -51,6 +51,12 @@ const EXPORT_OPTIONS = [
     icon: Monitor,
   },
   {
+    id: 'bubbletea' as ExportFormatId,
+    name: 'Bubbletea Component',
+    description: 'Go-based CLI component',
+    icon: Terminal,
+  },
+  {
     id: 'json' as ExportFormatId,
     name: 'JSON',
     description: 'Importable & human readable',

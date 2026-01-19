@@ -13,7 +13,8 @@ import type {
   ExportHistoryEntry,
   ReactExportSettings,
   InkExportSettings,
-  OpenTuiExportSettings
+  OpenTuiExportSettings,
+  BubbleteaExportSettings
 } from '../types/export';
 
 interface ExportActions {
@@ -36,6 +37,7 @@ interface ExportActions {
   setReactSettings: (settings: Partial<ReactExportSettings>) => void;
   setInkSettings: (settings: Partial<InkExportSettings>) => void;
   setOpenTuiSettings: (settings: Partial<OpenTuiExportSettings>) => void;
+  setBubbleteaSettings: (settings: Partial<BubbleteaExportSettings>) => void;
   
   // History management
   addToHistory: (entry: ExportHistoryEntry) => void;
@@ -124,6 +126,14 @@ const DEFAULT_OPENTUI_SETTINGS: OpenTuiExportSettings = {
   colorMode: 'hex',
 };
 
+const DEFAULT_BUBBLETEA_SETTINGS: BubbleteaExportSettings = {
+  fileName: 'ascii_motion_anim',
+  packageName: 'asciimotion',
+  colorMode: 'hex',
+  playbackStyle: 'api',
+  loopAnimation: true,
+};
+
 export const useExportStore = create<ExportStoreState>((set, get) => ({
   // Initial state
   activeFormat: null,
@@ -140,6 +150,7 @@ export const useExportStore = create<ExportStoreState>((set, get) => ({
   reactSettings: DEFAULT_REACT_SETTINGS,
   inkSettings: DEFAULT_INK_SETTINGS,
   opentuiSettings: DEFAULT_OPENTUI_SETTINGS,
+  bubbleteaSettings: DEFAULT_BUBBLETEA_SETTINGS,
   
   // UI state - updated for dropdown UX
   showExportModal: false, // Now used for format-specific dialogs
@@ -228,6 +239,12 @@ export const useExportStore = create<ExportStoreState>((set, get) => ({
   setOpenTuiSettings: (settings: Partial<OpenTuiExportSettings>) => {
     set((state) => ({
       opentuiSettings: { ...state.opentuiSettings, ...settings }
+    }));
+  },
+
+  setBubbleteaSettings: (settings: Partial<BubbleteaExportSettings>) => {
+    set((state) => ({
+      bubbleteaSettings: { ...state.bubbleteaSettings, ...settings }
     }));
   },
   

@@ -29,6 +29,7 @@ import { HtmlExportDialog } from '../components/features/HtmlExportDialog'
 import { ReactExportDialog } from '../components/features/ReactExportDialog'
 import { InkExportDialog } from '../components/features/InkExportDialog'
 import { OpenTuiExportDialog } from '../components/features/OpenTuiExportDialog'
+import { BubbleteaExportDialog } from '../components/features/BubbleteaExportDialog'
 import { JsonImportDialog } from '../components/features/JsonImportDialog'
 import { SetFrameDurationDialog } from '../components/features/timeEffects/SetFrameDurationDialog'
 import { AddFramesDialog } from '../components/features/timeEffects/AddFramesDialog'
@@ -192,6 +193,7 @@ export function EditorPage() {
       <ReactExportDialog />
       <InkExportDialog />
       <OpenTuiExportDialog />
+      <BubbleteaExportDialog />
       <JsonImportDialog />
       
       {/* Time Effects Dialogs */}

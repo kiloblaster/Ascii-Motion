@@ -11,6 +11,7 @@ import type {
   ReactExportSettings,
   InkExportSettings,
   OpenTuiExportSettings,
+  BubbleteaExportSettings,
   ExportProgress 
 } from '../types/export';
 import type { Cell } from '../types';
@@ -2579,6 +2580,504 @@ export class ExportRenderer {
     lines.push('};');
     lines.push('');
     lines.push(`export default ${componentName};`);
+    lines.push('');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Export animation as a Bubbletea (Go) component
+   */
+  async exportBubbleteaComponent(
+    data: ExportDataBundle,
+    settings: BubbleteaExportSettings
+  ): Promise<void> {
+    this.updateProgress('Preparing Bubbletea component export...', 0);
+
+    try {
+      // Sanitize and format names
+      const sanitizedFileName = settings.fileName
+        .replace(/[^a-zA-Z0-9_]/g, '_')
+        .toLowerCase();
+      const sanitizedPackageName = settings.packageName
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toLowerCase();
+
+      this.updateProgress('Processing frames...', 20);
+
+      // Process frames
+      const framesData: Array<{
+        duration: number;
+        content: string[];
+        fgColors: Record<string, string>;
+        bgColors: Record<string, string>;
+      }> = [];
+
+      const colorMap = new Map<string, string>();
+      let colorIndex = 0;
+
+      for (let i = 0; i < data.frames.length; i++) {
+        const frame = data.frames[i];
+        const frameData = frame.data;
+        const content: string[] = [];
+        const fgColors: Record<string, string> = {};
+        const bgColors: Record<string, string> = {};
+
+        // Build content grid
+        for (let y = 0; y < data.canvasDimensions.height; y++) {
+          let row = '';
+          for (let x = 0; x < data.canvasDimensions.width; x++) {
+            const key = `${x},${y}`;
+            const cell = frameData.get(key);
+            const char = cell?.char || ' ';
+            row += char;
+
+            // Track foreground color
+            if (cell?.color && cell.color !== '#ffffff') {
+              fgColors[key] = cell.color;
+              if (!colorMap.has(cell.color)) {
+                colorMap.set(cell.color, `c${colorIndex++}`);
+              }
+            }
+
+            // Track background color
+            if (cell?.bgColor && cell.bgColor !== 'transparent') {
+              bgColors[key] = cell.bgColor;
+              if (!colorMap.has(cell.bgColor)) {
+                colorMap.set(cell.bgColor, `c${colorIndex++}`);
+              }
+            }
+          }
+          content.push(row);
+        }
+
+        framesData.push({
+          duration: frame.duration,
+          content,
+          fgColors,
+          bgColors,
+        });
+      }
+
+      this.updateProgress('Generating Go code...', 60);
+
+      // Generate Go code
+      const goCode = this.generateBubbleteaCode({
+        packageName: sanitizedPackageName,
+        framesData,
+        colorMap,
+        colorMode: settings.colorMode,
+        playbackStyle: settings.playbackStyle,
+        loopAnimation: settings.loopAnimation,
+        width: data.canvasDimensions.width,
+        height: data.canvasDimensions.height,
+        toAnsi16Color: this.hexToAnsi16Color.bind(this),
+      });
+
+      this.updateProgress('Downloading file...', 90);
+
+      // Download file
+      const blob = new Blob([goCode], { type: 'text/plain; charset=utf-8' });
+      saveAs(blob, `${sanitizedFileName}.go`);
+
+      this.updateProgress('Export complete!', 100);
+    } catch (error) {
+      console.error('Bubbletea export error:', error);
+      throw new Error(`Failed to export Bubbletea component: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Convert hex color to ANSI 16-color code and name
+   */
+  private hexToAnsi16Color(hex: string): { code: string; name: string } {
+    // ANSI 16-color palette mapping
+    const ansiColors: Array<{ hex: string; code: string; name: string }> = [
+      { hex: '#000000', code: '0', name: 'black' },
+      { hex: '#800000', code: '1', name: 'red' },
+      { hex: '#008000', code: '2', name: 'green' },
+      { hex: '#808000', code: '3', name: 'yellow' },
+      { hex: '#000080', code: '4', name: 'blue' },
+      { hex: '#800080', code: '5', name: 'magenta' },
+      { hex: '#008080', code: '6', name: 'cyan' },
+      { hex: '#c0c0c0', code: '7', name: 'white' },
+      { hex: '#808080', code: '8', name: 'bright black' },
+      { hex: '#ff0000', code: '9', name: 'bright red' },
+      { hex: '#00ff00', code: '10', name: 'bright green' },
+      { hex: '#ffff00', code: '11', name: 'bright yellow' },
+      { hex: '#0000ff', code: '12', name: 'bright blue' },
+      { hex: '#ff00ff', code: '13', name: 'bright magenta' },
+      { hex: '#00ffff', code: '14', name: 'bright cyan' },
+      { hex: '#ffffff', code: '15', name: 'bright white' },
+    ];
+
+    // Parse hex color
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+
+    // Find closest ANSI color
+    let closestColor = ansiColors[0];
+    let minDistance = Infinity;
+
+    for (const ansi of ansiColors) {
+      const ar = parseInt(ansi.hex.slice(1, 3), 16);
+      const ag = parseInt(ansi.hex.slice(3, 5), 16);
+      const ab = parseInt(ansi.hex.slice(5, 7), 16);
+
+      const distance = Math.sqrt(
+        Math.pow(r - ar, 2) + Math.pow(g - ag, 2) + Math.pow(b - ab, 2)
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestColor = ansi;
+      }
+    }
+
+    return { code: closestColor.code, name: closestColor.name };
+  }
+
+  /**
+   * Generate Bubbletea Go code
+   */
+  private generateBubbleteaCode(params: {
+    packageName: string;
+    framesData: Array<{
+      duration: number;
+      content: string[];
+      fgColors: Record<string, string>;
+      bgColors: Record<string, string>;
+    }>;
+    colorMap: Map<string, string>;
+    colorMode: 'hex' | 'semantic';
+    playbackStyle: 'autoplay' | 'keyboard' | 'api';
+    loopAnimation: boolean;
+    width: number;
+    height: number;
+    toAnsi16Color: (hex: string) => { code: string; name: string };
+  }): string {
+    const {
+      packageName,
+      framesData,
+      colorMap,
+      colorMode,
+      playbackStyle,
+      loopAnimation,
+      width,
+      height,
+      toAnsi16Color,
+    } = params;
+
+    const lines: string[] = [];
+
+    // Package declaration
+    lines.push(`package ${packageName}`);
+    lines.push('');
+
+    // Imports
+    lines.push('import (');
+    lines.push('\t"strings"');
+    lines.push('\t"time"');
+    lines.push('');
+    lines.push('\ttea "github.com/charmbracelet/bubbletea"');
+    lines.push('\t"github.com/charmbracelet/lipgloss"');
+    lines.push(')');
+    lines.push('');
+
+    // Dual theme color dictionaries - similar to Ink/OpenTUI pattern
+    if (colorMode === 'hex') {
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// COLORS_DARK is used when HasDarkBackground=true (default)');
+      lines.push('// COLORS_LIGHT is used when HasDarkBackground=false');
+      lines.push('var COLORS_DARK = map[string]lipgloss.Color{');
+      for (const [hex, varName] of colorMap) {
+        lines.push(`\t"${varName}": lipgloss.Color("${hex}"),`);
+      }
+      lines.push('}');
+      lines.push('');
+      lines.push('var COLORS_LIGHT = map[string]lipgloss.Color{');
+      for (const [hex, varName] of colorMap) {
+        const invertedColor = this.suggestLightModeColor(hex);
+        lines.push(`\t"${varName}": lipgloss.Color("${invertedColor}"),`);
+      }
+      lines.push('}');
+      lines.push('');
+    } else {
+      // Semantic mode: Generate ANSI color theme dictionaries
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// THEME_DARK is used when HasDarkBackground=true (default)');
+      lines.push('// THEME_LIGHT is used when HasDarkBackground=false');
+      lines.push('var THEME_DARK = map[string]lipgloss.Color{');
+      for (const [hex, varName] of colorMap) {
+        const ansi = toAnsi16Color(hex);
+        lines.push(`\t"${varName}": lipgloss.Color("${ansi.code}"), // ${ansi.name}`);
+      }
+      lines.push('}');
+      lines.push('');
+      lines.push('var THEME_LIGHT = map[string]lipgloss.Color{');
+      for (const [hex, varName] of colorMap) {
+        const lightAnsi = toAnsi16Color(this.suggestLightModeColor(hex));
+        lines.push(`\t"${varName}": lipgloss.Color("${lightAnsi.code}"), // ${lightAnsi.name}`);
+      }
+      lines.push('}');
+      lines.push('');
+    }
+
+    // Frame data structure - now uses string keys for color lookups
+    lines.push('// Frame represents a single animation frame');
+    lines.push('type Frame struct {');
+    lines.push('\tDuration time.Duration');
+    lines.push('\tContent  []string');
+    lines.push('\tFgColors map[string]string // Maps "x,y" -> color key');
+    lines.push('\tBgColors map[string]string // Maps "x,y" -> color key');
+    lines.push('}');
+    lines.push('');
+
+    // Model - now includes hasDarkBackground for theme selection
+    lines.push('// Model is the Bubbletea model for the animation');
+    lines.push('type Model struct {');
+    lines.push('\tframes            []Frame');
+    lines.push('\tframeIndex        int');
+    lines.push('\tisPlaying         bool');
+    lines.push('\tloop              bool');
+    lines.push('\twidth             int');
+    lines.push('\theight            int');
+    lines.push('\thasDarkBackground bool');
+    lines.push('}');
+    lines.push('');
+
+    // tickMsg
+    lines.push('type tickMsg time.Time');
+    lines.push('');
+
+    // New function with hasDarkBackground parameter
+    lines.push('// New creates a new animation model');
+    lines.push('// Set hasDarkBackground to true for dark terminals, false for light terminals');
+    lines.push('func New(hasDarkBackground bool) Model {');
+    lines.push('\treturn Model{');
+    lines.push('\t\tframes:            frames,');
+    lines.push('\t\tframeIndex:        0,');
+    lines.push(`\t\tisPlaying:         ${playbackStyle === 'autoplay' ? 'true' : 'false'},`);
+    lines.push(`\t\tloop:              ${loopAnimation},`);
+    lines.push(`\t\twidth:             ${width},`);
+    lines.push(`\t\theight:            ${height},`);
+    lines.push('\t\thasDarkBackground: hasDarkBackground,');
+    lines.push('\t}');
+    lines.push('}');
+    lines.push('');
+
+    // NewWithDefaults - convenience function
+    lines.push('// NewWithDefaults creates a new animation model with dark background (default)');
+    lines.push('func NewWithDefaults() Model {');
+    lines.push('\treturn New(true)');
+    lines.push('}');
+    lines.push('');
+
+    // Init
+    lines.push('// Init initializes the model');
+    lines.push('func (m Model) Init() tea.Cmd {');
+    if (playbackStyle === 'autoplay') {
+      lines.push('\treturn m.tick()');
+    } else {
+      lines.push('\treturn nil');
+    }
+    lines.push('}');
+    lines.push('');
+
+    // tick helper
+    lines.push('func (m Model) tick() tea.Cmd {');
+    lines.push('\tif !m.isPlaying || len(m.frames) == 0 {');
+    lines.push('\t\treturn nil');
+    lines.push('\t}');
+    lines.push('\treturn tea.Tick(m.frames[m.frameIndex].Duration, func(t time.Time) tea.Msg {');
+    lines.push('\t\treturn tickMsg(t)');
+    lines.push('\t})');
+    lines.push('}');
+    lines.push('');
+
+    // Update
+    lines.push('// Update handles messages');
+    lines.push('func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {');
+    lines.push('\tswitch msg := msg.(type) {');
+    lines.push('\tcase tea.KeyMsg:');
+    if (playbackStyle === 'keyboard') {
+      lines.push('\t\tswitch msg.String() {');
+      lines.push('\t\tcase "q", "ctrl+c":');
+      lines.push('\t\t\treturn m, tea.Quit');
+      lines.push('\t\tcase " ":');
+      lines.push('\t\t\tm.isPlaying = !m.isPlaying');
+      lines.push('\t\t\tif m.isPlaying {');
+      lines.push('\t\t\t\treturn m, m.tick()');
+      lines.push('\t\t\t}');
+      lines.push('\t\tcase "r":');
+      lines.push('\t\t\tm.frameIndex = 0');
+      lines.push('\t\t\treturn m, m.tick()');
+      lines.push('\t\tcase "left", "h":');
+      lines.push('\t\t\tif m.frameIndex > 0 {');
+      lines.push('\t\t\t\tm.frameIndex--');
+      lines.push('\t\t\t}');
+      lines.push('\t\tcase "right", "l":');
+      lines.push('\t\t\tif m.frameIndex < len(m.frames)-1 {');
+      lines.push('\t\t\t\tm.frameIndex++');
+      lines.push('\t\t\t}');
+      lines.push('\t\t}');
+    } else {
+      lines.push('\t\tswitch msg.String() {');
+      lines.push('\t\tcase "q", "ctrl+c":');
+      lines.push('\t\t\treturn m, tea.Quit');
+      lines.push('\t\t}');
+    }
+    lines.push('\tcase tickMsg:');
+    lines.push('\t\tif m.isPlaying && len(m.frames) > 0 {');
+    lines.push('\t\t\tm.frameIndex++');
+    lines.push('\t\t\tif m.frameIndex >= len(m.frames) {');
+    lines.push('\t\t\t\tif m.loop {');
+    lines.push('\t\t\t\t\tm.frameIndex = 0');
+    lines.push('\t\t\t\t} else {');
+    lines.push('\t\t\t\t\tm.frameIndex = len(m.frames) - 1');
+    lines.push('\t\t\t\t\tm.isPlaying = false');
+    lines.push('\t\t\t\t\treturn m, nil');
+    lines.push('\t\t\t\t}');
+    lines.push('\t\t\t}');
+    lines.push('\t\t\treturn m, m.tick()');
+    lines.push('\t\t}');
+    lines.push('\t}');
+    lines.push('\treturn m, nil');
+    lines.push('}');
+    lines.push('');
+
+    // getColor helper function - selects color from dark or light palette
+    const darkColorMap = colorMode === 'hex' ? 'COLORS_DARK' : 'THEME_DARK';
+    const lightColorMap = colorMode === 'hex' ? 'COLORS_LIGHT' : 'THEME_LIGHT';
+    lines.push('// getColor returns the appropriate color for the current background mode');
+    lines.push('func (m Model) getColor(colorKey string) lipgloss.TerminalColor {');
+    lines.push('\tif m.hasDarkBackground {');
+    lines.push(`\t\treturn ${darkColorMap}[colorKey]`);
+    lines.push('\t}');
+    lines.push(`\treturn ${lightColorMap}[colorKey]`);
+    lines.push('}');
+    lines.push('');
+
+    // View
+    lines.push('// View renders the animation');
+    lines.push('func (m Model) View() string {');
+    lines.push('\tif len(m.frames) == 0 {');
+    lines.push('\t\treturn ""');
+    lines.push('\t}');
+    lines.push('\tframe := m.frames[m.frameIndex]');
+    lines.push('\tvar sb strings.Builder');
+    lines.push('');
+    lines.push('\tfor y, row := range frame.Content {');
+    lines.push('\t\t// Convert to runes to get character indices (not byte offsets)');
+    lines.push('\t\tchars := []rune(row)');
+    lines.push('\t\tfor x, ch := range chars {');
+    lines.push('\t\t\tkey := fmt.Sprintf("%d,%d", x, y)');
+    lines.push('\t\t\tstyle := lipgloss.NewStyle()');
+    lines.push('\t\t\tif fgKey, ok := frame.FgColors[key]; ok {');
+    lines.push('\t\t\t\tstyle = style.Foreground(m.getColor(fgKey))');
+    lines.push('\t\t\t}');
+    lines.push('\t\t\tif bgKey, ok := frame.BgColors[key]; ok {');
+    lines.push('\t\t\t\tstyle = style.Background(m.getColor(bgKey))');
+    lines.push('\t\t\t}');
+    lines.push('\t\t\tsb.WriteString(style.Render(string(ch)))');
+    lines.push('\t\t}');
+    lines.push('\t\tif y < len(frame.Content)-1 {');
+    lines.push('\t\t\tsb.WriteString("\\n")');
+    lines.push('\t\t}');
+    lines.push('\t}');
+    lines.push('\treturn sb.String()');
+    lines.push('}');
+    lines.push('');
+
+    // API methods
+    lines.push('// Play starts or resumes the animation');
+    lines.push('func (m *Model) Play() tea.Cmd {');
+    lines.push('\tm.isPlaying = true');
+    lines.push('\treturn m.tick()');
+    lines.push('}');
+    lines.push('');
+
+    lines.push('// Pause stops the animation');
+    lines.push('func (m *Model) Pause() {');
+    lines.push('\tm.isPlaying = false');
+    lines.push('}');
+    lines.push('');
+
+    lines.push('// Restart resets to the first frame');
+    lines.push('func (m *Model) Restart() tea.Cmd {');
+    lines.push('\tm.frameIndex = 0');
+    lines.push('\treturn m.tick()');
+    lines.push('}');
+    lines.push('');
+
+    lines.push('// IsPlaying returns whether the animation is playing');
+    lines.push('func (m Model) IsPlaying() bool {');
+    lines.push('\treturn m.isPlaying');
+    lines.push('}');
+    lines.push('');
+
+    lines.push('// CurrentFrame returns the current frame index');
+    lines.push('func (m Model) CurrentFrame() int {');
+    lines.push('\treturn m.frameIndex');
+    lines.push('}');
+    lines.push('');
+
+    lines.push('// TotalFrames returns the total number of frames');
+    lines.push('func (m Model) TotalFrames() int {');
+    lines.push('\treturn len(m.frames)');
+    lines.push('}');
+    lines.push('');
+
+    // Add fmt import since we use it in View
+    const importIndex = lines.findIndex(l => l === 'import (');
+    if (importIndex !== -1) {
+      lines.splice(importIndex + 1, 0, '\t"fmt"');
+    }
+
+    // Frame data
+    lines.push('// Frame data');
+    lines.push('var frames = []Frame{');
+    for (const frame of framesData) {
+      lines.push('\t{');
+      lines.push(`\t\tDuration: ${frame.duration} * time.Millisecond,`);
+      lines.push('\t\tContent: []string{');
+      for (const row of frame.content) {
+        lines.push(`\t\t\t${JSON.stringify(row)},`);
+      }
+      lines.push('\t\t},');
+      
+      // Foreground colors - store color keys (strings) for lookup in COLORS_DARK/COLORS_LIGHT
+      if (Object.keys(frame.fgColors).length > 0) {
+        lines.push('\t\tFgColors: map[string]string{');
+        for (const [key, hex] of Object.entries(frame.fgColors)) {
+          const varName = colorMap.get(hex);
+          if (varName) {
+            lines.push(`\t\t\t"${key}": "${varName}",`);
+          }
+        }
+        lines.push('\t\t},');
+      } else {
+        lines.push('\t\tFgColors: nil,');
+      }
+
+      // Background colors - store color keys (strings) for lookup in COLORS_DARK/COLORS_LIGHT
+      if (Object.keys(frame.bgColors).length > 0) {
+        lines.push('\t\tBgColors: map[string]string{');
+        for (const [key, hex] of Object.entries(frame.bgColors)) {
+          const varName = colorMap.get(hex);
+          if (varName) {
+            lines.push(`\t\t\t"${key}": "${varName}",`);
+          }
+        }
+        lines.push('\t\t},');
+      } else {
+        lines.push('\t\tBgColors: nil,');
+      }
+      
+      lines.push('\t},');
+    }
+    lines.push('}');
     lines.push('');
 
     return lines.join('\n');
