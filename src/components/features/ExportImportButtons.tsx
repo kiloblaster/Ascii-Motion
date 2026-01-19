@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 
-import { Download, Upload, FileImage, Film, FileText, ChevronDown, Globe, FileCode, Save, FolderOpen, Terminal } from 'lucide-react';
+import { Download, Upload, FileImage, Film, FileText, ChevronDown, Globe, FileCode, Save, FolderOpen, Terminal, Monitor } from 'lucide-react';
 import { useExportStore } from '../../stores/exportStore';
 import { useImportModal } from '../../stores/importStore';
 import type { ExportFormatId } from '../../types/export';
@@ -43,6 +43,12 @@ const EXPORT_OPTIONS = [
     name: 'Ink Component',
     description: 'React-flavored CLI component',
     icon: Terminal,
+  },
+  {
+    id: 'opentui' as ExportFormatId,
+    name: 'OpenTUI Component',
+    description: 'Terminal UI component',
+    icon: Monitor,
   },
   {
     id: 'json' as ExportFormatId,

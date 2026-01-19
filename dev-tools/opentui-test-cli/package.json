@@ -1,0 +1,32 @@
+{
+  "name": "opentui-test-cli",
+  "version": "1.0.0",
+  "description": "Test CLI for OpenTUI component exports from ASCII Motion",
+  "main": "dist/cli.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "bun run src/cli.tsx",
+    "dev": "bun run src/cli.tsx"
+  },
+  "keywords": [
+    "opentui",
+    "tui",
+    "terminal",
+    "ascii",
+    "animation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@opentui/core": "^0.1.74",
+    "@opentui/react": "^0.1.74",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

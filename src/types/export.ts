@@ -3,7 +3,7 @@ import type { FontMetrics } from '../utils/fontMetrics';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from './palette';
 
 // Export format identifiers
-export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react' | 'ink';
+export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react' | 'ink' | 'opentui';
 
 // Base export format interface
 export interface ExportFormat {
@@ -41,6 +41,13 @@ export interface ReactExportSettings {
 }
 
 export interface InkExportSettings {
+  fileName: string;
+  includePlaybackControls: boolean; // Expose play/pause/restart functions via onReady
+  loopAnimation: boolean;           // Loop animation by default
+  colorMode: 'ansi' | 'hex';        // ANSI uses semantic names, hex uses numeric indices
+}
+
+export interface OpenTuiExportSettings {
   fileName: string;
   includePlaybackControls: boolean; // Expose play/pause/restart functions via onReady
   loopAnimation: boolean;           // Loop animation by default
@@ -109,7 +116,8 @@ export type ExportSettings =
   | JsonExportSettings
   | HtmlExportSettings
   | ReactExportSettings
-  | InkExportSettings;
+  | InkExportSettings
+  | OpenTuiExportSettings;
 
 // Export data bundle - all data needed for any export
 export interface ExportDataBundle {
@@ -221,6 +229,7 @@ export interface ExportState {
   htmlSettings: HtmlExportSettings;
   reactSettings: ReactExportSettings;
   inkSettings: InkExportSettings;
+  opentuiSettings: OpenTuiExportSettings;
   
   // Export history
   history: ExportHistoryEntry[];
