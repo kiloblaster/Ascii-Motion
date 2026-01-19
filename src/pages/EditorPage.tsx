@@ -27,6 +27,7 @@ import { TextExportDialog } from '../components/features/TextExportDialog'
 import { JsonExportDialog } from '../components/features/JsonExportDialog'
 import { HtmlExportDialog } from '../components/features/HtmlExportDialog'
 import { ReactExportDialog } from '../components/features/ReactExportDialog'
+import { InkExportDialog } from '../components/features/InkExportDialog'
 import { JsonImportDialog } from '../components/features/JsonImportDialog'
 import { SetFrameDurationDialog } from '../components/features/timeEffects/SetFrameDurationDialog'
 import { AddFramesDialog } from '../components/features/timeEffects/AddFramesDialog'
@@ -188,6 +189,7 @@ export function EditorPage() {
       <JsonExportDialog />
       <HtmlExportDialog />
       <ReactExportDialog />
+      <InkExportDialog />
       <JsonImportDialog />
       
       {/* Time Effects Dialogs */}

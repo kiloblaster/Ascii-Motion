@@ -3,7 +3,7 @@ import type { FontMetrics } from '../utils/fontMetrics';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from './palette';
 
 // Export format identifiers
-export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react';
+export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react' | 'ink';
 
 // Base export format interface
 export interface ExportFormat {
@@ -38,6 +38,13 @@ export interface ReactExportSettings {
   includeControls: boolean;
   includeBackground: boolean;
   fileName: string;
+}
+
+export interface InkExportSettings {
+  fileName: string;
+  includePlaybackControls: boolean; // Expose play/pause/restart functions via onReady
+  loopAnimation: boolean;           // Loop animation by default
+  colorMode: 'ansi' | 'hex';        // ANSI uses semantic names, hex uses numeric indices
 }
 
 export interface VideoExportSettings {
@@ -101,7 +108,8 @@ export type ExportSettings =
   | TextExportSettings
   | JsonExportSettings
   | HtmlExportSettings
-  | ReactExportSettings;
+  | ReactExportSettings
+  | InkExportSettings;
 
 // Export data bundle - all data needed for any export
 export interface ExportDataBundle {
@@ -212,6 +220,7 @@ export interface ExportState {
   jsonSettings: JsonExportSettings;
   htmlSettings: HtmlExportSettings;
   reactSettings: ReactExportSettings;
+  inkSettings: InkExportSettings;
   
   // Export history
   history: ExportHistoryEntry[];

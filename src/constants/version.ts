@@ -1,12 +1,35 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.55";
-export const BUILD_DATE = "2025-12-03T23:05:35.936Z";
-export const BUILD_HASH = "6e41ad9";
+export const VERSION = "0.2.56";
+export const BUILD_DATE = "2026-01-18T22:36:42.307Z";
+export const BUILD_HASH = "4f5efee";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.56",
+    "date": "2026-01-18T22:36:42.307Z",
+    "commits": [
+      "Merge pull request #52 from CameronFoxly/dependabot/npm_and_yarn/qs-6.14.1",
+      "Bump qs from 6.14.0 to 6.14.1",
+      "Updated welcome dialog",
+      "chore: update premium submodule with Stripe docs update",
+      "fix: Add VisuallyHidden description to dialog for a11y",
+      "fix: Add VisuallyHidden description to dialog for a11y",
+      "fix: Add Stripe domains to CSP and fix dialog a11y warning",
+      "fix: Add aria-describedby to dialog to suppress a11y warning",
+      "fix: Remove unused import causing build failure",
+      "Update submodules to main with Stripe payment integration",
+      "Added alerts for premium account downgrades",
+      "Remove welcome dialog if coming to page from upgrade flow",
+      "Added upgrade flow for creating pro accounts",
+      "New flags",
+      "Update flags",
+      "Update instructions for working with supabase",
+      "Added C64 palette"
+    ]
+  },
   {
     "version": "0.2.55",
     "date": "2025-12-03T23:05:35.936Z",
