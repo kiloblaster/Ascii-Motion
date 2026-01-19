@@ -3,7 +3,7 @@ import type { FontMetrics } from '../utils/fontMetrics';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from './palette';
 
 // Export format identifiers
-export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react' | 'ink' | 'opentui';
+export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react' | 'ink' | 'opentui' | 'bubbletea';
 
 // Base export format interface
 export interface ExportFormat {
@@ -52,6 +52,14 @@ export interface OpenTuiExportSettings {
   includePlaybackControls: boolean; // Expose play/pause/restart functions via onReady
   loopAnimation: boolean;           // Loop animation by default
   colorMode: 'ansi' | 'hex';        // ANSI uses semantic names, hex uses numeric indices
+}
+
+export interface BubbleteaExportSettings {
+  fileName: string;                                // Output filename (without .go extension)
+  packageName: string;                             // Go package name
+  colorMode: 'hex' | 'semantic' | 'adaptive';      // Color output mode
+  playbackStyle: 'autoplay' | 'keyboard' | 'api';  // How playback is controlled
+  loopAnimation: boolean;                          // Loop animation by default
 }
 
 export interface VideoExportSettings {
@@ -230,6 +238,7 @@ export interface ExportState {
   reactSettings: ReactExportSettings;
   inkSettings: InkExportSettings;
   opentuiSettings: OpenTuiExportSettings;
+  bubbleteaSettings: BubbleteaExportSettings;
   
   // Export history
   history: ExportHistoryEntry[];
