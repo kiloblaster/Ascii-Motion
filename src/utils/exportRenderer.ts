@@ -2969,7 +2969,9 @@ export class ExportRenderer {
     lines.push('\tvar sb strings.Builder');
     lines.push('');
     lines.push('\tfor y, row := range frame.Content {');
-    lines.push('\t\tfor x, ch := range row {');
+    lines.push('\t\t// Convert to runes to get character indices (not byte offsets)');
+    lines.push('\t\tchars := []rune(row)');
+    lines.push('\t\tfor x, ch := range chars {');
     lines.push('\t\t\tkey := fmt.Sprintf("%d,%d", x, y)');
     lines.push('\t\t\tstyle := lipgloss.NewStyle()');
     lines.push('\t\t\tif fgKey, ok := frame.FgColors[key]; ok {');

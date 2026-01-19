@@ -1,4 +1,4 @@
-package asciimotion
+package newtest
 
 import (
 	"fmt"
