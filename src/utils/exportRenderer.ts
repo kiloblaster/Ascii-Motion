@@ -9,6 +9,7 @@ import type {
   JsonExportSettings,
   HtmlExportSettings,
   ReactExportSettings,
+  InkExportSettings,
   ExportProgress 
 } from '../types/export';
 import type { Cell } from '../types';
@@ -1752,6 +1753,454 @@ export class ExportRenderer {
     lines.push(`export default ${componentName};`);
 
     return lines.join('\n') + '\n';
+  }
+
+  /**
+   * Export animation as an Ink (React for CLIs) component
+   */
+  async exportInkComponent(
+    data: ExportDataBundle,
+    settings: InkExportSettings
+  ): Promise<void> {
+    this.updateProgress('Preparing Ink component export...', 0);
+
+    try {
+      const requestedName = settings.fileName?.trim() || 'ascii-motion-cli';
+      const sanitizedFileName = this.sanitizeReactFileName(requestedName) || 'ascii-motion-cli';
+      const componentName = this.toPascalCase(sanitizedFileName);
+
+      this.updateProgress('Building color dictionary...', 20);
+
+      // Build unique color dictionary
+      const colorMap = new Map<string, string>();
+      let colorIndex = 0;
+
+      // ANSI color name mapping (approximate to 16-color terminal palette)
+      const ansiColorMap: Record<string, string> = {
+        '#000000': 'black',
+        '#800000': 'red',
+        '#008000': 'green',
+        '#808000': 'yellow',
+        '#000080': 'blue',
+        '#800080': 'magenta',
+        '#008080': 'cyan',
+        '#c0c0c0': 'white',
+        '#808080': 'gray',
+        '#ff0000': 'redBright',
+        '#00ff00': 'greenBright',
+        '#ffff00': 'yellowBright',
+        '#0000ff': 'blueBright',
+        '#ff00ff': 'magentaBright',
+        '#00ffff': 'cyanBright',
+        '#ffffff': 'whiteBright',
+      };
+
+      // Find closest ANSI color for a given hex color
+      const toAnsiColor = (hex: string): string => {
+        const normalized = hex.toLowerCase();
+        if (ansiColorMap[normalized]) {
+          return ansiColorMap[normalized];
+        }
+        // For non-exact matches, find the closest by checking each
+        const hexToRgb = (h: string) => {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
+          return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16),
+          } : { r: 128, g: 128, b: 128 };
+        };
+        const target = hexToRgb(normalized);
+        let closestColor = 'white';
+        let closestDistance = Infinity;
+        for (const [ansHex, ansName] of Object.entries(ansiColorMap)) {
+          const c = hexToRgb(ansHex);
+          const dist = Math.sqrt(
+            Math.pow(target.r - c.r, 2) +
+            Math.pow(target.g - c.g, 2) +
+            Math.pow(target.b - c.b, 2)
+          );
+          if (dist < closestDistance) {
+            closestDistance = dist;
+            closestColor = ansName;
+          }
+        }
+        return closestColor;
+      };
+
+      // Collect all colors from frames
+      data.frames.forEach((frame) => {
+        frame.data.forEach((cell) => {
+          if (cell.color && !colorMap.has(cell.color)) {
+            if (settings.colorMode === 'ansi') {
+              colorMap.set(cell.color, toAnsiColor(cell.color));
+            } else {
+              colorMap.set(cell.color, `c${colorIndex++}`);
+            }
+          }
+          if (cell.bgColor && cell.bgColor !== 'transparent' && !colorMap.has(cell.bgColor)) {
+            if (settings.colorMode === 'ansi') {
+              colorMap.set(cell.bgColor, toAnsiColor(cell.bgColor));
+            } else {
+              colorMap.set(cell.bgColor, `c${colorIndex++}`);
+            }
+          }
+        });
+      });
+
+      this.updateProgress('Serializing frame data...', 40);
+
+      // Build frame data with content strings and color maps
+      const framesData = data.frames.map((frame) => {
+        const rows: string[] = [];
+        const fgColors: Record<string, string> = {};
+        const bgColors: Record<string, string> = {};
+
+        // Initialize rows
+        for (let y = 0; y < data.canvasDimensions.height; y++) {
+          rows.push(' '.repeat(data.canvasDimensions.width));
+        }
+
+        // Fill in cell data
+        frame.data.forEach((cell, key) => {
+          if (!cell || !cell.char) return;
+          const [x, y] = key.split(',').map(Number);
+          if (x < 0 || y < 0 || x >= data.canvasDimensions.width || y >= data.canvasDimensions.height) return;
+
+          // Update row character
+          const row = rows[y];
+          rows[y] = row.substring(0, x) + cell.char + row.substring(x + 1);
+
+          // Track colors by position
+          if (cell.color) {
+            const colorKey = settings.colorMode === 'ansi' ? toAnsiColor(cell.color) : colorMap.get(cell.color)!;
+            fgColors[`${x},${y}`] = colorKey;
+          }
+          if (cell.bgColor && cell.bgColor !== 'transparent') {
+            const colorKey = settings.colorMode === 'ansi' ? toAnsiColor(cell.bgColor) : colorMap.get(cell.bgColor)!;
+            bgColors[`${x},${y}`] = colorKey;
+          }
+        });
+
+        return {
+          duration: Math.max(frame.duration, 16),
+          content: rows,
+          fgColors,
+          bgColors,
+        };
+      });
+
+      this.updateProgress('Generating component code...', 60);
+
+      const componentCode = this.generateInkComponentCode({
+        componentName,
+        framesData,
+        colorMap,
+        colorMode: settings.colorMode,
+        loopAnimation: settings.loopAnimation,
+        includePlaybackControls: settings.includePlaybackControls,
+        canvasWidth: data.canvasDimensions.width,
+        canvasHeight: data.canvasDimensions.height,
+      });
+
+      this.updateProgress('Saving file...', 90);
+
+      const blob = new Blob([componentCode], { type: 'text/plain;charset=utf-8' });
+      saveAs(blob, `${sanitizedFileName}.tsx`);
+
+      this.updateProgress('Export complete!', 100);
+    } catch (error) {
+      console.error('Ink component export failed:', error);
+      throw new Error(`Ink component export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private generateInkComponentCode(options: {
+    componentName: string;
+    framesData: Array<{
+      duration: number;
+      content: string[];
+      fgColors: Record<string, string>;
+      bgColors: Record<string, string>;
+    }>;
+    colorMap: Map<string, string>;
+    colorMode: 'ansi' | 'hex';
+    loopAnimation: boolean;
+    includePlaybackControls: boolean;
+    canvasWidth: number;
+    canvasHeight: number;
+  }): string {
+    const {
+      componentName,
+      framesData,
+      colorMap,
+      colorMode,
+      loopAnimation,
+      includePlaybackControls,
+      canvasWidth,
+      canvasHeight,
+    } = options;
+
+    const lines: string[] = [];
+
+    // Imports
+    lines.push("import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';");
+    lines.push("import { Box, Text } from 'ink';");
+    lines.push('');
+
+    // Dual theme dictionaries
+    if (colorMode === 'hex') {
+      // Hex mode: Generate COLORS_DARK and COLORS_LIGHT with numeric keys
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// COLORS_DARK is used when hasDarkBackground={true} (default)');
+      lines.push('// COLORS_LIGHT is used when hasDarkBackground={false}');
+      lines.push('const COLORS_DARK: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        lines.push(`  ${value}: '${key}',`);
+      });
+      lines.push('};');
+      lines.push('');
+      lines.push('const COLORS_LIGHT: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        // For light mode, we can try to provide sensible defaults
+        // Invert very light colors to dark, and vice versa
+        const invertedColor = this.suggestLightModeColor(key);
+        lines.push(`  ${value}: '${invertedColor}',`);
+      });
+      lines.push('};');
+      lines.push('');
+    } else {
+      // ANSI mode: Generate semantic theme dictionaries
+      // Collect unique ANSI color names used
+      const usedAnsiColors = new Set<string>();
+      colorMap.forEach((ansiName) => {
+        usedAnsiColors.add(ansiName);
+      });
+      
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// THEME_DARK is used when hasDarkBackground={true} (default)');
+      lines.push('// THEME_LIGHT is used when hasDarkBackground={false}');
+      lines.push('const THEME_DARK: Record<string, string> = {');
+      usedAnsiColors.forEach((ansiName) => {
+        lines.push(`  ${ansiName}: '${ansiName}',`);
+      });
+      lines.push('};');
+      lines.push('');
+      lines.push('const THEME_LIGHT: Record<string, string> = {');
+      usedAnsiColors.forEach((ansiName) => {
+        const lightVariant = this.suggestLightModeAnsiColor(ansiName);
+        lines.push(`  ${ansiName}: '${lightVariant}',`);
+      });
+      lines.push('};');
+      lines.push('');
+    }
+
+    // Types
+    lines.push('type FrameData = {');
+    lines.push('  duration: number;');
+    lines.push('  content: string[];');
+    lines.push('  fgColors: Record<string, string>;');
+    lines.push('  bgColors: Record<string, string>;');
+    lines.push('};');
+    lines.push('');
+
+    if (includePlaybackControls) {
+      lines.push('type PlaybackAPI = {');
+      lines.push('  play: () => void;');
+      lines.push('  pause: () => void;');
+      lines.push('  restart: () => void;');
+      lines.push('};');
+      lines.push('');
+    }
+
+    lines.push(`type ${componentName}Props = {`);
+    lines.push('  hasDarkBackground?: boolean;');
+    lines.push('  autoPlay?: boolean;');
+    lines.push('  loop?: boolean;');
+    if (includePlaybackControls) {
+      lines.push('  onReady?: (api: PlaybackAPI) => void;');
+    }
+    lines.push('};');
+    lines.push('');
+
+    // Frame data
+    lines.push('const FRAMES: FrameData[] = ' + JSON.stringify(framesData, null, 2) + ';');
+    lines.push('');
+    lines.push(`const CANVAS_WIDTH = ${canvasWidth};`);
+    lines.push(`const CANVAS_HEIGHT = ${canvasHeight};`);
+    lines.push(`const DEFAULT_LOOP = ${loopAnimation};`);
+    lines.push('');
+
+    // Component
+    lines.push(`export const ${componentName}: React.FC<${componentName}Props> = ({`);
+    lines.push('  hasDarkBackground = true,');
+    lines.push('  autoPlay = true,');
+    lines.push('  loop = DEFAULT_LOOP,');
+    if (includePlaybackControls) {
+      lines.push('  onReady,');
+    }
+    lines.push('}) => {');
+    lines.push('  const [frameIndex, setFrameIndex] = useState(0);');
+    lines.push('  const [isPlaying, setIsPlaying] = useState(autoPlay);');
+    lines.push('  const frameElapsedRef = useRef(0);');
+    lines.push('  const lastTimestampRef = useRef(Date.now());');
+    lines.push('');
+
+    // Theme selection
+    if (colorMode === 'hex') {
+      lines.push('  // Select color theme based on background');
+      lines.push('  const colors = useMemo(() => hasDarkBackground ? COLORS_DARK : COLORS_LIGHT, [hasDarkBackground]);');
+      lines.push('  const getColor = useCallback((key: string): string => colors[key] || key, [colors]);');
+    } else {
+      lines.push('  // Select color theme based on background');
+      lines.push('  const theme = useMemo(() => hasDarkBackground ? THEME_DARK : THEME_LIGHT, [hasDarkBackground]);');
+      lines.push('  const getColor = useCallback((key: string): string => theme[key] || key, [theme]);');
+    }
+    lines.push('  const defaultFg = hasDarkBackground ? "white" : "black";');
+    lines.push('');
+
+    // Playback control functions
+    lines.push('  const play = useCallback(() => setIsPlaying(true), []);');
+    lines.push('  const pause = useCallback(() => setIsPlaying(false), []);');
+    lines.push('  const restart = useCallback(() => {');
+    lines.push('    setFrameIndex(0);');
+    lines.push('    frameElapsedRef.current = 0;');
+    lines.push('    lastTimestampRef.current = Date.now();');
+    lines.push('    setIsPlaying(true);');
+    lines.push('  }, []);');
+    lines.push('');
+
+    // onReady callback
+    if (includePlaybackControls) {
+      lines.push('  useEffect(() => {');
+      lines.push('    if (onReady) {');
+      lines.push('      onReady({ play, pause, restart });');
+      lines.push('    }');
+      lines.push('  }, [onReady, play, pause, restart]);');
+      lines.push('');
+    }
+
+    // Animation loop
+    lines.push('  useEffect(() => {');
+    lines.push('    if (!isPlaying || FRAMES.length <= 1) return;');
+    lines.push('');
+    lines.push('    const interval = setInterval(() => {');
+    lines.push('      const now = Date.now();');
+    lines.push('      const delta = now - lastTimestampRef.current;');
+    lines.push('      lastTimestampRef.current = now;');
+    lines.push('      frameElapsedRef.current += delta;');
+    lines.push('');
+    lines.push('      const currentFrame = FRAMES[frameIndex];');
+    lines.push('      if (frameElapsedRef.current >= currentFrame.duration) {');
+    lines.push('        frameElapsedRef.current = 0;');
+    lines.push('        const nextIndex = frameIndex + 1;');
+    lines.push('        if (nextIndex >= FRAMES.length) {');
+    lines.push('          if (loop) {');
+    lines.push('            setFrameIndex(0);');
+    lines.push('          } else {');
+    lines.push('            setIsPlaying(false);');
+    lines.push('          }');
+    lines.push('        } else {');
+    lines.push('          setFrameIndex(nextIndex);');
+    lines.push('        }');
+    lines.push('      }');
+    lines.push('    }, 16);');
+    lines.push('');
+    lines.push('    return () => clearInterval(interval);');
+    lines.push('  }, [isPlaying, frameIndex, loop]);');
+    lines.push('');
+
+    // Render function
+    lines.push('  const frame = FRAMES[frameIndex];');
+    lines.push('');
+    lines.push('  return (');
+    lines.push('    <Box flexDirection="column">');
+    lines.push('      {frame.content.map((row, y) => (');
+    lines.push('        <Box key={y}>');
+    lines.push('          {row.split("").map((char, x) => {');
+    lines.push('            const posKey = `${x},${y}`;');
+    lines.push('            const fg = frame.fgColors[posKey] ? getColor(frame.fgColors[posKey]) : defaultFg;');
+    lines.push('            const bg = frame.bgColors[posKey] ? getColor(frame.bgColors[posKey]) : undefined;');
+    lines.push('            return (');
+    lines.push('              <Text key={x} color={fg} backgroundColor={bg}>');
+    lines.push('                {char}');
+    lines.push('              </Text>');
+    lines.push('            );');
+    lines.push('          })}');
+    lines.push('        </Box>');
+    lines.push('      ))}');
+    lines.push('    </Box>');
+    lines.push('  );');
+    lines.push('};');
+    lines.push('');
+    lines.push(`export default ${componentName};`);
+    lines.push('');
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Suggest a light-mode alternative for a hex color
+   * Inverts brightness while preserving hue
+   */
+  private suggestLightModeColor(hex: string): string {
+    // Parse hex color
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return hex;
+    
+    const r = parseInt(result[1], 16);
+    const g = parseInt(result[2], 16);
+    const b = parseInt(result[3], 16);
+    
+    // Calculate luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // If color is light (luminance > 0.5), darken it for light backgrounds
+    // If color is dark, it might work as-is or we lighten slightly
+    if (luminance > 0.6) {
+      // Darken light colors significantly for light mode
+      const factor = 0.3;
+      const newR = Math.round(r * factor);
+      const newG = Math.round(g * factor);
+      const newB = Math.round(b * factor);
+      return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+    } else if (luminance < 0.2) {
+      // Very dark colors - keep them or slightly lighten
+      return hex;
+    }
+    
+    // Medium colors - keep as is, they often work on both
+    return hex;
+  }
+
+  /**
+   * Suggest a light-mode alternative for an ANSI color name
+   */
+  private suggestLightModeAnsiColor(ansiColor: string): string {
+    // Map bright/light colors to their darker counterparts for light backgrounds
+    const lightModeMap: Record<string, string> = {
+      'white': 'black',
+      'whiteBright': 'blackBright',
+      'gray': 'blackBright',
+      'black': 'black',
+      'blackBright': 'black',
+      // Bright variants often work on light backgrounds, but regular colors are safer
+      'redBright': 'red',
+      'greenBright': 'green', 
+      'yellowBright': 'yellow',
+      'blueBright': 'blue',
+      'magentaBright': 'magenta',
+      'cyanBright': 'cyan',
+      // Regular colors generally work fine on light backgrounds
+      'red': 'red',
+      'green': 'green',
+      'yellow': 'yellow',
+      'blue': 'blue',
+      'magenta': 'magenta',
+      'cyan': 'cyan',
+    };
+    
+    return lightModeMap[ansiColor] || ansiColor;
   }
 
   /**

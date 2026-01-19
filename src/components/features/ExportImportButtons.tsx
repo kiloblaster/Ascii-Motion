@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 
-import { Download, Upload, FileImage, Film, FileText, ChevronDown, Globe, FileCode, Save, FolderOpen } from 'lucide-react';
+import { Download, Upload, FileImage, Film, FileText, ChevronDown, Globe, FileCode, Save, FolderOpen, Terminal } from 'lucide-react';
 import { useExportStore } from '../../stores/exportStore';
 import { useImportModal } from '../../stores/importStore';
 import type { ExportFormatId } from '../../types/export';
@@ -37,6 +37,12 @@ const EXPORT_OPTIONS = [
     name: 'React Component',
     description: 'Drop-in canvas component',
     icon: FileCode,
+  },
+  {
+    id: 'ink' as ExportFormatId,
+    name: 'Ink Component',
+    description: 'React-flavored CLI component',
+    icon: Terminal,
   },
   {
     id: 'json' as ExportFormatId,
