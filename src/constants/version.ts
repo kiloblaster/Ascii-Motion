@@ -1,12 +1,29 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.56";
-export const BUILD_DATE = "2026-01-19T16:48:46.952Z";
-export const BUILD_HASH = "119d646";
+export const VERSION = "0.2.57";
+export const BUILD_DATE = "2026-01-19T18:42:20.674Z";
+export const BUILD_HASH = "636fd30";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.57",
+    "date": "2026-01-19T18:42:20.674Z",
+    "commits": [
+      "Updated go export functions to bubbletea exprot",
+      "feat(bubbletea): dual color dictionaries with hasDarkBackground runtime selection",
+      "Updated dialog layout",
+      "feat: add Bubbletea (Go) CLI export format",
+      "Merge pull request #55 from CameronFoxly/openTUI-export",
+      "Added openTUI export",
+      "Added Ink export dev tools for testing output",
+      "Merge pull request #54 from CameronFoxly/ink-export",
+      "Add Ink exporting",
+      "Updated gradient tool to respect current state of any cel if that gradient property is disabled",
+      "Fix gradient application"
+    ]
+  },
   {
     "version": "0.2.56",
     "date": "2026-01-19T16:48:46.952Z",

@@ -250,7 +250,7 @@ export const OpenTuiExportDialog: React.FC = () => {
                   <Label>Color Mode</Label>
                   <Select
                     value={opentuiSettings.colorMode}
-                    onValueChange={(value: 'ansi' | 'hex') => setOpenTuiSettings({ colorMode: value })}
+                    onValueChange={(value: 'ansi' | '256' | 'hex') => setOpenTuiSettings({ colorMode: value })}
                     disabled={isExporting}
                   >
                     <SelectTrigger>
@@ -258,13 +258,16 @@ export const OpenTuiExportDialog: React.FC = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="hex">Hex colors (exact)</SelectItem>
-                      <SelectItem value="ansi">Semantic Color (CSS)</SelectItem>
+                      <SelectItem value="256">xterm-256 (wide support)</SelectItem>
+                      <SelectItem value="ansi">ANSI 16 (semantic)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     {opentuiSettings.colorMode === 'hex' 
-                      ? <>Preserves original <code>#rrggbb</code> values. Larger file but precise colors.</>
-                      : <>Maps to <code>cyan</code>, <code>magenta</code>, etc. Easily editable theme dictionary.</>
+                      ? <>Preserves original <code>#rrggbb</code> values. Requires true color terminal support.</>
+                      : opentuiSettings.colorMode === '256'
+                      ? <>Uses xterm-256 color palette. Supported by most terminals including Terminal.app.</>
+                      : <>Maps to <code>cyan</code>, <code>magenta</code>, etc. Works in all terminals.</>
                     }
                   </p>
                 </div>
@@ -350,7 +353,7 @@ export const OpenTuiExportDialog: React.FC = () => {
                   <div>
                     Color Mode:{' '}
                     <span className="font-medium text-foreground">
-                      {opentuiSettings.colorMode === 'ansi' ? 'ANSI (semantic themes)' : 'Hex (exact colors)'}
+                      {opentuiSettings.colorMode === 'ansi' ? 'ANSI 16 (semantic)' : opentuiSettings.colorMode === '256' ? 'xterm-256' : 'Hex (exact colors)'}
                     </span>
                   </div>
                   <div>

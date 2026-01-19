@@ -186,9 +186,10 @@ export const BubbleteaExportDialog: React.FC = () => {
 
   const canExport = Boolean(exportData && sanitizedFileName && sanitizedPackageName && !isExporting);
 
-  const colorModeDescription = {
-    hex: <>Preserves original <code>#rrggbb</code> values. Includes dark and light color dictionaries.</>,
-    semantic: <>Maps to ANSI 16-color palette with human-readable comments. Includes dark and light themes.</>
+  const colorModeDescription: Record<'hex' | '256' | 'semantic', React.ReactNode> = {
+    hex: <>Preserves original <code>#rrggbb</code> values. Requires true color terminal support.</>,
+    '256': <>Uses xterm-256 color palette. Supported by most modern terminals including Terminal.app.</>,
+    semantic: <>Maps to ANSI 16-color palette with human-readable comments. Works in all terminals.</>
   };
 
   const playbackStyleDescription = {
@@ -314,7 +315,7 @@ export const BubbleteaExportDialog: React.FC = () => {
                   <Label>Color Mode</Label>
                   <Select
                     value={bubbleteaSettings.colorMode}
-                    onValueChange={(value: 'hex' | 'semantic') => setBubbleteaSettings({ colorMode: value })}
+                    onValueChange={(value: 'hex' | '256' | 'semantic') => setBubbleteaSettings({ colorMode: value })}
                     disabled={isExporting}
                   >
                     <SelectTrigger>
@@ -322,7 +323,8 @@ export const BubbleteaExportDialog: React.FC = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="hex">Hex colors (exact)</SelectItem>
-                      <SelectItem value="semantic">Semantic Color (ANSI 16)</SelectItem>
+                      <SelectItem value="256">xterm-256 (wide support)</SelectItem>
+                      <SelectItem value="semantic">ANSI 16 (semantic)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -409,7 +411,7 @@ export const BubbleteaExportDialog: React.FC = () => {
                   <div>
                     Color Mode:{' '}
                     <span className="font-medium text-foreground">
-                      {bubbleteaSettings.colorMode === 'hex' ? 'Hex (exact)' : 'Semantic (ANSI 16)'}
+                      {bubbleteaSettings.colorMode === 'hex' ? 'Hex (exact)' : bubbleteaSettings.colorMode === '256' ? 'xterm-256' : 'ANSI 16 (semantic)'}
                     </span>
                   </div>
                   <div>

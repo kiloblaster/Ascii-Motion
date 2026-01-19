@@ -1837,6 +1837,7 @@ export class ExportRenderer {
             if (settings.colorMode === 'ansi') {
               colorMap.set(cell.color, toAnsiColor(cell.color));
             } else {
+              // For both hex and 256 modes, use sequential unique keys
               colorMap.set(cell.color, `c${colorIndex++}`);
             }
           }
@@ -1844,6 +1845,7 @@ export class ExportRenderer {
             if (settings.colorMode === 'ansi') {
               colorMap.set(cell.bgColor, toAnsiColor(cell.bgColor));
             } else {
+              // For both hex and 256 modes, use sequential unique keys
               colorMap.set(cell.bgColor, `c${colorIndex++}`);
             }
           }
@@ -1926,7 +1928,7 @@ export class ExportRenderer {
       bgColors: Record<string, string>;
     }>;
     colorMap: Map<string, string>;
-    colorMode: 'ansi' | 'hex';
+    colorMode: 'ansi' | '256' | 'hex';
     loopAnimation: boolean;
     includePlaybackControls: boolean;
     canvasWidth: number;
@@ -1968,6 +1970,29 @@ export class ExportRenderer {
         // Invert very light colors to dark, and vice versa
         const invertedColor = this.suggestLightModeColor(key);
         lines.push(`  ${value}: '${invertedColor}',`);
+      });
+      lines.push('};');
+      lines.push('');
+    } else if (colorMode === '256') {
+      // 256-color mode: use hex colors clamped to the xterm-256 palette
+      // Ink/chalk uses hex colors, but we clamp them to the 256 palette for terminal compatibility
+      lines.push('// Color themes - hex colors clamped to xterm-256 palette');
+      lines.push('// COLORS_DARK is used when hasDarkBackground={true} (default)');
+      lines.push('// COLORS_LIGHT is used when hasDarkBackground={false}');
+      lines.push('// Colors are clamped to the 256-color palette for wide terminal compatibility');
+      lines.push('const COLORS_DARK: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        // Convert hex color to 256 palette hex (clamped)
+        const clampedHex = this.hexTo256Hex(key);
+        lines.push(`  ${value}: '${clampedHex}', // original: ${key}`);
+      });
+      lines.push('};');
+      lines.push('');
+      lines.push('const COLORS_LIGHT: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        const invertedColor = this.suggestLightModeColor(key);
+        const clampedHex = this.hexTo256Hex(invertedColor);
+        lines.push(`  ${value}: '${clampedHex}', // original: ${invertedColor}`);
       });
       lines.push('};');
       lines.push('');
@@ -2049,7 +2074,7 @@ export class ExportRenderer {
     lines.push('');
 
     // Theme selection
-    if (colorMode === 'hex') {
+    if (colorMode === 'hex' || colorMode === '256') {
       lines.push('  // Select color theme based on background');
       lines.push('  const colors = useMemo(() => hasDarkBackground ? COLORS_DARK : COLORS_LIGHT, [hasDarkBackground]);');
       lines.push('  const getColor = useCallback((key: string): string => colors[key] || key, [colors]);');
@@ -2286,6 +2311,7 @@ export class ExportRenderer {
             if (settings.colorMode === 'ansi') {
               colorMap.set(cell.color, toOpenTuiColor(cell.color));
             } else {
+              // For both hex and 256 modes, use sequential unique keys
               colorMap.set(cell.color, `c${colorIndex++}`);
             }
           }
@@ -2293,6 +2319,7 @@ export class ExportRenderer {
             if (settings.colorMode === 'ansi') {
               colorMap.set(cell.bgColor, toOpenTuiColor(cell.bgColor));
             } else {
+              // For both hex and 256 modes, use sequential unique keys
               colorMap.set(cell.bgColor, `c${colorIndex++}`);
             }
           }
@@ -2375,7 +2402,7 @@ export class ExportRenderer {
       bgColors: Record<string, string>;
     }>;
     colorMap: Map<string, string>;
-    colorMode: 'ansi' | 'hex';
+    colorMode: 'ansi' | '256' | 'hex';
     loopAnimation: boolean;
     includePlaybackControls: boolean;
     canvasWidth: number;
@@ -2413,6 +2440,29 @@ export class ExportRenderer {
       colorMap.forEach((value, key) => {
         const invertedColor = this.suggestLightModeColor(key);
         lines.push(`  ${value}: '${invertedColor}',`);
+      });
+      lines.push('};');
+      lines.push('');
+    } else if (colorMode === '256') {
+      // 256-color mode: use hex colors clamped to the xterm-256 palette
+      // OpenTUI uses hex colors, but we clamp them to the 256 palette for terminal compatibility
+      lines.push('// Color themes - hex colors clamped to xterm-256 palette');
+      lines.push('// COLORS_DARK is used when hasDarkBackground={true} (default)');
+      lines.push('// COLORS_LIGHT is used when hasDarkBackground={false}');
+      lines.push('// Colors are clamped to the 256-color palette for wide terminal compatibility');
+      lines.push('const COLORS_DARK: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        // Convert hex color to 256 palette hex (clamped)
+        const clampedHex = this.hexTo256Hex(key);
+        lines.push(`  ${value}: '${clampedHex}', // original: ${key}`);
+      });
+      lines.push('};');
+      lines.push('');
+      lines.push('const COLORS_LIGHT: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        const invertedColor = this.suggestLightModeColor(key);
+        const clampedHex = this.hexTo256Hex(invertedColor);
+        lines.push(`  ${value}: '${clampedHex}', // original: ${invertedColor}`);
       });
       lines.push('};');
       lines.push('');
@@ -2493,7 +2543,7 @@ export class ExportRenderer {
     lines.push('');
 
     // Theme selection
-    if (colorMode === 'hex') {
+    if (colorMode === 'hex' || colorMode === '256') {
       lines.push('  // Select color theme based on background');
       lines.push('  const colors = useMemo(() => hasDarkBackground ? COLORS_DARK : COLORS_LIGHT, [hasDarkBackground]);');
       lines.push('  const getColor = useCallback((key: string): string => colors[key] || key, [colors]);');
@@ -2739,6 +2789,87 @@ export class ExportRenderer {
   }
 
   /**
+   * Convert hex color to xterm-256 palette code
+   * The xterm-256 palette consists of:
+   * - 0-15: Standard ANSI 16 colors
+   * - 16-231: 6×6×6 RGB color cube (216 colors)
+   * - 232-255: Grayscale ramp (24 shades)
+   */
+  private hexTo256Color(hex: string): number {
+    // Parse hex color
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+
+    // Check if close to grayscale (r ≈ g ≈ b)
+    const isGrayscale = Math.abs(r - g) < 8 && Math.abs(g - b) < 8 && Math.abs(r - b) < 8;
+    
+    if (isGrayscale) {
+      // Use grayscale ramp (232-255) for grays
+      // The grayscale ramp goes from rgb(8,8,8) at 232 to rgb(238,238,238) at 255
+      const avg = (r + g + b) / 3;
+      if (avg < 4) return 16; // Black
+      if (avg > 244) return 231; // White
+      // Map to grayscale codes 232-255 (24 levels)
+      const grayIndex = Math.round((avg - 8) / 10);
+      return Math.min(255, Math.max(232, 232 + grayIndex));
+    }
+
+    // Use 6×6×6 RGB cube (16-231)
+    // Each component maps 0-255 to 0-5
+    const cubeR = Math.round(r / 51);
+    const cubeG = Math.round(g / 51);
+    const cubeB = Math.round(b / 51);
+    
+    return 16 + (36 * cubeR) + (6 * cubeG) + cubeB;
+  }
+
+  /**
+   * Convert xterm-256 color code to hex color string
+   * Inverse of hexTo256Color - useful for frameworks that need hex but want 256-palette colors
+   */
+  private color256ToHex(code: number): string {
+    // Standard ANSI 16 colors (0-15)
+    if (code < 16) {
+      const ansi16: string[] = [
+        '#000000', '#800000', '#008000', '#808000', '#000080', '#800080', '#008080', '#c0c0c0',
+        '#808080', '#ff0000', '#00ff00', '#ffff00', '#0000ff', '#ff00ff', '#00ffff', '#ffffff'
+      ];
+      return ansi16[code];
+    }
+    
+    // Grayscale ramp (232-255)
+    if (code >= 232) {
+      const gray = 8 + (code - 232) * 10;
+      const hex = gray.toString(16).padStart(2, '0');
+      return `#${hex}${hex}${hex}`;
+    }
+    
+    // 6×6×6 RGB cube (16-231)
+    const cubeIndex = code - 16;
+    const cubeR = Math.floor(cubeIndex / 36);
+    const cubeG = Math.floor((cubeIndex % 36) / 6);
+    const cubeB = cubeIndex % 6;
+    
+    // Each cube step is 0, 95, 135, 175, 215, 255
+    const cubeValues = [0, 95, 135, 175, 215, 255];
+    const r = cubeValues[cubeR];
+    const g = cubeValues[cubeG];
+    const b = cubeValues[cubeB];
+    
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  }
+
+  /**
+   * Clamp a hex color to the nearest xterm-256 palette color (as hex)
+   * Useful for frameworks like OpenTUI that use hex colors but need 256-palette compatibility
+   */
+  private hexTo256Hex(hex: string): string {
+    const code = this.hexTo256Color(hex);
+    return this.color256ToHex(code);
+  }
+
+  /**
    * Generate Bubbletea Go code
    */
   private generateBubbleteaCode(params: {
@@ -2750,7 +2881,7 @@ export class ExportRenderer {
       bgColors: Record<string, string>;
     }>;
     colorMap: Map<string, string>;
-    colorMode: 'hex' | 'semantic';
+    colorMode: 'hex' | '256' | 'semantic';
     playbackStyle: 'autoplay' | 'keyboard' | 'api';
     loopAnimation: boolean;
     width: number;
@@ -2800,6 +2931,27 @@ export class ExportRenderer {
       for (const [hex, varName] of colorMap) {
         const invertedColor = this.suggestLightModeColor(hex);
         lines.push(`\t"${varName}": lipgloss.Color("${invertedColor}"),`);
+      }
+      lines.push('}');
+      lines.push('');
+    } else if (colorMode === '256') {
+      // 256-color mode: Generate xterm-256 color theme dictionaries
+      lines.push('// Color themes - xterm-256 color palette');
+      lines.push('// COLORS_DARK is used when HasDarkBackground=true (default)');
+      lines.push('// COLORS_LIGHT is used when HasDarkBackground=false');
+      lines.push('// Values are xterm-256 color codes (0-255)');
+      lines.push('var COLORS_DARK = map[string]lipgloss.Color{');
+      for (const [hex, varName] of colorMap) {
+        const colorCode = this.hexTo256Color(hex);
+        lines.push(`\t"${varName}": lipgloss.Color("${colorCode}"), // ${hex}`);
+      }
+      lines.push('}');
+      lines.push('');
+      lines.push('var COLORS_LIGHT = map[string]lipgloss.Color{');
+      for (const [hex, varName] of colorMap) {
+        const invertedColor = this.suggestLightModeColor(hex);
+        const invertedCode = this.hexTo256Color(invertedColor);
+        lines.push(`\t"${varName}": lipgloss.Color("${invertedCode}"), // ${invertedColor}`);
       }
       lines.push('}');
       lines.push('');
@@ -2948,8 +3100,8 @@ export class ExportRenderer {
     lines.push('');
 
     // getColor helper function - selects color from dark or light palette
-    const darkColorMap = colorMode === 'hex' ? 'COLORS_DARK' : 'THEME_DARK';
-    const lightColorMap = colorMode === 'hex' ? 'COLORS_LIGHT' : 'THEME_LIGHT';
+    const darkColorMap = (colorMode === 'hex' || colorMode === '256') ? 'COLORS_DARK' : 'THEME_DARK';
+    const lightColorMap = (colorMode === 'hex' || colorMode === '256') ? 'COLORS_LIGHT' : 'THEME_LIGHT';
     lines.push('// getColor returns the appropriate color for the current background mode');
     lines.push('func (m Model) getColor(colorKey string) lipgloss.TerminalColor {');
     lines.push('\tif m.hasDarkBackground {');

@@ -44,20 +44,20 @@ export interface InkExportSettings {
   fileName: string;
   includePlaybackControls: boolean; // Expose play/pause/restart functions via onReady
   loopAnimation: boolean;           // Loop animation by default
-  colorMode: 'ansi' | 'hex';        // ANSI uses semantic names, hex uses numeric indices
+  colorMode: 'ansi' | '256' | 'hex'; // ANSI (16 colors), xterm-256, or full hex
 }
 
 export interface OpenTuiExportSettings {
   fileName: string;
   includePlaybackControls: boolean; // Expose play/pause/restart functions via onReady
   loopAnimation: boolean;           // Loop animation by default
-  colorMode: 'ansi' | 'hex';        // ANSI uses semantic names, hex uses numeric indices
+  colorMode: 'ansi' | '256' | 'hex'; // ANSI (16 colors), xterm-256, or full hex
 }
 
 export interface BubbleteaExportSettings {
   fileName: string;                                // Output filename (without .go extension)
   packageName: string;                             // Go package name
-  colorMode: 'hex' | 'semantic';                   // Hex preserves exact colors, Semantic uses ANSI 16
+  colorMode: 'hex' | '256' | 'semantic';           // Hex (24-bit), xterm-256, or Semantic (ANSI 16)
   playbackStyle: 'autoplay' | 'keyboard' | 'api';  // How playback is controlled
   loopAnimation: boolean;                          // Loop animation by default
 }

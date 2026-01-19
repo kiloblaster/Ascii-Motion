@@ -249,21 +249,24 @@ export const InkExportDialog: React.FC = () => {
                   <Label>Color Mode</Label>
                   <Select
                     value={inkSettings.colorMode}
-                    onValueChange={(value: 'ansi' | 'hex') => setInkSettings({ colorMode: value })}
+                    onValueChange={(value: 'ansi' | '256' | 'hex') => setInkSettings({ colorMode: value })}
                     disabled={isExporting}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select color mode" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ansi">ANSI colors (semantic)</SelectItem>
+                      <SelectItem value="ansi">ANSI 16 (semantic)</SelectItem>
+                      <SelectItem value="256">xterm-256 (wide support)</SelectItem>
                       <SelectItem value="hex">Hex colors (exact)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     {inkSettings.colorMode === 'ansi' 
-                      ? <>Maps to <code>cyan</code>, <code>magenta</code>, etc. Easily editable theme dictionary.</>
-                      : <>Preserves original <code>#rrggbb</code> values. Larger file but precise colors.</>
+                      ? <>Maps to <code>cyan</code>, <code>magenta</code>, etc. Works in all terminals.</>
+                      : inkSettings.colorMode === '256'
+                      ? <>Uses xterm-256 color palette. Supported by most terminals including Terminal.app.</>
+                      : <>Preserves original <code>#rrggbb</code> values. Requires true color terminal support.</>
                     }
                   </p>
                 </div>
@@ -349,7 +352,7 @@ export const InkExportDialog: React.FC = () => {
                   <div>
                     Color Mode:{' '}
                     <span className="font-medium text-foreground">
-                      {inkSettings.colorMode === 'ansi' ? 'ANSI (semantic themes)' : 'Hex (exact colors)'}
+                      {inkSettings.colorMode === 'ansi' ? 'ANSI 16 (semantic)' : inkSettings.colorMode === '256' ? 'xterm-256' : 'Hex (exact colors)'}
                     </span>
                   </div>
                   <div>
