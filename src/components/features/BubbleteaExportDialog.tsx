@@ -200,7 +200,7 @@ export const BubbleteaExportDialog: React.FC = () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={setShowExportModal}>
-      <DialogContent className="max-w-xl p-0 overflow-hidden border-border/50" aria-describedby={undefined}>
+      <DialogContent className="max-w-lg sm:max-w-xl p-0 overflow-hidden border-border/50" aria-describedby={undefined}>
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/50 bg-background">
           <DialogTitle className="flex items-center gap-2">
             <Terminal className="w-5 h-5" />
@@ -342,7 +342,7 @@ export const BubbleteaExportDialog: React.FC = () => {
                 </div>
 
                 <div className="relative">
-                  <pre className="bg-muted/70 rounded-md p-3 text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                  <pre className="bg-muted/70 rounded-md p-3 text-xs font-mono whitespace-pre-wrap break-all leading-relaxed overflow-x-auto max-w-full">
                     {importSnippet}
                   </pre>
                   <Button
@@ -387,7 +387,7 @@ export const BubbleteaExportDialog: React.FC = () => {
                 </div>
 
                 <div className="relative">
-                  <pre className="bg-muted/70 rounded-md p-3 text-xs font-mono">go get github.com/charmbracelet/bubbletea github.com/charmbracelet/lipgloss</pre>
+                  <pre className="bg-muted/70 rounded-md p-3 text-xs font-mono whitespace-pre-wrap break-all">go get github.com/charmbracelet/bubbletea github.com/charmbracelet/lipgloss</pre>
                 </div>
 
                 <p className="text-xs text-muted-foreground">
