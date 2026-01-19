@@ -47,10 +47,11 @@ func main() {
 	
 	// Uncomment this code after adding your animation:
 	/*
-	model := anim.New(anim.Config{
-		AutoPlay: true,
-		Loop:     true,
-	})
+	// Pass true for dark background terminals, false for light
+	model := anim.New(true) // true = dark terminal background
+	
+	// Or use the convenience function for dark backgrounds:
+	// model := anim.NewWithDefaults()
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

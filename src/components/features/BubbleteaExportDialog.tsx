@@ -187,9 +187,8 @@ export const BubbleteaExportDialog: React.FC = () => {
   const canExport = Boolean(exportData && sanitizedFileName && sanitizedPackageName && !isExporting);
 
   const colorModeDescription = {
-    hex: <>Preserves original <code>#rrggbb</code> values using <code>lipgloss.Color("#...")</code>.</>,
-    semantic: <>Maps to ANSI 16-color palette with human-readable comments (e.g., <code>lipgloss.Color("5") // magenta</code>).</>,
-    adaptive: <>Uses <code>lipgloss.AdaptiveColor</code> for light/dark terminal support.</>
+    hex: <>Preserves original <code>#rrggbb</code> values. Includes dark and light color dictionaries.</>,
+    semantic: <>Maps to ANSI 16-color palette with human-readable comments. Includes dark and light themes.</>
   };
 
   const playbackStyleDescription = {
@@ -315,7 +314,7 @@ export const BubbleteaExportDialog: React.FC = () => {
                   <Label>Color Mode</Label>
                   <Select
                     value={bubbleteaSettings.colorMode}
-                    onValueChange={(value: 'hex' | 'semantic' | 'adaptive') => setBubbleteaSettings({ colorMode: value })}
+                    onValueChange={(value: 'hex' | 'semantic') => setBubbleteaSettings({ colorMode: value })}
                     disabled={isExporting}
                   >
                     <SelectTrigger>
@@ -323,8 +322,7 @@ export const BubbleteaExportDialog: React.FC = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="hex">Hex colors (exact)</SelectItem>
-                      <SelectItem value="semantic">Semantic (ANSI 16)</SelectItem>
-                      <SelectItem value="adaptive">Adaptive (light/dark)</SelectItem>
+                      <SelectItem value="semantic">Semantic Color (ANSI 16)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
@@ -411,8 +409,7 @@ export const BubbleteaExportDialog: React.FC = () => {
                   <div>
                     Color Mode:{' '}
                     <span className="font-medium text-foreground">
-                      {bubbleteaSettings.colorMode === 'hex' ? 'Hex (exact)' : 
-                       bubbleteaSettings.colorMode === 'semantic' ? 'Semantic (ANSI 16)' : 'Adaptive (light/dark)'}
+                      {bubbleteaSettings.colorMode === 'hex' ? 'Hex (exact)' : 'Semantic (ANSI 16)'}
                     </span>
                   </div>
                   <div>

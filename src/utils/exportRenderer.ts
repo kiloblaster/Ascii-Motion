@@ -2750,7 +2750,7 @@ export class ExportRenderer {
       bgColors: Record<string, string>;
     }>;
     colorMap: Map<string, string>;
-    colorMode: 'hex' | 'semantic' | 'adaptive';
+    colorMode: 'hex' | 'semantic';
     playbackStyle: 'autoplay' | 'keyboard' | 'api';
     loopAnimation: boolean;
     width: number;
@@ -2785,48 +2785,65 @@ export class ExportRenderer {
     lines.push(')');
     lines.push('');
 
-    // Color definitions based on mode
-    lines.push('// Color definitions');
+    // Dual theme color dictionaries - similar to Ink/OpenTUI pattern
     if (colorMode === 'hex') {
-      // Hex mode - use lipgloss.Color with hex values
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// COLORS_DARK is used when HasDarkBackground=true (default)');
+      lines.push('// COLORS_LIGHT is used when HasDarkBackground=false');
+      lines.push('var COLORS_DARK = map[string]lipgloss.Color{');
       for (const [hex, varName] of colorMap) {
-        lines.push(`var ${varName} = lipgloss.Color("${hex}")`);
+        lines.push(`\t"${varName}": lipgloss.Color("${hex}"),`);
       }
-    } else if (colorMode === 'semantic') {
-      // Semantic mode - use ANSI 16-color codes with comments
+      lines.push('}');
+      lines.push('');
+      lines.push('var COLORS_LIGHT = map[string]lipgloss.Color{');
       for (const [hex, varName] of colorMap) {
-        const ansi = toAnsi16Color(hex);
-        lines.push(`var ${varName} = lipgloss.Color("${ansi.code}") // ${ansi.name}`);
+        const invertedColor = this.suggestLightModeColor(hex);
+        lines.push(`\t"${varName}": lipgloss.Color("${invertedColor}"),`);
       }
+      lines.push('}');
+      lines.push('');
     } else {
-      // Adaptive mode - use AdaptiveColor for light/dark themes
+      // Semantic mode: Generate ANSI color theme dictionaries
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// THEME_DARK is used when HasDarkBackground=true (default)');
+      lines.push('// THEME_LIGHT is used when HasDarkBackground=false');
+      lines.push('var THEME_DARK = map[string]lipgloss.Color{');
       for (const [hex, varName] of colorMap) {
         const ansi = toAnsi16Color(hex);
-        const lightAnsi = toAnsi16Color(this.suggestLightModeColor(hex));
-        lines.push(`var ${varName} = lipgloss.AdaptiveColor{Light: "${lightAnsi.code}", Dark: "${ansi.code}"} // ${ansi.name}`);
+        lines.push(`\t"${varName}": lipgloss.Color("${ansi.code}"), // ${ansi.name}`);
       }
+      lines.push('}');
+      lines.push('');
+      lines.push('var THEME_LIGHT = map[string]lipgloss.Color{');
+      for (const [hex, varName] of colorMap) {
+        const lightAnsi = toAnsi16Color(this.suggestLightModeColor(hex));
+        lines.push(`\t"${varName}": lipgloss.Color("${lightAnsi.code}"), // ${lightAnsi.name}`);
+      }
+      lines.push('}');
+      lines.push('');
     }
-    lines.push('');
 
-    // Frame data structure
+    // Frame data structure - now uses string keys for color lookups
     lines.push('// Frame represents a single animation frame');
     lines.push('type Frame struct {');
     lines.push('\tDuration time.Duration');
     lines.push('\tContent  []string');
-    lines.push('\tFgColors map[string]lipgloss.TerminalColor');
-    lines.push('\tBgColors map[string]lipgloss.TerminalColor');
+    lines.push('\tFgColors map[string]string // Maps "x,y" -> color key');
+    lines.push('\tBgColors map[string]string // Maps "x,y" -> color key');
     lines.push('}');
     lines.push('');
 
-    // Model
+    // Model - now includes hasDarkBackground for theme selection
     lines.push('// Model is the Bubbletea model for the animation');
     lines.push('type Model struct {');
-    lines.push('\tframes     []Frame');
-    lines.push('\tframeIndex int');
-    lines.push('\tisPlaying  bool');
-    lines.push('\tloop       bool');
-    lines.push('\twidth      int');
-    lines.push('\theight     int');
+    lines.push('\tframes            []Frame');
+    lines.push('\tframeIndex        int');
+    lines.push('\tisPlaying         bool');
+    lines.push('\tloop              bool');
+    lines.push('\twidth             int');
+    lines.push('\theight            int');
+    lines.push('\thasDarkBackground bool');
     lines.push('}');
     lines.push('');
 
@@ -2834,17 +2851,26 @@ export class ExportRenderer {
     lines.push('type tickMsg time.Time');
     lines.push('');
 
-    // New function
+    // New function with hasDarkBackground parameter
     lines.push('// New creates a new animation model');
-    lines.push('func New() Model {');
+    lines.push('// Set hasDarkBackground to true for dark terminals, false for light terminals');
+    lines.push('func New(hasDarkBackground bool) Model {');
     lines.push('\treturn Model{');
-    lines.push('\t\tframes:     frames,');
-    lines.push('\t\tframeIndex: 0,');
-    lines.push(`\t\tisPlaying:  ${playbackStyle === 'autoplay' ? 'true' : 'false'},`);
-    lines.push(`\t\tloop:       ${loopAnimation},`);
-    lines.push(`\t\twidth:      ${width},`);
-    lines.push(`\t\theight:     ${height},`);
+    lines.push('\t\tframes:            frames,');
+    lines.push('\t\tframeIndex:        0,');
+    lines.push(`\t\tisPlaying:         ${playbackStyle === 'autoplay' ? 'true' : 'false'},`);
+    lines.push(`\t\tloop:              ${loopAnimation},`);
+    lines.push(`\t\twidth:             ${width},`);
+    lines.push(`\t\theight:            ${height},`);
+    lines.push('\t\thasDarkBackground: hasDarkBackground,');
     lines.push('\t}');
+    lines.push('}');
+    lines.push('');
+
+    // NewWithDefaults - convenience function
+    lines.push('// NewWithDefaults creates a new animation model with dark background (default)');
+    lines.push('func NewWithDefaults() Model {');
+    lines.push('\treturn New(true)');
     lines.push('}');
     lines.push('');
 
@@ -2921,6 +2947,18 @@ export class ExportRenderer {
     lines.push('}');
     lines.push('');
 
+    // getColor helper function - selects color from dark or light palette
+    const darkColorMap = colorMode === 'hex' ? 'COLORS_DARK' : 'THEME_DARK';
+    const lightColorMap = colorMode === 'hex' ? 'COLORS_LIGHT' : 'THEME_LIGHT';
+    lines.push('// getColor returns the appropriate color for the current background mode');
+    lines.push('func (m Model) getColor(colorKey string) lipgloss.TerminalColor {');
+    lines.push('\tif m.hasDarkBackground {');
+    lines.push(`\t\treturn ${darkColorMap}[colorKey]`);
+    lines.push('\t}');
+    lines.push(`\treturn ${lightColorMap}[colorKey]`);
+    lines.push('}');
+    lines.push('');
+
     // View
     lines.push('// View renders the animation');
     lines.push('func (m Model) View() string {');
@@ -2934,11 +2972,11 @@ export class ExportRenderer {
     lines.push('\t\tfor x, ch := range row {');
     lines.push('\t\t\tkey := fmt.Sprintf("%d,%d", x, y)');
     lines.push('\t\t\tstyle := lipgloss.NewStyle()');
-    lines.push('\t\t\tif fg, ok := frame.FgColors[key]; ok {');
-    lines.push('\t\t\t\tstyle = style.Foreground(fg)');
+    lines.push('\t\t\tif fgKey, ok := frame.FgColors[key]; ok {');
+    lines.push('\t\t\t\tstyle = style.Foreground(m.getColor(fgKey))');
     lines.push('\t\t\t}');
-    lines.push('\t\t\tif bg, ok := frame.BgColors[key]; ok {');
-    lines.push('\t\t\t\tstyle = style.Background(bg)');
+    lines.push('\t\t\tif bgKey, ok := frame.BgColors[key]; ok {');
+    lines.push('\t\t\t\tstyle = style.Background(m.getColor(bgKey))');
     lines.push('\t\t\t}');
     lines.push('\t\t\tsb.WriteString(style.Render(string(ch)))');
     lines.push('\t\t}');
@@ -3007,13 +3045,13 @@ export class ExportRenderer {
       }
       lines.push('\t\t},');
       
-      // Foreground colors
+      // Foreground colors - store color keys (strings) for lookup in COLORS_DARK/COLORS_LIGHT
       if (Object.keys(frame.fgColors).length > 0) {
-        lines.push('\t\tFgColors: map[string]lipgloss.TerminalColor{');
+        lines.push('\t\tFgColors: map[string]string{');
         for (const [key, hex] of Object.entries(frame.fgColors)) {
           const varName = colorMap.get(hex);
           if (varName) {
-            lines.push(`\t\t\t"${key}": ${varName},`);
+            lines.push(`\t\t\t"${key}": "${varName}",`);
           }
         }
         lines.push('\t\t},');
@@ -3021,13 +3059,13 @@ export class ExportRenderer {
         lines.push('\t\tFgColors: nil,');
       }
 
-      // Background colors
+      // Background colors - store color keys (strings) for lookup in COLORS_DARK/COLORS_LIGHT
       if (Object.keys(frame.bgColors).length > 0) {
-        lines.push('\t\tBgColors: map[string]lipgloss.TerminalColor{');
+        lines.push('\t\tBgColors: map[string]string{');
         for (const [key, hex] of Object.entries(frame.bgColors)) {
           const varName = colorMap.get(hex);
           if (varName) {
-            lines.push(`\t\t\t"${key}": ${varName},`);
+            lines.push(`\t\t\t"${key}": "${varName}",`);
           }
         }
         lines.push('\t\t},');

@@ -38,10 +38,11 @@ Test harness for ASCII Motion Bubbletea (Go) component exports.
    )
    
    func main() {
-       model := anim.New(anim.Config{
-           AutoPlay: true,
-           Loop:     true,
-       })
+       // Pass true for dark terminal backgrounds, false for light
+       model := anim.New(true)
+       
+       // Or use the convenience function (defaults to dark):
+       // model := anim.NewWithDefaults()
 
        p := tea.NewProgram(model, tea.WithAltScreen())
        if _, err := p.Run(); err != nil {
@@ -107,31 +108,48 @@ func (m ParentModel) View() string {
 
 ## Color Modes
 
+Both color modes include dark and light color palettes for runtime selection:
+
 ### Hex (exact)
 Uses true color hex values for precise color reproduction:
 ```go
-var colors = map[string]lipgloss.Color{
+// Dark terminal colors
+var COLORS_DARK = map[string]lipgloss.TerminalColor{
     "c0": lipgloss.Color("#FF00FF"),
     "c1": lipgloss.Color("#00FFFF"),
+}
+
+// Light terminal colors  
+var COLORS_LIGHT = map[string]lipgloss.TerminalColor{
+    "c0": lipgloss.Color("#CC00CC"),
+    "c1": lipgloss.Color("#00CCCC"),
 }
 ```
 
 ### Semantic (ANSI 16)
 Maps to terminal palette with human-readable comments:
 ```go
-var colors = map[string]lipgloss.Color{
-    "c0": lipgloss.Color("5"),  // magenta
-    "c1": lipgloss.Color("6"),  // cyan
+// Dark terminal theme
+var THEME_DARK = map[string]lipgloss.TerminalColor{
+    "c0": lipgloss.Color("13"),  // bright magenta
+    "c1": lipgloss.Color("14"),  // bright cyan
+}
+
+// Light terminal theme
+var THEME_LIGHT = map[string]lipgloss.TerminalColor{
+    "c0": lipgloss.Color("5"),   // magenta
+    "c1": lipgloss.Color("6"),   // cyan
 }
 ```
 
-### Adaptive (light/dark)
-Uses different colors for light vs dark terminal backgrounds:
+### Runtime Selection
+The `hasDarkBackground` parameter passed to `New()` controls which palette is used:
 ```go
-var colors = map[string]lipgloss.AdaptiveColor{
-    "c0": {Light: "5", Dark: "13"},  // magenta
-    "c1": {Light: "6", Dark: "14"},  // cyan
-}
+// For dark terminals (e.g., iTerm2 dark theme)
+model := anim.New(true)
+
+// For light terminals (e.g., macOS Terminal light theme)
+model := anim.New(false)
 ```
 
 ## Troubleshooting
@@ -149,7 +167,15 @@ bubbletea-test-cli/
 Try different color modes in the export dialog:
 - **Hex** for exact colors (requires terminal with true color support)
 - **Semantic** for maximum compatibility
-- **Adaptive** for terminals that switch between light/dark modes
+
+Also make sure you're passing the correct `hasDarkBackground` value:
+```go
+// If your terminal has a dark background:
+model := anim.New(true)
+
+// If your terminal has a light background:
+model := anim.New(false)
+```
 
 ### Animation is choppy
 The animation timing is based on frame durations from ASCII Motion. If frames have very short durations, you may see performance issues on some terminals.

@@ -57,7 +57,7 @@ export interface OpenTuiExportSettings {
 export interface BubbleteaExportSettings {
   fileName: string;                                // Output filename (without .go extension)
   packageName: string;                             // Go package name
-  colorMode: 'hex' | 'semantic' | 'adaptive';      // Color output mode
+  colorMode: 'hex' | 'semantic';                   // Hex preserves exact colors, Semantic uses ANSI 16
   playbackStyle: 'autoplay' | 'keyboard' | 'api';  // How playback is controlled
   loopAnimation: boolean;                          // Loop animation by default
 }
