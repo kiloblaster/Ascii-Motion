@@ -1,12 +1,20 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.57";
-export const BUILD_DATE = "2026-01-19T18:42:20.674Z";
-export const BUILD_HASH = "636fd30";
+export const VERSION = "0.2.58";
+export const BUILD_DATE = "2026-01-19T20:09:26.770Z";
+export const BUILD_HASH = "1777d4e";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.58",
+    "date": "2026-01-19T20:09:26.770Z",
+    "commits": [
+      "Fixed up color for exports",
+      "Merge pull request #56 from CameronFoxly/feature/bubbletea-export"
+    ]
+  },
   {
     "version": "0.2.57",
     "date": "2026-01-19T18:42:20.674Z",

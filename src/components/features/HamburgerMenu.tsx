@@ -8,7 +8,7 @@ import {
   MenubarSeparator,
   MenubarTrigger,
 } from '../ui/menubar';
-import { Menu, Info, Keyboard, CloudUpload, CloudDownload, FilePlus2, Settings, Sparkles, Users, Upload } from 'lucide-react';
+import { Menu, Info, Keyboard, CloudUpload, CloudDownload, FilePlus2, Settings, Sparkles, Users, Upload, BookOpen, ExternalLink } from 'lucide-react';
 import { AboutDialog } from './AboutDialog';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
 import { useAuth } from '@ascii-motion/premium';
@@ -132,6 +132,15 @@ export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({ onOpenGallery, onO
             <MenubarItem onClick={() => setShowKeyboardShortcuts(true)} className="cursor-pointer">
               <Keyboard className="mr-2 h-4 w-4" />
               <span>Keyboard Shortcuts</span>
+            </MenubarItem>
+            
+            <MenubarItem 
+              onClick={() => window.open('https://docs.ascii-motion.com/getting-started', '_blank')} 
+              className="cursor-pointer"
+            >
+              <BookOpen className="mr-2 h-4 w-4" />
+              <span>Documentation</span>
+              <ExternalLink className="ml-auto h-3 w-3 text-muted-foreground" />
             </MenubarItem>
             
             <MenubarItem onClick={() => setShowAboutDialog(true)} className="cursor-pointer">
