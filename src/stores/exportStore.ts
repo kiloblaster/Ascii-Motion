@@ -12,7 +12,8 @@ import type {
   HtmlExportSettings,
   ExportHistoryEntry,
   ReactExportSettings,
-  InkExportSettings
+  InkExportSettings,
+  OpenTuiExportSettings
 } from '../types/export';
 
 interface ExportActions {
@@ -34,6 +35,7 @@ interface ExportActions {
   setHtmlSettings: (settings: Partial<HtmlExportSettings>) => void;
   setReactSettings: (settings: Partial<ReactExportSettings>) => void;
   setInkSettings: (settings: Partial<InkExportSettings>) => void;
+  setOpenTuiSettings: (settings: Partial<OpenTuiExportSettings>) => void;
   
   // History management
   addToHistory: (entry: ExportHistoryEntry) => void;
@@ -115,6 +117,13 @@ const DEFAULT_INK_SETTINGS: InkExportSettings = {
   colorMode: 'ansi',
 };
 
+const DEFAULT_OPENTUI_SETTINGS: OpenTuiExportSettings = {
+  fileName: 'ascii-motion-tui',
+  includePlaybackControls: true,
+  loopAnimation: true,
+  colorMode: 'hex',
+};
+
 export const useExportStore = create<ExportStoreState>((set, get) => ({
   // Initial state
   activeFormat: null,
@@ -130,6 +139,7 @@ export const useExportStore = create<ExportStoreState>((set, get) => ({
   htmlSettings: DEFAULT_HTML_SETTINGS,
   reactSettings: DEFAULT_REACT_SETTINGS,
   inkSettings: DEFAULT_INK_SETTINGS,
+  opentuiSettings: DEFAULT_OPENTUI_SETTINGS,
   
   // UI state - updated for dropdown UX
   showExportModal: false, // Now used for format-specific dialogs
@@ -214,6 +224,12 @@ export const useExportStore = create<ExportStoreState>((set, get) => ({
       inkSettings: { ...state.inkSettings, ...settings }
     }));
   },
+
+  setOpenTuiSettings: (settings: Partial<OpenTuiExportSettings>) => {
+    set((state) => ({
+      opentuiSettings: { ...state.opentuiSettings, ...settings }
+    }));
+  },
   
   addToHistory: (entry: ExportHistoryEntry) => {
     set((state) => ({
@@ -253,6 +269,8 @@ export const useExportStore = create<ExportStoreState>((set, get) => ({
         return state.reactSettings;
       case 'ink':
         return state.inkSettings;
+      case 'opentui':
+        return state.opentuiSettings;
       default:
         return null;
     }

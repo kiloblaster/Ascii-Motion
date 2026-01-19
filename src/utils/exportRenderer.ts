@@ -10,6 +10,7 @@ import type {
   HtmlExportSettings,
   ReactExportSettings,
   InkExportSettings,
+  OpenTuiExportSettings,
   ExportProgress 
 } from '../types/export';
 import type { Cell } from '../types';
@@ -2201,6 +2202,386 @@ export class ExportRenderer {
     };
     
     return lightModeMap[ansiColor] || ansiColor;
+  }
+
+  /**
+   * Export as OpenTUI Component (.tsx)
+   * Generates a self-contained React component for OpenTUI terminal UI
+   */
+  async exportOpenTuiComponent(
+    data: ExportDataBundle,
+    settings: OpenTuiExportSettings
+  ): Promise<void> {
+    this.updateProgress('Preparing OpenTUI component export...', 0);
+
+    try {
+      const requestedName = settings.fileName?.trim() || 'ascii-motion-tui';
+      const sanitizedFileName = this.sanitizeReactFileName(requestedName) || 'ascii-motion-tui';
+      const componentName = this.toPascalCase(sanitizedFileName);
+
+      this.updateProgress('Building color dictionary...', 20);
+
+      // Build unique color dictionary
+      const colorMap = new Map<string, string>();
+      let colorIndex = 0;
+
+      // OpenTUI uses CSS-style color names with "bright" prefix (not camelCase like Ink)
+      // e.g., "brightcyan" not "cyanBright"
+      const opentuiColorMap: Record<string, string> = {
+        '#000000': 'black',
+        '#800000': 'red',
+        '#008000': 'green',
+        '#808000': 'yellow',
+        '#000080': 'blue',
+        '#800080': 'magenta',
+        '#008080': 'cyan',
+        '#c0c0c0': 'white',
+        '#808080': 'gray',
+        '#ff0000': 'brightred',
+        '#00ff00': 'brightgreen',
+        '#ffff00': 'brightyellow',
+        '#0000ff': 'brightblue',
+        '#ff00ff': 'brightmagenta',
+        '#00ffff': 'brightcyan',
+        '#ffffff': 'brightwhite',
+      };
+
+      // Find closest color for a given hex color
+      const toOpenTuiColor = (hex: string): string => {
+        const normalized = hex.toLowerCase();
+        if (opentuiColorMap[normalized]) {
+          return opentuiColorMap[normalized];
+        }
+        const hexToRgb = (h: string) => {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
+          return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16),
+          } : { r: 128, g: 128, b: 128 };
+        };
+        const target = hexToRgb(normalized);
+        let closestColor = 'white';
+        let closestDistance = Infinity;
+        for (const [ansHex, ansName] of Object.entries(opentuiColorMap)) {
+          const c = hexToRgb(ansHex);
+          const dist = Math.sqrt(
+            Math.pow(target.r - c.r, 2) +
+            Math.pow(target.g - c.g, 2) +
+            Math.pow(target.b - c.b, 2)
+          );
+          if (dist < closestDistance) {
+            closestDistance = dist;
+            closestColor = ansName;
+          }
+        }
+        return closestColor;
+      };
+
+      // Collect all colors from frames
+      data.frames.forEach((frame) => {
+        frame.data.forEach((cell) => {
+          if (cell.color && !colorMap.has(cell.color)) {
+            if (settings.colorMode === 'ansi') {
+              colorMap.set(cell.color, toOpenTuiColor(cell.color));
+            } else {
+              colorMap.set(cell.color, `c${colorIndex++}`);
+            }
+          }
+          if (cell.bgColor && cell.bgColor !== 'transparent' && !colorMap.has(cell.bgColor)) {
+            if (settings.colorMode === 'ansi') {
+              colorMap.set(cell.bgColor, toOpenTuiColor(cell.bgColor));
+            } else {
+              colorMap.set(cell.bgColor, `c${colorIndex++}`);
+            }
+          }
+        });
+      });
+
+      this.updateProgress('Serializing frame data...', 40);
+
+      // Build frame data with content strings and color maps
+      const framesData = data.frames.map((frame) => {
+        const rows: string[] = [];
+        const fgColors: Record<string, string> = {};
+        const bgColors: Record<string, string> = {};
+
+        // Initialize rows
+        for (let y = 0; y < data.canvasDimensions.height; y++) {
+          rows.push(' '.repeat(data.canvasDimensions.width));
+        }
+
+        // Fill in cell data
+        frame.data.forEach((cell, key) => {
+          if (!cell || !cell.char) return;
+          const [x, y] = key.split(',').map(Number);
+          if (x < 0 || y < 0 || x >= data.canvasDimensions.width || y >= data.canvasDimensions.height) return;
+
+          // Update row character
+          const row = rows[y];
+          rows[y] = row.substring(0, x) + cell.char + row.substring(x + 1);
+
+          // Track colors by position
+          if (cell.color) {
+            const colorKey = settings.colorMode === 'ansi' ? toOpenTuiColor(cell.color) : colorMap.get(cell.color)!;
+            fgColors[`${x},${y}`] = colorKey;
+          }
+          if (cell.bgColor && cell.bgColor !== 'transparent') {
+            const colorKey = settings.colorMode === 'ansi' ? toOpenTuiColor(cell.bgColor) : colorMap.get(cell.bgColor)!;
+            bgColors[`${x},${y}`] = colorKey;
+          }
+        });
+
+        return {
+          duration: Math.max(frame.duration, 16),
+          content: rows,
+          fgColors,
+          bgColors,
+        };
+      });
+
+      this.updateProgress('Generating component code...', 60);
+
+      const componentCode = this.generateOpenTuiComponentCode({
+        componentName,
+        framesData,
+        colorMap,
+        colorMode: settings.colorMode,
+        loopAnimation: settings.loopAnimation,
+        includePlaybackControls: settings.includePlaybackControls,
+        canvasWidth: data.canvasDimensions.width,
+        canvasHeight: data.canvasDimensions.height,
+      });
+
+      this.updateProgress('Saving file...', 90);
+
+      const blob = new Blob([componentCode], { type: 'text/plain;charset=utf-8' });
+      saveAs(blob, `${sanitizedFileName}.tsx`);
+
+      this.updateProgress('Export complete!', 100);
+    } catch (error) {
+      console.error('OpenTUI component export failed:', error);
+      throw new Error(`OpenTUI component export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private generateOpenTuiComponentCode(options: {
+    componentName: string;
+    framesData: Array<{
+      duration: number;
+      content: string[];
+      fgColors: Record<string, string>;
+      bgColors: Record<string, string>;
+    }>;
+    colorMap: Map<string, string>;
+    colorMode: 'ansi' | 'hex';
+    loopAnimation: boolean;
+    includePlaybackControls: boolean;
+    canvasWidth: number;
+    canvasHeight: number;
+  }): string {
+    const {
+      componentName,
+      framesData,
+      colorMap,
+      colorMode,
+      loopAnimation,
+      includePlaybackControls,
+      canvasWidth,
+      canvasHeight,
+    } = options;
+
+    const lines: string[] = [];
+
+    // Imports - OpenTUI uses box, text from @opentui/react
+    lines.push("import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';");
+    lines.push('');
+
+    // Dual theme dictionaries
+    if (colorMode === 'hex') {
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// COLORS_DARK is used when hasDarkBackground={true} (default)');
+      lines.push('// COLORS_LIGHT is used when hasDarkBackground={false}');
+      lines.push('const COLORS_DARK: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        lines.push(`  ${value}: '${key}',`);
+      });
+      lines.push('};');
+      lines.push('');
+      lines.push('const COLORS_LIGHT: Record<string, string> = {');
+      colorMap.forEach((value, key) => {
+        const invertedColor = this.suggestLightModeColor(key);
+        lines.push(`  ${value}: '${invertedColor}',`);
+      });
+      lines.push('};');
+      lines.push('');
+    } else {
+      // ANSI mode: Generate semantic theme dictionaries
+      const usedAnsiColors = new Set<string>();
+      colorMap.forEach((ansiName) => {
+        usedAnsiColors.add(ansiName);
+      });
+      
+      lines.push('// Color themes - edit these values to customize for each background type');
+      lines.push('// THEME_DARK is used when hasDarkBackground={true} (default)');
+      lines.push('// THEME_LIGHT is used when hasDarkBackground={false}');
+      lines.push('const THEME_DARK: Record<string, string> = {');
+      usedAnsiColors.forEach((ansiName) => {
+        lines.push(`  ${ansiName}: '${ansiName}',`);
+      });
+      lines.push('};');
+      lines.push('');
+      lines.push('const THEME_LIGHT: Record<string, string> = {');
+      usedAnsiColors.forEach((ansiName) => {
+        const lightVariant = this.suggestLightModeAnsiColor(ansiName);
+        lines.push(`  ${ansiName}: '${lightVariant}',`);
+      });
+      lines.push('};');
+      lines.push('');
+    }
+
+    // Types
+    lines.push('type FrameData = {');
+    lines.push('  duration: number;');
+    lines.push('  content: string[];');
+    lines.push('  fgColors: Record<string, string>;');
+    lines.push('  bgColors: Record<string, string>;');
+    lines.push('};');
+    lines.push('');
+
+    if (includePlaybackControls) {
+      lines.push('type PlaybackAPI = {');
+      lines.push('  play: () => void;');
+      lines.push('  pause: () => void;');
+      lines.push('  restart: () => void;');
+      lines.push('};');
+      lines.push('');
+    }
+
+    lines.push(`type ${componentName}Props = {`);
+    lines.push('  hasDarkBackground?: boolean;');
+    lines.push('  autoPlay?: boolean;');
+    lines.push('  loop?: boolean;');
+    if (includePlaybackControls) {
+      lines.push('  onReady?: (api: PlaybackAPI) => void;');
+    }
+    lines.push('};');
+    lines.push('');
+
+    // Frame data
+    lines.push('const FRAMES: FrameData[] = ' + JSON.stringify(framesData, null, 2) + ';');
+    lines.push('');
+    lines.push(`const CANVAS_WIDTH = ${canvasWidth};`);
+    lines.push(`const CANVAS_HEIGHT = ${canvasHeight};`);
+    lines.push(`const DEFAULT_LOOP = ${loopAnimation};`);
+    lines.push('');
+
+    // Component - using lowercase intrinsic elements for OpenTUI
+    lines.push(`export const ${componentName}: React.FC<${componentName}Props> = ({`);
+    lines.push('  hasDarkBackground = true,');
+    lines.push('  autoPlay = true,');
+    lines.push('  loop = DEFAULT_LOOP,');
+    if (includePlaybackControls) {
+      lines.push('  onReady,');
+    }
+    lines.push('}) => {');
+    lines.push('  const [frameIndex, setFrameIndex] = useState(0);');
+    lines.push('  const [isPlaying, setIsPlaying] = useState(autoPlay);');
+    lines.push('  const frameElapsedRef = useRef(0);');
+    lines.push('  const lastTimestampRef = useRef(Date.now());');
+    lines.push('');
+
+    // Theme selection
+    if (colorMode === 'hex') {
+      lines.push('  // Select color theme based on background');
+      lines.push('  const colors = useMemo(() => hasDarkBackground ? COLORS_DARK : COLORS_LIGHT, [hasDarkBackground]);');
+      lines.push('  const getColor = useCallback((key: string): string => colors[key] || key, [colors]);');
+    } else {
+      lines.push('  // Select color theme based on background');
+      lines.push('  const theme = useMemo(() => hasDarkBackground ? THEME_DARK : THEME_LIGHT, [hasDarkBackground]);');
+      lines.push('  const getColor = useCallback((key: string): string => theme[key] || key, [theme]);');
+    }
+    lines.push('  const defaultFg = hasDarkBackground ? "white" : "black";');
+    lines.push('');
+
+    // Playback control functions
+    lines.push('  const play = useCallback(() => setIsPlaying(true), []);');
+    lines.push('  const pause = useCallback(() => setIsPlaying(false), []);');
+    lines.push('  const restart = useCallback(() => {');
+    lines.push('    setFrameIndex(0);');
+    lines.push('    frameElapsedRef.current = 0;');
+    lines.push('    lastTimestampRef.current = Date.now();');
+    lines.push('    setIsPlaying(true);');
+    lines.push('  }, []);');
+    lines.push('');
+
+    // onReady callback
+    if (includePlaybackControls) {
+      lines.push('  useEffect(() => {');
+      lines.push('    if (onReady) {');
+      lines.push('      onReady({ play, pause, restart });');
+      lines.push('    }');
+      lines.push('  }, [onReady, play, pause, restart]);');
+      lines.push('');
+    }
+
+    // Animation loop using setInterval
+    lines.push('  useEffect(() => {');
+    lines.push('    if (!isPlaying || FRAMES.length <= 1) return;');
+    lines.push('');
+    lines.push('    const interval = setInterval(() => {');
+    lines.push('      const now = Date.now();');
+    lines.push('      const delta = now - lastTimestampRef.current;');
+    lines.push('      lastTimestampRef.current = now;');
+    lines.push('      frameElapsedRef.current += delta;');
+    lines.push('');
+    lines.push('      const currentFrame = FRAMES[frameIndex];');
+    lines.push('      if (frameElapsedRef.current >= currentFrame.duration) {');
+    lines.push('        frameElapsedRef.current = 0;');
+    lines.push('        const nextIndex = frameIndex + 1;');
+    lines.push('        if (nextIndex >= FRAMES.length) {');
+    lines.push('          if (loop) {');
+    lines.push('            setFrameIndex(0);');
+    lines.push('          } else {');
+    lines.push('            setIsPlaying(false);');
+    lines.push('          }');
+    lines.push('        } else {');
+    lines.push('          setFrameIndex(nextIndex);');
+    lines.push('        }');
+    lines.push('      }');
+    lines.push('    }, 16);');
+    lines.push('');
+    lines.push('    return () => clearInterval(interval);');
+    lines.push('  }, [isPlaying, frameIndex, loop]);');
+    lines.push('');
+
+    // Render function using OpenTUI intrinsic elements: box, text, span
+    lines.push('  const frame = FRAMES[frameIndex];');
+    lines.push('');
+    lines.push('  return (');
+    lines.push('    <box flexDirection="column">');
+    lines.push('      {frame.content.map((row, y) => (');
+    lines.push('        <text key={y}>');
+    lines.push('          {row.split("").map((char, x) => {');
+    lines.push('            const posKey = `${x},${y}`;');
+    lines.push('            const fg = frame.fgColors[posKey] ? getColor(frame.fgColors[posKey]) : defaultFg;');
+    lines.push('            const bg = frame.bgColors[posKey] ? getColor(frame.bgColors[posKey]) : undefined;');
+    lines.push('            return (');
+    lines.push('              <span key={x} fg={fg} bg={bg}>');
+    lines.push('                {char}');
+    lines.push('              </span>');
+    lines.push('            );');
+    lines.push('          })}');
+    lines.push('        </text>');
+    lines.push('      ))}');
+    lines.push('    </box>');
+    lines.push('  );');
+    lines.push('};');
+    lines.push('');
+    lines.push(`export default ${componentName};`);
+    lines.push('');
+
+    return lines.join('\n');
   }
 
   /**
