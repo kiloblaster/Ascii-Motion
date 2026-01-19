@@ -1,0 +1,24 @@
+{
+  "name": "ink-test-cli",
+  "version": "1.0.0",
+  "description": "Test CLI for ASCII Motion Ink component exports",
+  "type": "module",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.tsx",
+    "test:dark": "tsx src/cli.tsx --dark",
+    "test:light": "tsx src/cli.tsx --light"
+  },
+  "dependencies": {
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.2"
+  }
+}

@@ -2,15 +2,17 @@
 // This file is updated by scripts/version-bump.js during deployment
 
 export const VERSION = "0.2.56";
-export const BUILD_DATE = "2026-01-18T22:36:42.307Z";
-export const BUILD_HASH = "4f5efee";
+export const BUILD_DATE = "2026-01-19T16:48:46.952Z";
+export const BUILD_HASH = "119d646";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
   {
     "version": "0.2.56",
-    "date": "2026-01-18T22:36:42.307Z",
+    "date": "2026-01-19T16:48:46.952Z",
     "commits": [
+      "Updated gradient tool to respect current state of any cel if that gradient property is disabled",
+      "Fix gradient application",
       "Merge pull request #52 from CameronFoxly/dependabot/npm_and_yarn/qs-6.14.1",
       "Bump qs from 6.14.0 to 6.14.1",
       "Updated welcome dialog",
