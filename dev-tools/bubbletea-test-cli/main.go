@@ -5,7 +5,7 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	anim "bubbletea-test-cli/animations/newtest"
+	anim "bubbletea-test-cli/animations/copilotspin"
 )
 
 func main() {

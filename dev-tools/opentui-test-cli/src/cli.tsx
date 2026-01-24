@@ -1,7 +1,7 @@
 import React from 'react';
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
-import { FishAnimation256 } from './fish-animation-256.js';
+import { AsciiMotionTuiAnsi } from './ascii-motion-tui-ansi2.js';
 
 /**
  * OpenTUI Test CLI
@@ -22,7 +22,7 @@ async function main() {
   
   createRoot(renderer).render(
     // @ts-ignore - React 19 JSX type compatibility
-    <FishAnimation256 
+    <AsciiMotionTuiAnsi 
       hasDarkBackground={true} 
       autoPlay={true} 
       loop={true} 
