@@ -6,16 +6,18 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Grid3X3, Palette, Type, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Grid3X3, Palette, Type, AlertTriangle, CheckCircle2, Loader2, Maximize2 } from 'lucide-react';
+import { CanvasResizeDialog } from './CanvasResizeDialog';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useCanvasContext } from '@/contexts/CanvasContext';
 import { ZoomControls } from './ZoomControls';
 import { useToolStore } from '@/stores/toolStore';
 import { useAnimationStore } from '@/stores/animationStore';
+import { useProjectDialogState } from '@/hooks/useProjectDialogState';
 import { MONOSPACE_FONTS, DEFAULT_FONT_ID } from '@/constants/fonts';
 import { getFontFallbackMessage } from '@/utils/fontDetection';
-import { 
-  charactersToPixels, 
+import {
+  charactersToPixels,
   validatePixelInput,
   type PixelDimensions 
 } from '@/utils/canvasSizeConversion';
@@ -48,6 +50,9 @@ export const CanvasSettings: React.FC = () => {
 
   const { pushCanvasResizeHistory } = useToolStore();
   const { currentFrameIndex } = useAnimationStore();
+
+  // Global dialog state for canvas resize (allows keyboard shortcut to trigger)
+  const { showCanvasResizeDialog, setShowCanvasResizeDialog } = useProjectDialogState();
 
   // Store original canvas background color for cancel functionality
   const [originalCanvasBackgroundColor, setOriginalCanvasBackgroundColor] = useState<string>('');
@@ -435,6 +440,24 @@ export const CanvasSettings: React.FC = () => {
               </Button>
             </div>
           </div>
+
+          {/* Resize Button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCanvasResizeDialog(true)}
+                className="h-7 px-2 text-xs gap-1"
+              >
+                <Maximize2 className="w-3 h-3" />
+                Resize
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">Resize canvas with anchor positioning (⌘⇧C)</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Right Section - Display, Text, and Zoom Controls */}
@@ -758,6 +781,12 @@ export const CanvasSettings: React.FC = () => {
           showTransparentOption
           triggerRef={colorPickerRef}
           anchorPosition="bottom-left"
+        />
+
+        {/* Canvas Resize Dialog */}
+        <CanvasResizeDialog
+          isOpen={showCanvasResizeDialog}
+          onOpenChange={setShowCanvasResizeDialog}
         />
       </div>
     </TooltipProvider>

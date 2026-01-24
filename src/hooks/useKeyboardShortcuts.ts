@@ -13,6 +13,7 @@ import { useCharacterPaletteStore } from '../stores/characterPaletteStore';
 import { useFlipUtilities } from './useFlipUtilities';
 import { useCropToSelection } from './useCropToSelection';
 import { useProjectFileActions } from './useProjectFileActions';
+import { useProjectDialogState } from './useProjectDialogState';
 import { ANSI_COLORS } from '../constants/colors';
 import type { AnyHistoryAction, CanvasHistoryAction, CanvasResizeHistoryAction, FrameId, Cell } from '../types';
 
@@ -968,6 +969,22 @@ export const useKeyboardShortcuts = () => {
         showSaveAsDialog();
         return;
       }
+
+      // Cmd/Ctrl+Shift+C - Open canvas resize dialog
+      if (normalizedKey === 'c') {
+        event.preventDefault();
+        useProjectDialogState.getState().setShowCanvasResizeDialog(true);
+        return;
+      }
+
+      // Cmd/Ctrl+Shift+X - Crop canvas to selection
+      if (normalizedKey === 'x') {
+        event.preventDefault();
+        if (canCrop()) {
+          cropToSelection();
+        }
+        return;
+      }
     }
 
     // Handle Cmd/Ctrl+S for Save and Cmd/Ctrl+O for Open
@@ -1189,14 +1206,6 @@ export const useKeyboardShortcuts = () => {
       if (event.key === 'V' || event.key === 'v') {
         event.preventDefault();
         flipVertical();
-        return;
-      }
-      if (event.key === 'C' || event.key === 'c') {
-        event.preventDefault();
-        // Crop canvas to selection if there's an active selection
-        if (canCrop()) {
-          cropToSelection();
-        }
         return;
       }
       if (event.key === 'O' || event.key === 'o') {
