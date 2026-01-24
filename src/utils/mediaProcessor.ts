@@ -292,6 +292,10 @@ export class MediaProcessor {
 
   /**
    * Extract frames from video using original frame rate
+   * 
+   * Samples at the CENTER of each frame's time window to avoid boundary issues
+   * where the browser might round to an adjacent frame. Uses seeked event + 
+   * requestAnimationFrame to ensure frames are properly decoded and rendered.
    */
   private async extractVideoFrames(video: HTMLVideoElement, options: ProcessingOptions, originalFile: File): Promise<{ frames: ProcessedFrame[], detectedFrameRate: number }> {
     const frames: ProcessedFrame[] = [];
@@ -303,36 +307,45 @@ export class MediaProcessor {
     // Extract all frames, but limit to reasonable maximum
     const maxFrames = Math.min(300, Math.floor(video.duration * estimatedFrameRate)); // Cap at 300 frames
     
-
-    
     for (let i = 0; i < maxFrames; i++) {
-      // Use small offset for first frame to avoid blank frame issue
-      // Setting currentTime to exactly 0 may not trigger proper frame decoding
-      const timestamp = i === 0 ? 0.001 : i / estimatedFrameRate;
+      // Sample at the CENTER of each frame's time window to avoid boundary issues
+      // Frame i spans from (i/fps) to ((i+1)/fps), so center is at ((i + 0.5) / fps)
+      // This prevents the browser from rounding to an adjacent frame at exact boundaries
+      const targetTimestamp = (i + 0.5) / estimatedFrameRate;
       
       // Stop if we exceed video duration
-      if (timestamp >= video.duration) break;
+      if (targetTimestamp >= video.duration) break;
       
-      video.currentTime = timestamp;
+      // Seek to the target timestamp
+      video.currentTime = targetTimestamp;
       
-      // Wait for video to seek to the correct time with timeout
+      // Wait for the seeked event with timeout
       await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => resolve(), 200); // 200ms timeout
-        video.onseeked = () => {
+        const timeout = setTimeout(() => resolve(), 500);
+        const handleSeeked = () => {
           clearTimeout(timeout);
+          video.removeEventListener('seeked', handleSeeked);
           resolve();
         };
+        video.addEventListener('seeked', handleSeeked);
       });
       
-      // Small delay to ensure frame is ready (longer for first frame)
-      await new Promise(resolve => setTimeout(resolve, i === 0 ? 100 : 10));
+      // Wait for browser to render the frame (double RAF pattern)
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+      
+      // Additional delay for first frame which may need more decoding time
+      if (i === 0) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       
       // Process current frame
-      const processedFrame = this.processVideoFrameToCanvas(video, options, timestamp, i, frameDuration);
+      const processedFrame = this.processVideoFrameToCanvas(video, options, targetTimestamp, i, frameDuration);
       frames.push(processedFrame);
     }
-    
-
     
     return { frames, detectedFrameRate: estimatedFrameRate };
   }
