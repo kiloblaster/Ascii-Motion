@@ -120,7 +120,7 @@ export interface ImportSettings {
 
 // Default UI state
 const DEFAULT_UI_STATE: ImportUIState = {
-  importMode: 'append',
+  importMode: 'overwrite',
   livePreviewEnabled: true,
   previewSectionOpen: true,
   positionSectionOpen: false
