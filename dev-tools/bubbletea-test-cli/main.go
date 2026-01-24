@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
 	anim "bubbletea-test-cli/animations/copilotspin"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
