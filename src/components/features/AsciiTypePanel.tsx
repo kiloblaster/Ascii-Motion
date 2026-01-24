@@ -60,6 +60,7 @@ export function AsciiTypePanel() {
 
   const setActiveTool = useToolStore((state) => state.setActiveTool);
   const pushCanvasHistory = useToolStore((state) => state.pushCanvasHistory);
+  const finalizeCanvasHistory = useToolStore((state) => state.finalizeCanvasHistory);
   const setCanvasData = useCanvasStore((state) => state.setCanvasData);
   const currentFrameIndex = useAnimationStore((state) => state.currentFrameIndex);
   const clearPreviewOverlay = usePreviewStore((state) => state.clearPreview);
@@ -200,6 +201,10 @@ export function AsciiTypePanel() {
     }
 
     const { cells: canvasCells } = useCanvasStore.getState();
+    
+    // Save the PREVIOUS canvas state for undo
+    const previousCanvasData = new Map(canvasCells);
+    
     const nextCells = new Map(canvasCells);
     let applied = false;
 
@@ -218,8 +223,12 @@ export function AsciiTypePanel() {
       return;
     }
 
+    // Push history with PREVIOUS state (for undo)
+    pushCanvasHistory(previousCanvasData, currentFrameIndex, 'ASCII Type apply');
+    // Apply the changes
     setCanvasData(nextCells);
-    pushCanvasHistory(new Map(nextCells), currentFrameIndex, 'ASCII Type apply');
+    // Finalize history with NEW state (for redo)
+    finalizeCanvasHistory(new Map(nextCells));
 
     clearPreview();
     clearPreviewOverlay();
@@ -230,6 +239,7 @@ export function AsciiTypePanel() {
     previewCanvasCells,
     setCanvasData,
     pushCanvasHistory,
+    finalizeCanvasHistory,
     currentFrameIndex,
     clearPreview,
     clearPreviewOverlay,
