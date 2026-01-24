@@ -77,7 +77,7 @@ interface AsciiTypeStoreState {
   reset: () => void;
 }
 
-const DEFAULT_FONT = 'Standard';
+const DEFAULT_FONT = 'ANSI Shadow';
 
 const findCategoryForFont = (fontName: string): string => {
   const category = FIGLET_FONTS_BY_CATEGORY.find((group) =>

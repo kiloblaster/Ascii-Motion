@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Tool, ToolState, Selection, LassoSelection, MagicWandSelection, TextToolState, AnyHistoryAction, CanvasHistoryAction, BrushShape, BrushSettings, Cell } from '../types';
+import { createCellKey } from '../types';
 import { DEFAULT_COLORS } from '../constants';
 import { 
   rectangularSelectionToText, 
@@ -13,6 +14,9 @@ import {
   getBoundsFromMask
 } from '../utils/selectionUtils';
 import { useAsciiTypeStore } from './asciiTypeStore';
+import { useCanvasStore } from './canvasStore';
+import { useAnimationStore } from './animationStore';
+import { usePreviewStore } from './previewStore';
 
 interface ToolStoreState extends ToolState {
   // Rectangular selection state
@@ -313,11 +317,67 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
 
   // Tool actions
   setActiveTool: (tool: Tool) => {
+    const previousTool = get().activeTool;
     set({ activeTool: tool });
     const asciiStore = useAsciiTypeStore.getState();
     if (tool === 'asciitype') {
       asciiStore.openPanel();
     } else {
+      // If switching away from asciitype, auto-apply any pending preview
+      if (previousTool === 'asciitype') {
+        const { isPreviewPlaced, previewOrigin, previewGrid, transparentWhitespace } = asciiStore;
+        
+        // Check if there's a valid preview to apply
+        if (isPreviewPlaced && previewOrigin && previewGrid && previewGrid.length > 0) {
+          const { selectedColor, selectedBgColor } = get();
+          const canvasStore = useCanvasStore.getState();
+          const animationStore = useAnimationStore.getState();
+          const previewStore = usePreviewStore.getState();
+          
+          const { cells: canvasCells } = canvasStore;
+          const { currentFrameIndex } = animationStore;
+          
+          const nextCells = new Map(canvasCells);
+          let applied = false;
+          
+          // Compute and apply preview cells to canvas
+          for (let row = 0; row < previewGrid.length; row += 1) {
+            const line = previewGrid[row];
+            for (let col = 0; col < line.length; col += 1) {
+              const cellInfo = line[col];
+              if (!cellInfo) continue;
+              
+              const canvasX = previewOrigin.x + col;
+              const canvasY = previewOrigin.y + row;
+              const key = createCellKey(canvasX, canvasY);
+              const isWhitespace = cellInfo.isWhitespace;
+              const skipApply = isWhitespace && transparentWhitespace;
+              
+              if (skipApply) continue;
+              
+              const cell: Cell = {
+                char: cellInfo.char,
+                color: isWhitespace ? '#FFFFFF' : selectedColor,
+                bgColor: selectedBgColor,
+              };
+              
+              applied = true;
+              nextCells.set(key, { ...cell });
+            }
+          }
+          
+          if (applied) {
+            canvasStore.setCanvasData(nextCells);
+            get().pushCanvasHistory(new Map(nextCells), currentFrameIndex, 'ASCII Type apply');
+          }
+          
+          // Clear preview overlay
+          previewStore.clearPreview();
+        }
+        
+        // Always clear asciiType preview state when switching away
+        asciiStore.clearPreview();
+      }
       asciiStore.closePanel();
     }
     // Clear line preview when switching tools
