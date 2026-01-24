@@ -337,6 +337,9 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
           const { cells: canvasCells } = canvasStore;
           const { currentFrameIndex } = animationStore;
           
+          // Save the PREVIOUS canvas state for undo
+          const previousCanvasData = new Map(canvasCells);
+          
           const nextCells = new Map(canvasCells);
           let applied = false;
           
@@ -367,8 +370,12 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
           }
           
           if (applied) {
+            // Push history with PREVIOUS state (for undo)
+            get().pushCanvasHistory(previousCanvasData, currentFrameIndex, 'ASCII Type apply');
+            // Apply the changes
             canvasStore.setCanvasData(nextCells);
-            get().pushCanvasHistory(new Map(nextCells), currentFrameIndex, 'ASCII Type apply');
+            // Finalize history with NEW state (for redo)
+            get().finalizeCanvasHistory(new Map(nextCells));
           }
           
           // Clear preview overlay
