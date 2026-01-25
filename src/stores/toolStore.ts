@@ -40,6 +40,14 @@ interface ToolStoreState extends ToolState {
     points: { x: number; y: number }[];
   };
   
+  // Shape preview state for rectangle/ellipse tools (separate from selection)
+  shapePreview: {
+    active: boolean;
+    tool: 'rectangle' | 'ellipse' | null;
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+  };
+  
   // Clipboard for copy/paste
   clipboard: Map<string, Cell> | null;
   clipboardOriginalPosition: { x: number; y: number } | null;
@@ -123,6 +131,11 @@ interface ToolStoreState extends ToolState {
   setPencilLastPosition: (position: { x: number; y: number } | null) => void;
   setLinePreview: (points: { x: number; y: number }[]) => void;
   clearLinePreview: () => void;
+  
+  // Shape preview actions (for rectangle/ellipse tools)
+  startShapePreview: (tool: 'rectangle' | 'ellipse', x: number, y: number) => void;
+  updateShapePreview: (x: number, y: number) => void;
+  clearShapePreview: () => void;
   
   // Rectangular selection actions
   startSelection: (x: number, y: number) => void;
@@ -266,6 +279,14 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   linePreview: {
     active: false,
     points: []
+  },
+  
+  // Shape preview state for rectangle/ellipse tools
+  shapePreview: {
+    active: false,
+    tool: null,
+    start: { x: 0, y: 0 },
+    end: { x: 0, y: 0 }
   },
   
   // Rectangular selection state
@@ -554,6 +575,43 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
       linePreview: {
         active: false,
         points: []
+      }
+    });
+  },
+
+  // Shape preview actions (for rectangle/ellipse tools - separate from selection)
+  startShapePreview: (tool: 'rectangle' | 'ellipse', x: number, y: number) => {
+    set({
+      shapePreview: {
+        active: true,
+        tool,
+        start: { x, y },
+        end: { x, y }
+      }
+    });
+  },
+
+  updateShapePreview: (x: number, y: number) => {
+    set((state) => {
+      if (!state.shapePreview.active) {
+        return {};
+      }
+      return {
+        shapePreview: {
+          ...state.shapePreview,
+          end: { x, y }
+        }
+      };
+    });
+  },
+
+  clearShapePreview: () => {
+    set({
+      shapePreview: {
+        active: false,
+        tool: null,
+        start: { x: 0, y: 0 },
+        end: { x: 0, y: 0 }
       }
     });
   },

@@ -130,7 +130,6 @@ export function hasAnySelection(): boolean {
  */
 export function clearOtherToolSelections(keepTool: 'select' | 'lasso' | 'magicwand') {
   const toolStore = useToolStore.getState();
-  const selectionStore = useSelectionStore.getState();
   
   // Clear selections from tools other than the one we're keeping
   if (keepTool !== 'select') {

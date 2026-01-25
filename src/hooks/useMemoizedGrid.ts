@@ -36,7 +36,7 @@ export const useMemoizedGrid = (
   getTotalOffset?: (moveState: MoveState) => { x: number; y: number }
 ) => {
   const { width, height, cells, getCell } = useCanvasStore();
-  const { selection } = useToolStore();
+  const { selection, shapePreview } = useToolStore();
 
   // Memoize the set of moving cell coordinates
   const movingCellKeys = useMemo(() => {
@@ -143,6 +143,26 @@ export const useMemoizedGrid = (
     };
   }, [selection, moveState, totalOffset]);
 
+  // Memoize shape preview data (for rectangle/ellipse tools - separate from selection)
+  const shapePreviewData = useMemo(() => {
+    if (!shapePreview.active) return null;
+
+    const startX = Math.min(shapePreview.start.x, shapePreview.end.x);
+    const startY = Math.min(shapePreview.start.y, shapePreview.end.y);
+    const endX = Math.max(shapePreview.start.x, shapePreview.end.x);
+    const endY = Math.max(shapePreview.start.y, shapePreview.end.y);
+
+    return {
+      tool: shapePreview.tool,
+      startX,
+      startY,
+      endX,
+      endY,
+      width: endX - startX + 1,
+      height: endY - startY + 1
+    };
+  }, [shapePreview]);
+
   // Performance metrics callback
   const getPerformanceMetrics = useCallback(() => {
     return {
@@ -158,6 +178,7 @@ export const useMemoizedGrid = (
   return {
     gridData,
     selectionData,
+    shapePreviewData,
     getPerformanceMetrics,
     totalOffset
   };

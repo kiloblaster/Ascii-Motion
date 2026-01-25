@@ -96,7 +96,7 @@ export const useCanvasRenderer = () => {
   const { renderOnionSkins } = useOnionSkinRenderer();
 
   // Use memoized grid for optimized rendering  
-  const { selectionData } = useMemoizedGrid(
+  const { selectionData, shapePreviewData } = useMemoizedGrid(
     moveState,
     getTotalOffset
   );
@@ -128,8 +128,9 @@ export const useCanvasRenderer = () => {
   const overlayState = useMemo(() => ({
     moveState,
     selectionData,
+    shapePreviewData,
     pasteMode
-  }), [moveState, selectionData, pasteMode]);
+  }), [moveState, selectionData, shapePreviewData, pasteMode]);
 
   // Memoize font and style calculations
   const drawingStyles = useMemo(() => {
@@ -289,14 +290,14 @@ export const useCanvasRenderer = () => {
       });
     }
 
-    // Draw selection overlay
-    if (overlayState.selectionData) {
-      if (toolState.activeTool === 'ellipse') {
+    // Draw shape preview overlay (for rectangle/ellipse tools - separate from selection)
+    if (overlayState.shapePreviewData) {
+      if (overlayState.shapePreviewData.tool === 'ellipse') {
         // Draw ellipse preview with highlighted cells
-        const centerX = (overlayState.selectionData.startX + overlayState.selectionData.startX + overlayState.selectionData.width - 1) / 2;
-        const centerY = (overlayState.selectionData.startY + overlayState.selectionData.startY + overlayState.selectionData.height - 1) / 2;
-        const radiusX = (overlayState.selectionData.width - 1) / 2;
-        const radiusY = (overlayState.selectionData.height - 1) / 2;
+        const centerX = (overlayState.shapePreviewData.startX + overlayState.shapePreviewData.startX + overlayState.shapePreviewData.width - 1) / 2;
+        const centerY = (overlayState.shapePreviewData.startY + overlayState.shapePreviewData.startY + overlayState.shapePreviewData.height - 1) / 2;
+        const radiusX = (overlayState.shapePreviewData.width - 1) / 2;
+        const radiusY = (overlayState.shapePreviewData.height - 1) / 2;
 
         // Get ellipse points to highlight exactly which cells will be affected
         const ellipsePoints = getEllipsePoints(centerX, centerY, radiusX, radiusY, toolState.rectangleFilled);
@@ -332,19 +333,34 @@ export const useCanvasRenderer = () => {
         );
         ctx.stroke();
         ctx.setLineDash([]);
-      } else {
-        // Default rectangle preview for rectangle tool and selection tool
-        ctx.strokeStyle = '#3B82F6';
+      } else if (overlayState.shapePreviewData.tool === 'rectangle') {
+        // Rectangle tool preview
+        ctx.strokeStyle = '#A855F7'; // Purple border (same as ellipse)
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(
-          Math.round(overlayState.selectionData.startX * canvasConfig.effectiveCellWidth + canvasConfig.panOffset.x),
-          Math.round(overlayState.selectionData.startY * canvasConfig.effectiveCellHeight + canvasConfig.panOffset.y),
-          Math.round(overlayState.selectionData.width * canvasConfig.effectiveCellWidth),
-          Math.round(overlayState.selectionData.height * canvasConfig.effectiveCellHeight)
+          Math.round(overlayState.shapePreviewData.startX * canvasConfig.effectiveCellWidth + canvasConfig.panOffset.x),
+          Math.round(overlayState.shapePreviewData.startY * canvasConfig.effectiveCellHeight + canvasConfig.panOffset.y),
+          Math.round(overlayState.shapePreviewData.width * canvasConfig.effectiveCellWidth),
+          Math.round(overlayState.shapePreviewData.height * canvasConfig.effectiveCellHeight)
         );
         ctx.setLineDash([]);
       }
+    }
+
+    // Draw selection overlay (for selection tools only - NOT rectangle/ellipse)
+    if (overlayState.selectionData && toolState.activeTool === 'select') {
+      // Selection tool rectangle preview
+      ctx.strokeStyle = '#3B82F6';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(
+        Math.round(overlayState.selectionData.startX * canvasConfig.effectiveCellWidth + canvasConfig.panOffset.x),
+        Math.round(overlayState.selectionData.startY * canvasConfig.effectiveCellHeight + canvasConfig.panOffset.y),
+        Math.round(overlayState.selectionData.width * canvasConfig.effectiveCellWidth),
+        Math.round(overlayState.selectionData.height * canvasConfig.effectiveCellHeight)
+      );
+      ctx.setLineDash([]);
     }
 
     // Draw lasso selection overlay
