@@ -1,5 +1,7 @@
 import type { Cell } from '../types';
 import { createCellKey } from '../types';
+import { useSelectionStore } from '../stores/selectionStore';
+import { isCellDrawableWithState } from './selectionConstraint';
 
 export interface FillAreaOptions {
   startX: number;
@@ -56,6 +58,9 @@ export const findFillArea = (options: FillAreaOptions): Set<string> => {
   };
 
   const fillArea = new Set<string>();
+  
+  // Get selection state once for efficiency
+  const { isActive: selectionActive, selectedCells: selectionCells } = useSelectionStore.getState();
 
   if (contiguous) {
     // Contiguous fill - flood fill algorithm
@@ -68,6 +73,9 @@ export const findFillArea = (options: FillAreaOptions): Set<string> => {
       
       if (visited.has(key)) continue;
       visited.add(key);
+      
+      // Check selection constraint - skip cells outside selection
+      if (!isCellDrawableWithState(x, y, selectionActive, selectionCells)) continue;
 
       const currentCell = getCell(x, y);
       if (!currentCell) continue;
@@ -95,9 +103,12 @@ export const findFillArea = (options: FillAreaOptions): Set<string> => {
       }
     }
   } else {
-    // Non-contiguous fill - find ALL matching cells on canvas
+    // Non-contiguous fill - find ALL matching cells on canvas (within selection if active)
     for (let y = 0; y < canvasHeight; y++) {
       for (let x = 0; x < canvasWidth; x++) {
+        // Check selection constraint - skip cells outside selection
+        if (!isCellDrawableWithState(x, y, selectionActive, selectionCells)) continue;
+        
         const currentCell = getCell(x, y);
         if (currentCell && matchesTarget(currentCell)) {
           const key = createCellKey(x, y);

@@ -391,18 +391,22 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
     get().clearLinePreview();
     // Hide brush size preview when switching tools
     get().hideBrushSizePreview();
-    // Clear selections when switching tools (except select/lasso/magicwand tools)
-    if (tool !== 'select') {
-      get().clearSelection();
+    
+    // PERSISTENT SELECTION: Selections now persist across tool changes
+    // Only clear tool-specific DRAWING state, not the selection itself
+    // Users must explicitly deselect with Escape, Cmd+D, or click outside
+    
+    // If switching away from lasso mid-draw, finalize the lasso path
+    // but keep the selected cells (handled by the lasso hook)
+    if (previousTool === 'lasso' && tool !== 'lasso') {
+      const { lassoSelection } = get();
+      if (lassoSelection.isDrawing) {
+        get().finalizeLassoSelection();
+      }
     }
-    if (tool !== 'lasso') {
-      get().clearLassoSelection();
-    }
-    if (tool !== 'magicwand') {
-      get().clearMagicWandSelection();
-    }
+    
     // Clear pencil last position when switching tools
-    if (tool !== 'pencil') {
+    if (tool !== 'pencil' && tool !== 'eraser') {
       get().setPencilLastPosition(null);
     }
     // Stop typing when switching away from text tool

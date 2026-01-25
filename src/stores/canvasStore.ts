@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { Canvas, Cell } from '../types';
 import { createCellKey } from '../types';
 import { DEFAULT_CANVAS_SIZES } from '../constants';
+import { useSelectionStore } from './selectionStore';
+import { isCellDrawableWithState } from '../utils/selectionConstraint';
 
 interface CanvasState extends Canvas {
   // Canvas display settings
@@ -153,6 +155,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     };
 
     const newCells = new Map(get().cells);
+    
+    // Get selection state once for efficiency
+    const { isActive: selectionActive, selectedCells: selectionCells } = useSelectionStore.getState();
 
     if (contiguous) {
       // Contiguous fill (original flood fill algorithm)
@@ -165,6 +170,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         
         if (visited.has(key)) continue;
         visited.add(key);
+        
+        // Check selection constraint - skip cells outside selection
+        if (!isCellDrawableWithState(x, y, selectionActive, selectionCells)) continue;
 
         const currentCell = getCell(x, y);
         if (!currentCell || !targetCell) continue;
@@ -199,9 +207,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         }
       }
     } else {
-      // Non-contiguous fill - replace ALL matching cells on canvas
+      // Non-contiguous fill - replace ALL matching cells on canvas (within selection if active)
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
+          // Check selection constraint - skip cells outside selection
+          if (!isCellDrawableWithState(x, y, selectionActive, selectionCells)) continue;
+          
           const currentCell = getCell(x, y);
           if (currentCell && matchesTarget(currentCell)) {
             

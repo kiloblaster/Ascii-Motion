@@ -61,15 +61,36 @@ export function mapCanvasColorsToPalette(
 }
 
 /**
+ * Options for effect processing including optional selection mask
+ */
+export interface ProcessEffectOptions {
+  /** Optional selection mask - if provided, only cells within selection are affected */
+  selectionMask?: Set<string>;
+}
+
+/**
  * Main effect processing function - applies an effect to canvas data
+ * 
+ * @param effectType - The type of effect to apply
+ * @param cells - Canvas cell data
+ * @param settings - Effect-specific settings
+ * @param canvasBackgroundColor - Canvas background color (for blend operations)
+ * @param options - Optional processing options including selection mask
  */
 export async function processEffect(
   effectType: EffectType,
   cells: Map<string, Cell>,
   settings: LevelsEffectSettings | HueSaturationEffectSettings | RemapColorsEffectSettings | RemapCharactersEffectSettings | ScatterEffectSettings,
-  canvasBackgroundColor: string = '#000000'
+  canvasBackgroundColor: string = '#000000',
+  options?: ProcessEffectOptions
 ): Promise<EffectProcessingResult> {
   const startTime = performance.now();
+  const { selectionMask } = options || {};
+  
+  // If selection mask is provided, filter cells to only those within selection
+  const cellsToProcess = selectionMask && selectionMask.size > 0
+    ? new Map([...cells].filter(([key]) => selectionMask.has(key)))
+    : cells;
   
   try {
     let processedCells: Map<string, Cell> | null = null;
@@ -77,35 +98,35 @@ export async function processEffect(
 
     switch (effectType) {
       case 'levels': {
-        const result = await processLevelsEffect(cells, settings as LevelsEffectSettings);
+        const result = await processLevelsEffect(cellsToProcess, settings as LevelsEffectSettings);
         processedCells = result.processedCells;
         affectedCells = result.affectedCells;
         break;
       }
         
       case 'hue-saturation': {
-        const hsResult = await processHueSaturationEffect(cells, settings as HueSaturationEffectSettings);
+        const hsResult = await processHueSaturationEffect(cellsToProcess, settings as HueSaturationEffectSettings);
         processedCells = hsResult.processedCells;
         affectedCells = hsResult.affectedCells;
         break;
       }
         
       case 'remap-colors': {
-        const rcResult = await processRemapColorsEffect(cells, settings as RemapColorsEffectSettings);
+        const rcResult = await processRemapColorsEffect(cellsToProcess, settings as RemapColorsEffectSettings);
         processedCells = rcResult.processedCells;
         affectedCells = rcResult.affectedCells;
         break;
       }
         
       case 'remap-characters': {
-        const rchResult = await processRemapCharactersEffect(cells, settings as RemapCharactersEffectSettings);
+        const rchResult = await processRemapCharactersEffect(cellsToProcess, settings as RemapCharactersEffectSettings);
         processedCells = rchResult.processedCells;
         affectedCells = rchResult.affectedCells;
         break;
       }
       
       case 'scatter': {
-        const scatterResult = await processScatterEffect(cells, settings as ScatterEffectSettings, canvasBackgroundColor);
+        const scatterResult = await processScatterEffect(cellsToProcess, settings as ScatterEffectSettings, canvasBackgroundColor);
         processedCells = scatterResult.processedCells;
         affectedCells = scatterResult.affectedCells;
         break;
@@ -116,10 +137,20 @@ export async function processEffect(
     }
 
     const processingTime = performance.now() - startTime;
+    
+    // If selection mask was provided, merge processed cells with original unaffected cells
+    let finalCells = processedCells;
+    if (selectionMask && selectionMask.size > 0 && processedCells) {
+      finalCells = new Map(cells); // Start with all original cells
+      // Overlay processed cells (only those within selection)
+      processedCells.forEach((cell, key) => {
+        finalCells!.set(key, cell);
+      });
+    }
 
     return {
       success: true,
-      processedCells,
+      processedCells: finalCells,
       affectedCells,
       processingTime,
     };

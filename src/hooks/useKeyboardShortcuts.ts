@@ -14,6 +14,7 @@ import { useFlipUtilities } from './useFlipUtilities';
 import { useCropToSelection } from './useCropToSelection';
 import { useProjectFileActions } from './useProjectFileActions';
 import { useProjectDialogState } from './useProjectDialogState';
+import { clearAllSelections, hasAnySelection } from './useSelectionSync';
 import { ANSI_COLORS } from '../constants/colors';
 import type { AnyHistoryAction, CanvasHistoryAction, CanvasResizeHistoryAction, FrameId, Cell } from '../types';
 
@@ -1059,19 +1060,14 @@ export const useKeyboardShortcuts = () => {
 
     // Handle Escape key (without modifier)
     if (event.key === 'Escape') {
-      // Let CanvasGrid handle Escape when selection tool is active (for move commits)
-      if (selection.active && activeTool !== 'select') {
+      // PERSISTENT SELECTION: Escape clears all selections
+      // This is one of the explicit ways to deselect (along with Cmd+D and click outside with selection tool)
+      if (hasAnySelection()) {
         event.preventDefault();
-        clearSelection();
+        clearAllSelections();
       }
-      if (lassoSelection.active && activeTool !== 'lasso') {
-        event.preventDefault();
-        clearLassoSelection();
-      }
-      if (magicWandSelection.active && activeTool !== 'magicwand') {
-        event.preventDefault();
-        clearMagicWandSelection();
-      }
+      
+      // Also clear timeline selection if any
       const animationStore = useAnimationStore.getState();
       if (animationStore.selectedFrameIndices.size > 1) {
         animationStore.clearSelection();
@@ -1316,14 +1312,22 @@ export const useKeyboardShortcuts = () => {
         break;
         
       case 'd':
-        // Ctrl+D = Duplicate current frame
+        // Cmd/Ctrl+D = Deselect All (if selection exists) OR Duplicate current frame (if no selection)
+        // This matches Photoshop/Figma behavior where Cmd+D is "Deselect"
         if (!event.shiftKey) {
           event.preventDefault();
-          const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
-          if (selectedFrames.length > 1) {
-            duplicateFrameRange(selectedFrames);
+          
+          // PERSISTENT SELECTION: Cmd+D is a primary way to deselect
+          if (hasAnySelection()) {
+            clearAllSelections();
           } else {
-            duplicateFrame(currentFrameIndex);
+            // No selection - duplicate frame (legacy behavior)
+            const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
+            if (selectedFrames.length > 1) {
+              duplicateFrameRange(selectedFrames);
+            } else {
+              duplicateFrame(currentFrameIndex);
+            }
           }
         }
         break;

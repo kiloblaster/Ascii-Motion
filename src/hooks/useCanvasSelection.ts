@@ -4,6 +4,7 @@ import { useCanvasState } from './useCanvasState';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useSelectionStore } from '../stores/selectionStore';
 import type { Cell } from '../types';
 import { unionSelectionMasks, subtractSelectionMask, createRectSelectionMask } from '../utils/selectionUtils';
 
@@ -144,7 +145,12 @@ export const useCanvasSelection = () => {
     const modifier: 'replace' | 'add' | 'subtract' = event.altKey ? 'subtract' : (event.shiftKey ? 'add' : 'replace');
     selectionModifierRef.current = modifier;
 
-    const existingMask = selection.active ? new Set(selection.selectedCells) : new Set<string>();
+    // Use global selection store for cross-tool selection support
+    // This allows Shift/Alt to add/subtract from selections made with any selection tool
+    const globalSelection = useSelectionStore.getState();
+    const existingMask = globalSelection.isActive 
+      ? new Set(globalSelection.selectedCells) 
+      : (selection.active ? new Set(selection.selectedCells) : new Set<string>());
     
     // Save current state for undo
     pushCanvasHistory(new Map(cells), currentFrameIndex, 'Selection action');

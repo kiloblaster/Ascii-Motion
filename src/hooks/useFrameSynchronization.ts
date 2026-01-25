@@ -38,16 +38,8 @@ export const useFrameSynchronization = (
     isImportingSession
   } = useAnimationStore();
   
-  // Get selection state and clearing functions  
-  const { 
-    selection,
-    lassoSelection, 
-    magicWandSelection,
-    clearSelection,
-    clearLassoSelection,
-    clearMagicWandSelection,
-    isProcessingHistory
-  } = useToolStore();
+  // Get processing history state to prevent saves during undo/redo
+  const { isProcessingHistory } = useToolStore();
   
   const lastFrameIndexRef = useRef<number>(currentFrameIndex);
   const lastCellsRef = useRef<Map<string, Cell>>(new Map());
@@ -139,17 +131,11 @@ export const useFrameSynchronization = (
         setMoveStateParam(null);
       }
       
-      // Clear all active selections when navigating between frames
-      // This prevents selection content from being copied to the new frame
-      if (selection.active) {
-        clearSelection();
-      }
-      if (lassoSelection.active) {
-        clearLassoSelection();
-      }
-      if (magicWandSelection.active) {
-        clearMagicWandSelection();
-      }
+      // PERSISTENT SELECTION: Selections now persist across frame changes
+      // The selection coordinates remain the same - they represent a "region of interest"
+      // that applies to whatever frame is currently active
+      // NOTE: Move operations are committed above, but the selection itself persists
+      // Users must explicitly deselect with Escape, Cmd+D, or click outside
       
       // Save current canvas (with committed moves) to the frame we're leaving
       if (!isPlaying && !isLoadingFrameRef.current && !isDraggingFrame && !isDeletingFrame && !isImportingSession && !isProcessingHistory) {
@@ -173,7 +159,7 @@ export const useFrameSynchronization = (
       
       lastFrameIndexRef.current = currentFrameIndex;
     }
-  }, [currentFrameIndex, cells, setFrameData, getFrameData, loadFrameToCanvas, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory, moveStateParam, setMoveStateParam, selection.active, lassoSelection.active, magicWandSelection.active, clearSelection, clearLassoSelection, clearMagicWandSelection, width, height, setCanvasData]);
+  }, [currentFrameIndex, cells, setFrameData, getFrameData, loadFrameToCanvas, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory, moveStateParam, setMoveStateParam, width, height, setCanvasData]);
 
   // Auto-save canvas changes to current frame (debounced)
   useEffect(() => {

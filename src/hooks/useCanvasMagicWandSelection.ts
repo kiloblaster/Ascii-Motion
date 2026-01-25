@@ -4,6 +4,7 @@ import { useCanvasState } from './useCanvasState';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useSelectionStore } from '../stores/selectionStore';
 import type { Cell } from '../types';
 import { unionSelectionMasks, subtractSelectionMask } from '../utils/selectionUtils';
 
@@ -242,7 +243,12 @@ export const useCanvasMagicWandSelection = () => {
     const modifier: 'replace' | 'add' | 'subtract' = event.altKey ? 'subtract' : (event.shiftKey ? 'add' : 'replace');
     selectionModifierRef.current = modifier;
 
-    const existingMask = magicWandSelection.active ? new Set(magicWandSelection.selectedCells) : new Set<string>();
+    // Use global selection store for cross-tool selection support
+    // This allows Shift/Alt to add/subtract from selections made with any selection tool
+    const globalSelection = useSelectionStore.getState();
+    const existingMask = globalSelection.isActive 
+      ? new Set(globalSelection.selectedCells) 
+      : (magicWandSelection.active ? new Set(magicWandSelection.selectedCells) : new Set<string>());
     baseTargetCellRef.current = magicWandSelection.active ? magicWandSelection.targetCell : null;
 
     // Save current state for undo
