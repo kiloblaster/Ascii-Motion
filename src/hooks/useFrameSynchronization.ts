@@ -2,6 +2,7 @@ import React, { useEffect, useCallback, useRef } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useSelectionStore } from '../stores/selectionStore';
 import type { Cell } from '../types';
 
 /**
@@ -109,7 +110,8 @@ export const useFrameSynchronization = (
           newCells.delete(key);
         });
 
-        // Place cells at new positions
+        // Place cells at new positions AND build updated selection mask
+        const updatedSelectionMask = new Set<string>();
         moveStateParam.originalData.forEach((cell, key) => {
           const [origX, origY] = key.split(',').map(Number);
           const newX = origX + totalOffset.x;
@@ -118,14 +120,61 @@ export const useFrameSynchronization = (
           // Only place if within bounds
           if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
             newCells.set(`${newX},${newY}`, cell);
+            updatedSelectionMask.add(`${newX},${newY}`);
           }
         });
+        
+        // Also add any selected cells that weren't in originalData (empty cells in selection)
+        // We need to offset ALL selected cells, not just the ones with content
+        const toolStore = useToolStore.getState();
+        const activeSelection = toolStore.selection.active ? toolStore.selection.selectedCells 
+          : (toolStore.lassoSelection.active ? toolStore.lassoSelection.selectedCells 
+          : (toolStore.magicWandSelection.active ? toolStore.magicWandSelection.selectedCells : null));
+        
+        if (activeSelection) {
+          activeSelection.forEach((key) => {
+            const [origX, origY] = key.split(',').map(Number);
+            const newX = origX + totalOffset.x;
+            const newY = origY + totalOffset.y;
+            if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
+              updatedSelectionMask.add(`${newX},${newY}`);
+            }
+          });
+        }
 
         // Update the cells to save with the committed move
         currentCellsToSave = newCells;
         
         // Update canvas data with committed move
         setCanvasData(newCells);
+        
+        // Update selection positions to reflect the move
+        // IMPORTANT: Clear ALL tool selections first, then set current tool's selection
+        if (updatedSelectionMask.size > 0) {
+          const { activeTool } = toolStore;
+          
+          // Clear all tool selections first
+          toolStore.clearSelection();
+          toolStore.clearLassoSelection();
+          toolStore.clearMagicWandSelection();
+          
+          // Set the current tool's selection with updated positions
+          if (activeTool === 'select' || activeTool === 'lasso' || activeTool === 'magicwand') {
+            if (activeTool === 'select') {
+              toolStore.setSelectionFromMask(updatedSelectionMask);
+            } else if (activeTool === 'lasso') {
+              toolStore.setLassoSelectionFromMask(updatedSelectionMask, []);
+            } else if (activeTool === 'magicwand') {
+              toolStore.setMagicWandSelectionFromMask(updatedSelectionMask);
+            }
+          } else {
+            // If on a non-selection tool, default to rect selection
+            toolStore.setSelectionFromMask(updatedSelectionMask);
+          }
+          
+          // Update global selection store
+          useSelectionStore.getState().setSelection(updatedSelectionMask);
+        }
         
         // Clear move state after committing
         setMoveStateParam(null);
