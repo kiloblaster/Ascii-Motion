@@ -1,12 +1,28 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.59";
-export const BUILD_DATE = "2026-01-19T20:13:11.370Z";
-export const BUILD_HASH = "120c29a";
+export const VERSION = "0.2.60";
+export const BUILD_DATE = "2026-01-25T02:12:59.070Z";
+export const BUILD_HASH = "e3d2222";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.60",
+    "date": "2026-01-25T02:12:59.070Z",
+    "commits": [
+      "Update character palette with new UI characters",
+      "Merge pull request #58 from CameronFoxly/canvas-resize",
+      "Added canvas resize feature",
+      "Merge pull request #57 from CameronFoxly/bug-bashing",
+      "Fixed ascii tool undo history",
+      "Updated default to overwrite",
+      "FIxed framerate bug",
+      "Fixed ascii type",
+      "More cli test",
+      "CLi tests"
+    ]
+  },
   {
     "version": "0.2.59",
     "date": "2026-01-19T20:13:11.370Z",
