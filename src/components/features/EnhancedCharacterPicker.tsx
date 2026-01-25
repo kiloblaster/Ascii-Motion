@@ -37,7 +37,7 @@ const CATEGORY_ICONS = {
   "Blocks/Shading": Square,
   "Arrows": Navigation,
   "Geometric": Triangle,
-  "Special": Sparkles
+  "Misc.": Sparkles
 };
 
 export const EnhancedCharacterPicker: React.FC<EnhancedCharacterPickerProps> = ({

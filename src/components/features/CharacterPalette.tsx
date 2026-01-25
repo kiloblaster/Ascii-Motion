@@ -30,7 +30,7 @@ const CATEGORY_ICONS = {
   "Blocks/Shading": Square,
   "Arrows": Navigation,
   "Geometric": Triangle,
-  "Special": Sparkles
+  "Misc.": Sparkles
 };
 
 export const CharacterPalette: React.FC<CharacterPaletteProps> = ({ className = '' }) => {
