@@ -2,6 +2,7 @@ import React, { useEffect, useCallback, useRef } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useSelectionStore } from '../stores/selectionStore';
 import type { Cell } from '../types';
 
 /**
@@ -38,16 +39,8 @@ export const useFrameSynchronization = (
     isImportingSession
   } = useAnimationStore();
   
-  // Get selection state and clearing functions  
-  const { 
-    selection,
-    lassoSelection, 
-    magicWandSelection,
-    clearSelection,
-    clearLassoSelection,
-    clearMagicWandSelection,
-    isProcessingHistory
-  } = useToolStore();
+  // Get processing history state to prevent saves during undo/redo
+  const { isProcessingHistory } = useToolStore();
   
   const lastFrameIndexRef = useRef<number>(currentFrameIndex);
   const lastCellsRef = useRef<Map<string, Cell>>(new Map());
@@ -117,7 +110,8 @@ export const useFrameSynchronization = (
           newCells.delete(key);
         });
 
-        // Place cells at new positions
+        // Place cells at new positions AND build updated selection mask
+        const updatedSelectionMask = new Set<string>();
         moveStateParam.originalData.forEach((cell, key) => {
           const [origX, origY] = key.split(',').map(Number);
           const newX = origX + totalOffset.x;
@@ -126,8 +120,27 @@ export const useFrameSynchronization = (
           // Only place if within bounds
           if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
             newCells.set(`${newX},${newY}`, cell);
+            updatedSelectionMask.add(`${newX},${newY}`);
           }
         });
+        
+        // Also add any selected cells that weren't in originalData (empty cells in selection)
+        // We need to offset ALL selected cells, not just the ones with content
+        const toolStore = useToolStore.getState();
+        const activeSelection = toolStore.selection.active ? toolStore.selection.selectedCells 
+          : (toolStore.lassoSelection.active ? toolStore.lassoSelection.selectedCells 
+          : (toolStore.magicWandSelection.active ? toolStore.magicWandSelection.selectedCells : null));
+        
+        if (activeSelection) {
+          activeSelection.forEach((key) => {
+            const [origX, origY] = key.split(',').map(Number);
+            const newX = origX + totalOffset.x;
+            const newY = origY + totalOffset.y;
+            if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
+              updatedSelectionMask.add(`${newX},${newY}`);
+            }
+          });
+        }
 
         // Update the cells to save with the committed move
         currentCellsToSave = newCells;
@@ -135,21 +148,43 @@ export const useFrameSynchronization = (
         // Update canvas data with committed move
         setCanvasData(newCells);
         
+        // Update selection positions to reflect the move
+        // IMPORTANT: Clear ALL tool selections first, then set current tool's selection
+        if (updatedSelectionMask.size > 0) {
+          const { activeTool } = toolStore;
+          
+          // Clear all tool selections first
+          toolStore.clearSelection();
+          toolStore.clearLassoSelection();
+          toolStore.clearMagicWandSelection();
+          
+          // Set the current tool's selection with updated positions
+          if (activeTool === 'select' || activeTool === 'lasso' || activeTool === 'magicwand') {
+            if (activeTool === 'select') {
+              toolStore.setSelectionFromMask(updatedSelectionMask);
+            } else if (activeTool === 'lasso') {
+              toolStore.setLassoSelectionFromMask(updatedSelectionMask, []);
+            } else if (activeTool === 'magicwand') {
+              toolStore.setMagicWandSelectionFromMask(updatedSelectionMask);
+            }
+          } else {
+            // If on a non-selection tool, default to rect selection
+            toolStore.setSelectionFromMask(updatedSelectionMask);
+          }
+          
+          // Update global selection store
+          useSelectionStore.getState().setSelection(updatedSelectionMask);
+        }
+        
         // Clear move state after committing
         setMoveStateParam(null);
       }
       
-      // Clear all active selections when navigating between frames
-      // This prevents selection content from being copied to the new frame
-      if (selection.active) {
-        clearSelection();
-      }
-      if (lassoSelection.active) {
-        clearLassoSelection();
-      }
-      if (magicWandSelection.active) {
-        clearMagicWandSelection();
-      }
+      // PERSISTENT SELECTION: Selections now persist across frame changes
+      // The selection coordinates remain the same - they represent a "region of interest"
+      // that applies to whatever frame is currently active
+      // NOTE: Move operations are committed above, but the selection itself persists
+      // Users must explicitly deselect with Escape, Cmd+D, or click outside
       
       // Save current canvas (with committed moves) to the frame we're leaving
       if (!isPlaying && !isLoadingFrameRef.current && !isDraggingFrame && !isDeletingFrame && !isImportingSession && !isProcessingHistory) {
@@ -173,7 +208,7 @@ export const useFrameSynchronization = (
       
       lastFrameIndexRef.current = currentFrameIndex;
     }
-  }, [currentFrameIndex, cells, setFrameData, getFrameData, loadFrameToCanvas, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory, moveStateParam, setMoveStateParam, selection.active, lassoSelection.active, magicWandSelection.active, clearSelection, clearLassoSelection, clearMagicWandSelection, width, height, setCanvasData]);
+  }, [currentFrameIndex, cells, setFrameData, getFrameData, loadFrameToCanvas, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory, moveStateParam, setMoveStateParam, width, height, setCanvasData]);
 
   // Auto-save canvas changes to current frame (debounced)
   useEffect(() => {

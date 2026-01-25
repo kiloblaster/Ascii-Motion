@@ -367,16 +367,31 @@ export const CanvasOverlay: React.FC = () => {
     }
 
     // Draw selection overlay
-    if (selection.active && selection.selectedCells.size > 0) {
-      drawSelectionIslands(selection.selectedCells);
-    }
+    // Apply reduced opacity when a non-selection tool is active (persistent selection feature)
+    const isSelectionToolActive = activeTool === 'select' || activeTool === 'lasso' || activeTool === 'magicwand';
+    const selectionOverlayOpacity = isSelectionToolActive ? 1.0 : 0.5;
+    
+    const hasAnySelection = 
+      (selection.active && selection.selectedCells.size > 0) ||
+      (lassoSelection.active && lassoSelection.selectedCells.size > 0) ||
+      (magicWandSelection.active && magicWandSelection.selectedCells.size > 0);
+    
+    if (hasAnySelection) {
+      ctx.globalAlpha = selectionOverlayOpacity;
+      
+      if (selection.active && selection.selectedCells.size > 0) {
+        drawSelectionIslands(selection.selectedCells);
+      }
 
-    if (lassoSelection.active && lassoSelection.selectedCells.size > 0) {
-      drawSelectionIslands(lassoSelection.selectedCells);
-    }
+      if (lassoSelection.active && lassoSelection.selectedCells.size > 0) {
+        drawSelectionIslands(lassoSelection.selectedCells);
+      }
 
-    if (magicWandSelection.active && magicWandSelection.selectedCells.size > 0) {
-      drawSelectionIslands(magicWandSelection.selectedCells);
+      if (magicWandSelection.active && magicWandSelection.selectedCells.size > 0) {
+        drawSelectionIslands(magicWandSelection.selectedCells);
+      }
+      
+      ctx.globalAlpha = 1.0; // Reset opacity
     }
 
     // Draw shift+click line preview

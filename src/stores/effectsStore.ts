@@ -30,6 +30,7 @@ import {
 } from '../constants/effectsDefaults';
 import { useCanvasStore } from './canvasStore';
 import { usePreviewStore } from './previewStore';
+import { useSelectionStore } from './selectionStore';
 import { processEffect } from '../utils/effectsProcessing';
 import type { Cell } from '../types';
 
@@ -436,12 +437,17 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       // Get canvas background color for blend operations
       const canvasBackgroundColor = useCanvasStore.getState().canvasBackgroundColor;
       
+      // Get selection mask if active (effects only apply within selection)
+      const selectionState = useSelectionStore.getState();
+      const selectionMask = selectionState.isActive ? selectionState.selectedCells : undefined;
+      
       // Process effect on current canvas data (await the async function)
       const result = await processEffect(
         state.previewEffect,
         currentCells,
         effectSettings,
-        canvasBackgroundColor
+        canvasBackgroundColor,
+        { selectionMask }
       );
       
       // Update preview store with processed cells if successful
@@ -538,11 +544,16 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
         const { useCanvasStore } = await import('./canvasStore');
         const canvasStore = useCanvasStore.getState();
         
+        // Get selection mask if active (effects only apply within selection)
+        const selectionState = useSelectionStore.getState();
+        const selectionMask = selectionState.isActive ? selectionState.selectedCells : undefined;
+        
         const result = await processEffect(
           effect,
           canvasStore.cells,
           settings,
-          canvasStore.canvasBackgroundColor
+          canvasStore.canvasBackgroundColor,
+          { selectionMask }
         );
 
         if (result.success && result.processedCells) {

@@ -4,7 +4,6 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useDrawingTool } from './useDrawingTool';
-import { useCanvasState } from './useCanvasState';
 import { calculateBrushCells } from '../utils/brushUtils';
 
 /**
@@ -17,10 +16,10 @@ export const useCanvasDragAndDrop = () => {
   const { width, height, cells } = useCanvasStore();
   const { currentFrameIndex } = useAnimationStore();
   const { 
-    selection,
-    startSelection,
-    updateSelection,
-    clearSelection,
+    shapePreview,
+    startShapePreview,
+    updateShapePreview,
+    clearShapePreview,
     pushCanvasHistory,
     finalizeCanvasHistory,
     pencilLastPosition,
@@ -28,7 +27,6 @@ export const useCanvasDragAndDrop = () => {
     clearLinePreview,
     getBrushSettings
   } = useToolStore();
-  const { setSelectionMode } = useCanvasState();
   const { drawAtPosition, drawRectangle, drawEllipse, drawBrushLine, eraseBrushLine, activeTool } = useDrawingTool();
 
   // Helper function to apply aspect ratio constraints when shift is held
@@ -208,78 +206,74 @@ export const useCanvasDragAndDrop = () => {
     const { x, y } = getGridCoordinatesFromEvent(event);
     
     // Save current state for undo
-  pushCanvasHistory(new Map(cells), currentFrameIndex, 'Rectangle');
+    pushCanvasHistory(new Map(cells), currentFrameIndex, 'Rectangle');
     
-    // Start selection for rectangle bounds
-    startSelection(x, y);
-    setSelectionMode('dragging');
+    // Start shape preview for rectangle bounds (NOT selection - keep existing selection intact)
+    startShapePreview('rectangle', x, y);
     setMouseButtonDown(true);
-  }, [getGridCoordinatesFromEvent, cells, pushCanvasHistory, currentFrameIndex, startSelection, setSelectionMode, setMouseButtonDown]);
+  }, [getGridCoordinatesFromEvent, cells, pushCanvasHistory, currentFrameIndex, startShapePreview, setMouseButtonDown]);
 
   // Handle rectangle tool mouse move  
   const handleRectangleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getGridCoordinatesFromEvent(event);
     
-    // Rectangle tool uses selection bounds for preview
-    if (selection.active) {
+    // Rectangle tool uses shape preview bounds (not selection)
+    if (shapePreview.active && shapePreview.tool === 'rectangle') {
       // Apply aspect ratio constraint when shift is held (for perfect squares)
-      const constrainedCoords = constrainToAspectRatio(x, y, selection.start.x, selection.start.y);
-      updateSelection(constrainedCoords.x, constrainedCoords.y);
+      const constrainedCoords = constrainToAspectRatio(x, y, shapePreview.start.x, shapePreview.start.y);
+      updateShapePreview(constrainedCoords.x, constrainedCoords.y);
     }
-  }, [getGridCoordinatesFromEvent, selection.active, selection.start, updateSelection, constrainToAspectRatio]);
+  }, [getGridCoordinatesFromEvent, shapePreview.active, shapePreview.tool, shapePreview.start, updateShapePreview, constrainToAspectRatio]);
 
   // Handle rectangle tool mouse up
   const handleRectangleMouseUp = useCallback(() => {
-    if (selection.active) {
-      // Draw rectangle and clear selection
-      drawRectangle(selection.start.x, selection.start.y, selection.end.x, selection.end.y);
-      clearSelection();
-      setSelectionMode('none');
+    if (shapePreview.active && shapePreview.tool === 'rectangle') {
+      // Draw rectangle (respects global selection mask) and clear shape preview
+      drawRectangle(shapePreview.start.x, shapePreview.start.y, shapePreview.end.x, shapePreview.end.y);
+      clearShapePreview();
     }
     setIsDrawing(false);
     setMouseButtonDown(false);
     // Finalize rectangle edit
     finalizeCanvasHistory(new Map(useCanvasStore.getState().cells));
-  }, [selection, drawRectangle, clearSelection, setSelectionMode, setIsDrawing, setMouseButtonDown, finalizeCanvasHistory]);
+  }, [shapePreview, drawRectangle, clearShapePreview, setIsDrawing, setMouseButtonDown, finalizeCanvasHistory]);
 
   // Handle ellipse tool mouse down (same as rectangle)
   const handleEllipseMouseDown = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getGridCoordinatesFromEvent(event);
     
     // Save current state for undo
-  pushCanvasHistory(new Map(cells), currentFrameIndex, 'Ellipse');
+    pushCanvasHistory(new Map(cells), currentFrameIndex, 'Ellipse');
     
-    // Start selection for ellipse bounds
-    startSelection(x, y);
-    setSelectionMode('dragging');
+    // Start shape preview for ellipse bounds (NOT selection - keep existing selection intact)
+    startShapePreview('ellipse', x, y);
     setMouseButtonDown(true);
-  }, [getGridCoordinatesFromEvent, cells, pushCanvasHistory, currentFrameIndex, startSelection, setSelectionMode, setMouseButtonDown]);
+  }, [getGridCoordinatesFromEvent, cells, pushCanvasHistory, currentFrameIndex, startShapePreview, setMouseButtonDown]);
 
   // Handle ellipse tool mouse move (same as rectangle with aspect ratio constraint)
   const handleEllipseMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getGridCoordinatesFromEvent(event);
     
-    // Ellipse tool uses selection bounds for preview
-    if (selection.active) {
+    // Ellipse tool uses shape preview bounds (not selection)
+    if (shapePreview.active && shapePreview.tool === 'ellipse') {
       // Apply aspect ratio constraint when shift is held (for perfect circles)
-      const constrainedCoords = constrainToAspectRatio(x, y, selection.start.x, selection.start.y);
-      updateSelection(constrainedCoords.x, constrainedCoords.y);
+      const constrainedCoords = constrainToAspectRatio(x, y, shapePreview.start.x, shapePreview.start.y);
+      updateShapePreview(constrainedCoords.x, constrainedCoords.y);
     }
-  }, [getGridCoordinatesFromEvent, selection.active, selection.start, updateSelection, constrainToAspectRatio]);
+  }, [getGridCoordinatesFromEvent, shapePreview.active, shapePreview.tool, shapePreview.start, updateShapePreview, constrainToAspectRatio]);
 
   // Handle ellipse tool mouse up
   const handleEllipseMouseUp = useCallback(() => {
-    if (selection.active) {
-      // Draw ellipse and clear selection
-      drawEllipse(selection.start.x, selection.start.y, selection.end.x, selection.end.y);
-      clearSelection();
-      setSelectionMode('none');
+    if (shapePreview.active && shapePreview.tool === 'ellipse') {
+      // Draw ellipse (respects global selection mask) and clear shape preview
+      drawEllipse(shapePreview.start.x, shapePreview.start.y, shapePreview.end.x, shapePreview.end.y);
+      clearShapePreview();
     }
     setIsDrawing(false);
     setMouseButtonDown(false);
     // Finalize ellipse edit
     finalizeCanvasHistory(new Map(useCanvasStore.getState().cells));
-  }, [selection, drawEllipse, clearSelection, setSelectionMode, setIsDrawing, setMouseButtonDown, finalizeCanvasHistory]);
+  }, [shapePreview, drawEllipse, clearShapePreview, setIsDrawing, setMouseButtonDown, finalizeCanvasHistory]);
 
   return {
     // Drawing tools

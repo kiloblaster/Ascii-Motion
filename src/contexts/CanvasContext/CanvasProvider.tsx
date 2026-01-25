@@ -7,6 +7,7 @@ import type {
 } from './context';
 import { usePasteMode } from '@/hooks/usePasteMode';
 import { useFrameSynchronization } from '@/hooks/useFrameSynchronization';
+import { useSelectionSync } from '@/hooks/useSelectionSync';
 import { calculateCellDimensions, calculateFontMetrics, DEFAULT_SPACING } from '@/utils/fontMetrics';
 import { DEFAULT_FONT_ID, getFontStack, getFontById } from '@/constants/fonts';
 import { detectAvailableFont } from '@/utils/fontDetection';
@@ -130,6 +131,9 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
   } = usePasteMode();
 
   useFrameSynchronization(moveState, setMoveState);
+  
+  // Sync tool store selections to global selection store
+  useSelectionSync();
 
   // Detect actual font being rendered when selected font changes
   // Also load bundled fonts if needed

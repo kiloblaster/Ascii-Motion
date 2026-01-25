@@ -4,6 +4,8 @@ import { useCanvasState } from './useCanvasState';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useSelectionStore } from '../stores/selectionStore';
+import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
 import { getCellsInPolygon, smoothPolygonPath } from '../utils/polygon';
 import { unionSelectionMasks, subtractSelectionMask } from '../utils/selectionUtils';
 import type { Cell } from '../types';
@@ -150,9 +152,15 @@ export const useCanvasLassoSelection = () => {
     return getGridCoordinatesWithCenter(mouseX, mouseY, rect, width, height);
   }, [getGridCoordinatesWithCenter, width, height, canvasRef]);
 
-  // Check if a point is inside the current lasso selection
+  // Check if a point is inside the current selection (uses global selection for cross-tool support)
   const isPointInLassoSelection = useCallback((x: number, y: number) => {
-    if (!lassoSelection.active || lassoSelection.selectedCells.size === 0) return false;
+    // Use global selection store for cross-tool selection support
+    const globalSelection = useSelectionStore.getState();
+    const activeSelectionCells = globalSelection.isActive 
+      ? globalSelection.selectedCells 
+      : (lassoSelection.active ? lassoSelection.selectedCells : new Set<string>());
+    
+    if (activeSelectionCells.size === 0) return false;
     
     // If there's a move state, we need to check against the original (non-offset) coordinates
     // because the selectedCells are stored in original coordinates
@@ -165,11 +173,11 @@ export const useCanvasLassoSelection = () => {
       // Convert the click point back to original coordinates
       const originalX = x - totalOffset.x;
       const originalY = y - totalOffset.y;
-      return lassoSelection.selectedCells.has(`${originalX},${originalY}`);
+      return activeSelectionCells.has(`${originalX},${originalY}`);
     }
     
     // No move state, check directly
-    return lassoSelection.selectedCells.has(`${x},${y}`);
+    return activeSelectionCells.has(`${x},${y}`);
   }, [lassoSelection, moveState]);
 
   // Handle lasso selection mouse down
@@ -178,40 +186,69 @@ export const useCanvasLassoSelection = () => {
     const modifier: 'replace' | 'add' | 'subtract' = event.altKey ? 'subtract' : (event.shiftKey ? 'add' : 'replace');
     selectionModifierRef.current = modifier;
 
-    const existingMask = lassoSelection.active ? new Set(lassoSelection.selectedCells) : new Set<string>();
+    // Use global selection store for cross-tool selection support
+    // This allows Shift/Alt to add/subtract from selections made with any selection tool
+    const globalSelection = useSelectionStore.getState();
+    const existingMask = globalSelection.isActive 
+      ? new Set(globalSelection.selectedCells) 
+      : (lassoSelection.active ? new Set(lassoSelection.selectedCells) : new Set<string>());
     
     // Save current state for undo
     pushCanvasHistory(new Map(cells), currentFrameIndex, 'Lasso selection action');
+    
+    // Track if we committed a move - affects how we check point-in-selection
+    let didCommitMove = false;
+    
+    // If there's a pending move from ANY selection tool, commit it before proceeding
+    // This ensures selection positions are updated to reflect moved content
+    if (moveState && modifier === 'replace') {
+      commitMove();
+      didCommitMove = true;
+    }
+
+    // Re-read fresh state after potential commitMove - React subscriptions don't update mid-handler
+    const freshGlobalSelection = useSelectionStore.getState();
+    const freshToolStore = useToolStore.getState();
+    const freshLassoSelection = freshToolStore.lassoSelection;
+    
+    // Helper to check if point is in selection using FRESH state
+    // After commitMove, moveState is null and selection positions are updated, so no offset needed
+    const isPointInFreshSelection = (px: number, py: number): boolean => {
+      const activeCells = freshGlobalSelection.isActive 
+        ? freshGlobalSelection.selectedCells 
+        : (freshLassoSelection.active ? freshLassoSelection.selectedCells : new Set<string>());
+      
+      if (activeCells.size === 0) return false;
+      
+      // If we just committed a move, selection positions are already updated - check directly
+      // If we didn't commit, we still have a moveState with offset to account for
+      if (!didCommitMove && moveState) {
+        const totalOffsetX = moveState.baseOffset.x + moveState.currentOffset.x;
+        const totalOffsetY = moveState.baseOffset.y + moveState.currentOffset.y;
+        return activeCells.has(`${px - totalOffsetX},${py - totalOffsetY}`);
+      }
+      
+      return activeCells.has(`${px},${py}`);
+    };
 
     // If there's an uncommitted move and clicking outside selection, commit it first
-    if (moveState && lassoSelection.active && !isPointInLassoSelection(x, y) && modifier === 'replace') {
+    if (moveState && freshLassoSelection.active && !isPointInFreshSelection(x, y) && modifier === 'replace') {
       commitMove();
-      clearLassoSelection();
+      clearAllSelections();
       setJustCommittedMove(true);
       resetSelectionGesture();
       return;
     }
 
-    if (justCommittedMove) {
-      // Previous click committed a move, this click starts fresh
+    // Check if clicking inside any active selection (including cross-tool selections) for move mode
+    // This check MUST come before justCommittedMove check to allow multiple sequential moves
+    const hasActiveSelection = freshGlobalSelection.isActive || freshLassoSelection.active;
+    
+    if (hasActiveSelection && isPointInFreshSelection(x, y) && !freshLassoSelection.isDrawing && modifier === 'replace') {
+      // Click inside existing selection - enter move mode
       setJustCommittedMove(false);
-      baseSelectionMaskRef.current = existingMask;
-      selectionGestureActiveRef.current = true;
-      beginSelectionPreview(modifier);
-      startLassoSelection();
-      // Use center coordinates for lasso path
-      const centerCoords = getGridCoordinatesWithCenterFromEvent(event);
-      addLassoPoint(centerCoords.x, centerCoords.y);
-      setMouseButtonDown(true);
-      setSelectionMode('dragging');
-      return;
-    }
-
-    if (lassoSelection.active && isPointInLassoSelection(x, y) && !lassoSelection.isDrawing && modifier === 'replace') {
-      // Click inside existing lasso selection - enter move mode
-      setJustCommittedMove(false);
-      if (moveState) {
-        // Already have a moveState (continuing from arrow key movement)
+      if (moveState && !didCommitMove) {
+        // Already have a moveState (continuing from arrow key movement) and didn't just commit
         // Adjust startPos to account for existing currentOffset so position doesn't jump
         const adjustedStartPos = {
           x: x - moveState.currentOffset.x,
@@ -222,10 +259,17 @@ export const useCanvasLassoSelection = () => {
           startPos: adjustedStartPos
         });
       } else {
-        // First time moving - create new moveState
-        // Store only the non-empty cells from the selection
+        // First time moving - create new moveState using GLOBAL selection for cross-tool support
         const originalData = new Map<string, Cell>();
-        lassoSelection.selectedCells.forEach((cellKey) => {
+        const originalPositions = new Set<string>();
+        
+        // Use global selection cells for cross-tool selection support (fresh state after potential commitMove)
+        const selectionCells = freshGlobalSelection.isActive 
+          ? freshGlobalSelection.selectedCells 
+          : freshLassoSelection.selectedCells;
+        
+        selectionCells.forEach((cellKey) => {
+          originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
           const cell = getCell(cx, cy);
           if (cell && cell.char !== ' ') {
@@ -235,7 +279,7 @@ export const useCanvasLassoSelection = () => {
         
         setMoveState({
           originalData,
-          originalPositions: new Set(originalData.keys()),
+          originalPositions,
           startPos: { x, y },
           baseOffset: { x: 0, y: 0 },
           currentOffset: { x: 0, y: 0 }
@@ -247,10 +291,10 @@ export const useCanvasLassoSelection = () => {
       return;
     }
 
-    if (lassoSelection.active && !isPointInLassoSelection(x, y) && !lassoSelection.isDrawing && modifier === 'replace') {
-      // Click outside existing lasso selection without modifiers - clear selection
+    if (hasActiveSelection && !isPointInFreshSelection(x, y) && !freshLassoSelection.isDrawing && modifier === 'replace') {
+      // Click outside existing selection without modifiers - clear ALL selections (cross-tool support)
       setJustCommittedMove(false);
-      clearLassoSelection();
+      clearAllSelections();
       resetSelectionGesture();
       return;
     }
@@ -258,6 +302,12 @@ export const useCanvasLassoSelection = () => {
     setJustCommittedMove(false);
     baseSelectionMaskRef.current = existingMask;
     selectionGestureActiveRef.current = true;
+    
+    // When starting a fresh selection (not add/subtract), clear other tool selections
+    if (modifier === 'replace') {
+      clearOtherToolSelections('lasso');
+    }
+    
     beginSelectionPreview(modifier);
     startLassoSelection();
     // Use center coordinates for lasso path

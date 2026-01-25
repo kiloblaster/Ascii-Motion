@@ -4,6 +4,8 @@ import { useCanvasState } from './useCanvasState';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useSelectionStore } from '../stores/selectionStore';
+import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
 import type { Cell } from '../types';
 import { unionSelectionMasks, subtractSelectionMask } from '../utils/selectionUtils';
 
@@ -214,9 +216,15 @@ export const useCanvasMagicWandSelection = () => {
     return matchingCells;
   }, [width, height, getCell, cellsMatch, isCellEmpty, magicWandContiguous, magicMatchChar, magicMatchColor, magicMatchBgColor]);
 
-  // Check if a point is inside the current magic wand selection
+  // Check if a point is inside the current selection (uses global selection for cross-tool support)
   const isPointInMagicWandSelection = useCallback((x: number, y: number) => {
-    if (!magicWandSelection.active || magicWandSelection.selectedCells.size === 0) return false;
+    // Use global selection store for cross-tool selection support
+    const globalSelection = useSelectionStore.getState();
+    const activeSelectionCells = globalSelection.isActive 
+      ? globalSelection.selectedCells 
+      : (magicWandSelection.active ? magicWandSelection.selectedCells : new Set<string>());
+    
+    if (activeSelectionCells.size === 0) return false;
     
     // If there's a move state, we need to check against the original (non-offset) coordinates
     // because the selectedCells are stored in original coordinates
@@ -229,11 +237,11 @@ export const useCanvasMagicWandSelection = () => {
       // Convert the click point back to original coordinates
       const originalX = x - totalOffset.x;
       const originalY = y - totalOffset.y;
-      return magicWandSelection.selectedCells.has(`${originalX},${originalY}`);
+      return activeSelectionCells.has(`${originalX},${originalY}`);
     }
     
     // No move state, check directly
-    return magicWandSelection.selectedCells.has(`${x},${y}`);
+    return activeSelectionCells.has(`${x},${y}`);
   }, [magicWandSelection, moveState]);
 
   // Handle magic wand selection mouse down
@@ -242,25 +250,68 @@ export const useCanvasMagicWandSelection = () => {
     const modifier: 'replace' | 'add' | 'subtract' = event.altKey ? 'subtract' : (event.shiftKey ? 'add' : 'replace');
     selectionModifierRef.current = modifier;
 
-    const existingMask = magicWandSelection.active ? new Set(magicWandSelection.selectedCells) : new Set<string>();
+    // Use global selection store for cross-tool selection support
+    // This allows Shift/Alt to add/subtract from selections made with any selection tool
+    const globalSelection = useSelectionStore.getState();
+    const existingMask = globalSelection.isActive 
+      ? new Set(globalSelection.selectedCells) 
+      : (magicWandSelection.active ? new Set(magicWandSelection.selectedCells) : new Set<string>());
     baseTargetCellRef.current = magicWandSelection.active ? magicWandSelection.targetCell : null;
 
     // Save current state for undo
     pushCanvasHistory(new Map(cells), currentFrameIndex);
-
-    if (moveState && magicWandSelection.active && !isPointInMagicWandSelection(x, y) && modifier === 'replace') {
+    
+    // Track if we committed a move - affects how we check point-in-selection
+    let didCommitMove = false;
+    
+    // If there's a pending move from ANY selection tool, commit it before proceeding
+    // This ensures selection positions are updated to reflect moved content
+    if (moveState && modifier === 'replace') {
       commitMove();
-      clearMagicWandSelection();
+      didCommitMove = true;
+    }
+
+    // Re-read fresh state after potential commitMove - React subscriptions don't update mid-handler
+    const freshGlobalSelection = useSelectionStore.getState();
+    const freshToolStore = useToolStore.getState();
+    const freshMagicWandSelection = freshToolStore.magicWandSelection;
+    
+    // Helper to check if point is in selection using FRESH state
+    // After commitMove, moveState is null and selection positions are updated, so no offset needed
+    const isPointInFreshSelection = (px: number, py: number): boolean => {
+      const activeCells = freshGlobalSelection.isActive 
+        ? freshGlobalSelection.selectedCells 
+        : (freshMagicWandSelection.active ? freshMagicWandSelection.selectedCells : new Set<string>());
+      
+      if (activeCells.size === 0) return false;
+      
+      // If we just committed a move, selection positions are already updated - check directly
+      // If we didn't commit, we still have a moveState with offset to account for
+      if (!didCommitMove && moveState) {
+        const totalOffsetX = moveState.baseOffset.x + moveState.currentOffset.x;
+        const totalOffsetY = moveState.baseOffset.y + moveState.currentOffset.y;
+        return activeCells.has(`${px - totalOffsetX},${py - totalOffsetY}`);
+      }
+      
+      return activeCells.has(`${px},${py}`);
+    };
+
+    if (moveState && freshMagicWandSelection.active && !isPointInFreshSelection(x, y) && modifier === 'replace') {
+      commitMove();
+      clearAllSelections();
       setJustCommittedMove(true);
       resetSelectionGesture();
       return;
     }
 
-    // Check if we clicked inside an existing selection to start move mode (only without modifiers)
-    if (magicWandSelection.active && isPointInMagicWandSelection(x, y) && modifier === 'replace') {
+    // Check if clicking inside any active selection (including cross-tool selections) for move mode
+    const hasActiveSelection = freshGlobalSelection.isActive || freshMagicWandSelection.active;
+    
+    if (hasActiveSelection && isPointInFreshSelection(x, y) && modifier === 'replace') {
       setSelectionMode('moving');
 
-      if (moveState) {
+      if (moveState && !didCommitMove) {
+        // Already have a moveState (continuing from arrow key movement) and didn't just commit
         const adjustedStartPos = {
           x: x - moveState.currentOffset.x,
           y: y - moveState.currentOffset.y
@@ -270,8 +321,17 @@ export const useCanvasMagicWandSelection = () => {
           startPos: adjustedStartPos
         });
       } else {
+        // First time moving - create new moveState using GLOBAL selection for cross-tool support
         const originalData = new Map<string, Cell>();
-        magicWandSelection.selectedCells.forEach((cellKey) => {
+        const originalPositions = new Set<string>();
+        
+        // Use global selection cells for cross-tool selection support (fresh state after potential commitMove)
+        const selectionCells = freshGlobalSelection.isActive 
+          ? freshGlobalSelection.selectedCells 
+          : freshMagicWandSelection.selectedCells;
+        
+        selectionCells.forEach((cellKey) => {
+          originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
           const cell = getCell(cx, cy);
           if (cell && !isCellEmpty(cell)) {
@@ -281,7 +341,7 @@ export const useCanvasMagicWandSelection = () => {
 
         setMoveState({
           originalData,
-          originalPositions: new Set(originalData.keys()),
+          originalPositions,
           startPos: { x, y },
           baseOffset: { x: 0, y: 0 },
           currentOffset: { x: 0, y: 0 }
@@ -308,6 +368,12 @@ export const useCanvasMagicWandSelection = () => {
 
     baseSelectionMaskRef.current = existingMask;
     selectionGestureActiveRef.current = true;
+    
+    // When starting a fresh selection (not add/subtract), clear other tool selections
+    if (modifier === 'replace') {
+      clearOtherToolSelections('magicwand');
+    }
+    
     beginSelectionPreview(modifier);
 
     startMagicWandSelection(targetCell || null, matchingCells);

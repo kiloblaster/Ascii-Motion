@@ -3,6 +3,8 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { calculateBrushCells } from '../utils/brushUtils';
+import { useSelectionStore } from '../stores/selectionStore';
+import { isCellDrawableWithState, constrainCellsToSelectionWithState } from '../utils/selectionConstraint';
 import type { Cell } from '../types';
 
 /**
@@ -90,7 +92,12 @@ export const useDrawingTool = () => {
 
   // Draw a line between two points using the line algorithm
   const drawLine = useCallback((x0: number, y0: number, x1: number, y1: number) => {
-    const points = getLinePoints(x0, y0, x1, y1);
+    const rawPoints = getLinePoints(x0, y0, x1, y1);
+    
+    // Constrain line points to selection bounds (if selection is active)
+    const { isActive, selectedCells } = useSelectionStore.getState();
+    const points = constrainCellsToSelectionWithState(rawPoints, isActive, selectedCells);
+    
     points.forEach(({ x, y }) => {
       const newCell = createCellWithToggles(x, y);
       setCell(x, y, newCell);
@@ -99,13 +106,17 @@ export const useDrawingTool = () => {
 
   const applyBrushStroke = useCallback((toolKey: 'pencil' | 'eraser', centerX: number, centerY: number) => {
     const brush = brushSettings[toolKey];
-    const brushCells = calculateBrushCells(
+    const rawBrushCells = calculateBrushCells(
       centerX,
       centerY,
       brush.size,
       brush.shape,
       fontMetrics.aspectRatio
     );
+    
+    // Constrain brush cells to selection bounds (if selection is active)
+    const { isActive, selectedCells } = useSelectionStore.getState();
+    const brushCells = constrainCellsToSelectionWithState(rawBrushCells, isActive, selectedCells);
 
     if (toolKey === 'eraser') {
       brushCells.forEach(({ x, y }) => {
@@ -210,9 +221,15 @@ export const useDrawingTool = () => {
     const maxX = Math.max(startX, endX);
     const minY = Math.min(startY, endY);
     const maxY = Math.max(startY, endY);
+    
+    // Get selection state once for efficiency
+    const { isActive, selectedCells } = useSelectionStore.getState();
 
     for (let y = minY; y <= maxY; y++) {
       for (let x = minX; x <= maxX; x++) {
+        // Check selection constraint
+        if (!isCellDrawableWithState(x, y, isActive, selectedCells)) continue;
+        
         // For hollow rectangles, only draw border
         if (!rectangleFilled) {
           if (x === minX || x === maxX || y === minY || y === maxY) {
@@ -284,7 +301,11 @@ export const useDrawingTool = () => {
     const radiusX = Math.abs(endX - startX) / 2;
     const radiusY = Math.abs(endY - startY) / 2;
 
-    const points = getEllipsePoints(centerX, centerY, radiusX, radiusY, rectangleFilled);
+    const rawPoints = getEllipsePoints(centerX, centerY, radiusX, radiusY, rectangleFilled);
+    
+    // Constrain ellipse points to selection bounds (if selection is active)
+    const { isActive, selectedCells } = useSelectionStore.getState();
+    const points = constrainCellsToSelectionWithState(rawPoints, isActive, selectedCells);
     
     // Draw all the ellipse points
     points.forEach(({ x, y }) => {
