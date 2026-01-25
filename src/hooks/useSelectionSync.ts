@@ -120,3 +120,39 @@ export function hasAnySelection(): boolean {
   
   return isActive || selection.active || lassoSelection.active || magicWandSelection.active;
 }
+
+/**
+ * Clears selections from OTHER tools (not the specified one)
+ * Used when starting a new selection with a different tool to clean up
+ * the previous tool's selection state
+ * 
+ * @param keepTool - The tool whose selection should be preserved
+ */
+export function clearOtherToolSelections(keepTool: 'select' | 'lasso' | 'magicwand') {
+  const toolStore = useToolStore.getState();
+  const selectionStore = useSelectionStore.getState();
+  
+  // Clear selections from tools other than the one we're keeping
+  if (keepTool !== 'select') {
+    toolStore.clearSelection();
+  }
+  if (keepTool !== 'lasso') {
+    toolStore.clearLassoSelection();
+  }
+  if (keepTool !== 'magicwand') {
+    toolStore.clearMagicWandSelection();
+  }
+  
+  // Note: Don't clear global selection here - it will be updated
+  // by useSelectionSync when the new tool creates its selection
+}
+
+/**
+ * Commits any pending move and updates selection positions to match moved content
+ * Call this when switching tools to ensure selection reflects actual canvas positions
+ */
+export function commitMoveAndUpdateSelection() {
+  // This is handled by the useCanvasState hook's commitMove function
+  // which is called from the individual selection hooks
+  // This function is a placeholder for future centralized move handling
+}

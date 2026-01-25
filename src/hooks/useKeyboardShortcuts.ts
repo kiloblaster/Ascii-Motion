@@ -15,6 +15,7 @@ import { useCropToSelection } from './useCropToSelection';
 import { useProjectFileActions } from './useProjectFileActions';
 import { useProjectDialogState } from './useProjectDialogState';
 import { clearAllSelections, hasAnySelection } from './useSelectionSync';
+import { useSelectionStore } from '../stores/selectionStore';
 import { ANSI_COLORS } from '../constants/colors';
 import type { AnyHistoryAction, CanvasHistoryAction, CanvasResizeHistoryAction, FrameId, Cell } from '../types';
 
@@ -1516,6 +1517,15 @@ export const useKeyboardShortcuts = () => {
   return {
     // Expose functions for UI buttons
     copySelection: () => {
+      // Use global selection store for cross-tool selection support
+      const globalSelection = useSelectionStore.getState();
+      if (globalSelection.isActive && globalSelection.selectedCells.size > 0) {
+        // Copy from global selection (handles combined cross-tool selections)
+        globalSelection.copySelection(cells);
+        return;
+      }
+      
+      // Fallback to tool-specific copy for backward compatibility
       if (magicWandSelection.active) {
         copyMagicWandSelection(cells);
       } else if (lassoSelection.active) {

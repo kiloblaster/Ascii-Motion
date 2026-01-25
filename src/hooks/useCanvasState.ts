@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
+import { useSelectionStore } from '../stores/selectionStore';
 
 /**
  * Custom hook that provides canvas state management functionality
@@ -10,7 +11,7 @@ import { useToolStore } from '../stores/toolStore';
 export const useCanvasState = () => {
   const canvasContext = useCanvasContext();
   const { width, height, cells, setCanvasData } = useCanvasStore();
-  const { selection, lassoSelection, activeTool } = useToolStore();
+  const { selection, lassoSelection, magicWandSelection, activeTool, setSelectionFromMask, setLassoSelectionFromMask, setMagicWandSelectionFromMask } = useToolStore();
 
   const {
     cellSize,
@@ -58,9 +59,15 @@ export const useCanvasState = () => {
     return { startX, startY, endX, endY };
   }, [selection, moveState, getTotalOffset]);
 
-  // Check if a point is inside the effective selection
+  // Check if a point is inside the effective selection (uses global selection for cross-tool support)
   const isPointInEffectiveSelection = useCallback((x: number, y: number) => {
-    if (!selection.active || selection.selectedCells.size === 0) {
+    // Use global selection store for cross-tool selection support
+    const globalSelection = useSelectionStore.getState();
+    const activeSelectionCells = globalSelection.isActive 
+      ? globalSelection.selectedCells 
+      : (selection.active ? selection.selectedCells : new Set<string>());
+    
+    if (activeSelectionCells.size === 0) {
       return false;
     }
 
@@ -73,7 +80,7 @@ export const useCanvasState = () => {
       checkY -= totalOffset.y;
     }
 
-    return selection.selectedCells.has(`${checkX},${checkY}`);
+    return activeSelectionCells.has(`${checkX},${checkY}`);
   }, [selection, moveState, getTotalOffset]);
 
     // Commit move operation to canvas
@@ -96,7 +103,8 @@ export const useCanvasState = () => {
         newCells.delete(key);
     });
 
-    // Place cells at new positions
+    // Place cells at new positions AND build updated selection mask
+    const updatedSelectionMask = new Set<string>();
     moveState.originalData.forEach((cell, key) => {
       const [origX, origY] = key.split(',').map(Number);
       const newX = origX + totalOffset.x;
@@ -105,16 +113,67 @@ export const useCanvasState = () => {
       // Only place if within bounds
       if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
         newCells.set(`${newX},${newY}`, cell);
+        updatedSelectionMask.add(`${newX},${newY}`);
       }
     });
+    
+    // Also add any selected cells that weren't in originalData (empty cells in selection)
+    // We need to offset ALL selected cells, not just the ones with content
+    const activeSelection = selection.active ? selection.selectedCells 
+      : (lassoSelection.active ? lassoSelection.selectedCells 
+      : (magicWandSelection.active ? magicWandSelection.selectedCells : null));
+    
+    if (activeSelection) {
+      activeSelection.forEach((key) => {
+        const [origX, origY] = key.split(',').map(Number);
+        const newX = origX + totalOffset.x;
+        const newY = origY + totalOffset.y;
+        if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
+          updatedSelectionMask.add(`${newX},${newY}`);
+        }
+      });
+    }
 
     // Update canvas data
     setCanvasData(newCells);
+    
+    // Update selection positions to reflect the move
+    // IMPORTANT: Clear ALL tool selections first to avoid stale positions,
+    // then set the current tool's selection with updated positions
+    const toolStore = useToolStore.getState();
+    
+    if (updatedSelectionMask.size > 0) {
+      // Clear all tool selections first
+      toolStore.clearSelection();
+      toolStore.clearLassoSelection();
+      toolStore.clearMagicWandSelection();
+      
+      // Then set the current tool's selection with updated positions
+      if (activeTool === 'select') {
+        setSelectionFromMask(updatedSelectionMask);
+      } else if (activeTool === 'lasso') {
+        setLassoSelectionFromMask(updatedSelectionMask, []);
+      } else if (activeTool === 'magicwand') {
+        setMagicWandSelectionFromMask(updatedSelectionMask, magicWandSelection.targetCell ?? undefined);
+      } else {
+        // If not a selection tool, just set the rect selection as default
+        setSelectionFromMask(updatedSelectionMask);
+      }
+      
+      // Update global selection store
+      useSelectionStore.getState().setSelection(updatedSelectionMask);
+    } else {
+      // No selection after move (all cells moved out of bounds)
+      toolStore.clearSelection();
+      toolStore.clearLassoSelection();
+      toolStore.clearMagicWandSelection();
+      useSelectionStore.getState().clearSelection();
+    }
 
     // Clear move state
     setMoveState(null);
     setJustCommittedMove(true);
-  }, [moveState, cells, width, height, setCanvasData, setMoveState, setJustCommittedMove]);
+  }, [moveState, cells, width, height, setCanvasData, setMoveState, setJustCommittedMove, selection, lassoSelection, magicWandSelection, activeTool, setSelectionFromMask, setLassoSelectionFromMask, setMagicWandSelectionFromMask]);
 
   // Cancel move operation without committing changes
   const cancelMove = useCallback(() => {

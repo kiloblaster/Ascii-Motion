@@ -5,6 +5,7 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
 import type { Cell } from '../types';
 import { unionSelectionMasks, subtractSelectionMask, createRectSelectionMask } from '../utils/selectionUtils';
 
@@ -154,33 +155,60 @@ export const useCanvasSelection = () => {
     
     // Save current state for undo
     pushCanvasHistory(new Map(cells), currentFrameIndex, 'Selection action');
+    
+    // Track if we committed a move - affects how we check point-in-selection
+    let didCommitMove = false;
+    
+    // If there's a pending move from ANY selection tool, commit it before proceeding
+    // This ensures selection positions are updated to reflect moved content
+    if (moveState && modifier === 'replace') {
+      commitMove();
+      didCommitMove = true;
+    }
+
+    // Re-read fresh state after potential commitMove - React subscriptions don't update mid-handler
+    const freshGlobalSelection = useSelectionStore.getState();
+    const freshToolStore = useToolStore.getState();
+    const freshSelection = freshToolStore.selection;
+    
+    // Helper to check if point is in selection using FRESH state
+    // After commitMove, moveState is null and selection positions are updated, so no offset needed
+    const isPointInFreshSelection = (px: number, py: number): boolean => {
+      const activeCells = freshGlobalSelection.isActive 
+        ? freshGlobalSelection.selectedCells 
+        : (freshSelection.active ? freshSelection.selectedCells : new Set<string>());
+      
+      if (activeCells.size === 0) return false;
+      
+      // If we just committed a move, selection positions are already updated - check directly
+      // If we didn't commit, we still have a moveState with offset to account for
+      if (!didCommitMove && moveState) {
+        const totalOffsetX = moveState.baseOffset.x + moveState.currentOffset.x;
+        const totalOffsetY = moveState.baseOffset.y + moveState.currentOffset.y;
+        return activeCells.has(`${px - totalOffsetX},${py - totalOffsetY}`);
+      }
+      
+      return activeCells.has(`${px},${py}`);
+    };
 
     // If there's an uncommitted move and clicking outside selection, commit it first
-    if (moveState && selection.active && !isPointInEffectiveSelection(x, y)) {
+    if (moveState && freshSelection.active && !isPointInFreshSelection(x, y)) {
       commitMove();
-      clearSelection();
+      clearAllSelections();
       setJustCommittedMove(true);
       resetSelectionGesture();
       return;
     }
 
-    if (justCommittedMove) {
-      // Previous click committed a move, this click starts fresh
-      setJustCommittedMove(false);
-      baseSelectionMaskRef.current = existingMask;
-      selectionGestureActiveRef.current = true;
-      beginSelectionPreview(modifier, { x, y });
-      startSelection(x, y);
-      setPendingSelectionStart({ x, y });
-      setMouseButtonDown(true);
-      return;
-    }
-
-    if (selection.active && isPointInEffectiveSelection(x, y) && modifier === 'replace') {
+    // Check if clicking inside any active selection (including cross-tool selections) for move mode
+    // This check must come BEFORE the justCommittedMove check so users can click-drag to move again
+    const hasActiveSelection = freshGlobalSelection.isActive || freshSelection.active;
+    
+    if (hasActiveSelection && isPointInFreshSelection(x, y) && modifier === 'replace') {
       // Click inside existing selection - enter move mode
       setJustCommittedMove(false);
-      if (moveState) {
-        // Already have a moveState (continuing from arrow key movement) 
+      if (moveState && !didCommitMove) {
+        // Already have a moveState (continuing from arrow key movement) and didn't just commit 
         // Adjust startPos to account for existing currentOffset so position doesn't jump
         const adjustedStartPos = {
           x: x - moveState.currentOffset.x,
@@ -191,11 +219,16 @@ export const useCanvasSelection = () => {
           startPos: adjustedStartPos
         });
       } else {
-        // First time moving - create new moveState
+        // First time moving - create new moveState using GLOBAL selection for cross-tool support
         const originalData = new Map<string, Cell>();
         const originalPositions = new Set<string>();
+        
+        // Use global selection cells for cross-tool selection support (fresh state after potential commitMove)
+        const selectionCells = freshGlobalSelection.isActive 
+          ? freshGlobalSelection.selectedCells 
+          : freshSelection.selectedCells;
 
-        selection.selectedCells.forEach((cellKey) => {
+        selectionCells.forEach((cellKey) => {
           originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
           const cell = getCell(cx, cy);
@@ -218,10 +251,10 @@ export const useCanvasSelection = () => {
       return;
     }
 
-    if (selection.active && !isPointInEffectiveSelection(x, y) && modifier === 'replace') {
-      // Click outside existing selection without modifiers - clear selection
+    if (hasActiveSelection && !isPointInFreshSelection(x, y) && modifier === 'replace') {
+      // Click outside existing selection without modifiers - clear ALL selections (cross-tool support)
       setJustCommittedMove(false);
-      clearSelection();
+      clearAllSelections();
       resetSelectionGesture();
       return;
     }
@@ -230,6 +263,11 @@ export const useCanvasSelection = () => {
     setJustCommittedMove(false);
     baseSelectionMaskRef.current = existingMask;
     selectionGestureActiveRef.current = true;
+    
+    // When starting a fresh selection (not add/subtract), clear other tool selections
+    if (modifier === 'replace') {
+      clearOtherToolSelections('select');
+    }
 
     if (pendingSelectionStart && modifier !== 'replace') {
       // Complete pending anchor selection for additive/subtractive mode
