@@ -1,12 +1,21 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.61";
-export const BUILD_DATE = "2026-01-25T23:27:13.331Z";
-export const BUILD_HASH = "57a0e99";
+export const VERSION = "0.2.62";
+export const BUILD_DATE = "2026-01-26T22:31:57.959Z";
+export const BUILD_HASH = "e7cfcd2";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.62",
+    "date": "2026-01-26T22:31:57.959Z",
+    "commits": [
+      "Merge pull request #60 from CameronFoxly/import-transparency-bug",
+      "Fixed the video transperency controls in the media import tool",
+      "Refactor selection tool to limit drawing and effects to current selection"
+    ]
+  },
   {
     "version": "0.2.61",
     "date": "2026-01-25T23:27:13.331Z",
