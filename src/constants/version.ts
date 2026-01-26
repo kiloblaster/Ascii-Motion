@@ -1,12 +1,24 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.60";
-export const BUILD_DATE = "2026-01-25T02:12:59.070Z";
-export const BUILD_HASH = "e3d2222";
+export const VERSION = "0.2.61";
+export const BUILD_DATE = "2026-01-25T23:27:13.331Z";
+export const BUILD_HASH = "57a0e99";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.61",
+    "date": "2026-01-25T23:27:13.331Z",
+    "commits": [
+      "Fixed cross frame selection persistance issues",
+      "Fixed selection and shape drawing tool conflict",
+      "Fine tuned new selection tool system",
+      "Initial persistent selection added",
+      "Added implementaiton plan",
+      "Update packages"
+    ]
+  },
   {
     "version": "0.2.60",
     "date": "2026-01-25T02:12:59.070Z",
