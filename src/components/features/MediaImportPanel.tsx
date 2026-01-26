@@ -9,7 +9,7 @@
  * - Processing progress display
  */
 
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -79,13 +79,21 @@ import { ColorMatcher } from '../../utils/asciiConverter';
 
 /**
  * Apply color keying to filter out cells matching the alpha key color
+ * Uses ORIGINAL pixel colors from the source image (before preprocessing/palette mapping)
  * Returns a new Map with transparent cells removed
+ * 
+ * @param cells - The converted ASCII cells
+ * @param enableColorAsAlpha - Whether color keying is enabled
+ * @param colorAsAlphaKey - The hex color to match for transparency
+ * @param colorAsAlphaTolerance - RGB distance tolerance (0-255)
+ * @param originalImageData - The original source image data (before processing)
  */
 function applyColorKey(
   cells: Map<string, Cell>,
   enableColorAsAlpha: boolean,
   colorAsAlphaKey: string,
-  colorAsAlphaTolerance: number
+  colorAsAlphaTolerance: number,
+  originalImageData?: ImageData
 ): Map<string, Cell> {
   if (!enableColorAsAlpha) {
     return cells;
@@ -94,22 +102,41 @@ function applyColorKey(
   const filteredCells = new Map<string, Cell>();
   
   cells.forEach((cell, key) => {
-    // Check both background and text color against the alpha key
-    const bgMatches = cell.bgColor !== 'transparent' && 
-      ColorMatcher.matchesColorKey(
-        ...hexToRgb(cell.bgColor),
+    // Parse cell coordinates from key (format: "x,y")
+    const [x, y] = key.split(',').map(Number);
+    
+    let shouldRemove = false;
+    
+    if (originalImageData) {
+      // Use ORIGINAL pixel color from source image (before any processing)
+      // This is what the user sees in the transparency preview
+      const pixelIndex = (y * originalImageData.width + x) * 4;
+      const r = originalImageData.data[pixelIndex];
+      const g = originalImageData.data[pixelIndex + 1];
+      const b = originalImageData.data[pixelIndex + 2];
+      
+      // Check if this original pixel matches the color key
+      shouldRemove = ColorMatcher.matchesColorKey(r, g, b, colorAsAlphaKey, colorAsAlphaTolerance);
+    } else {
+      // Fallback: check post-processed cell colors (legacy behavior)
+      const bgMatches = cell.bgColor !== 'transparent' && 
+        ColorMatcher.matchesColorKey(
+          ...hexToRgb(cell.bgColor),
+          colorAsAlphaKey,
+          colorAsAlphaTolerance
+        );
+      
+      const textMatches = ColorMatcher.matchesColorKey(
+        ...hexToRgb(cell.color),
         colorAsAlphaKey,
         colorAsAlphaTolerance
       );
+      
+      shouldRemove = bgMatches || textMatches;
+    }
     
-    const textMatches = ColorMatcher.matchesColorKey(
-      ...hexToRgb(cell.color),
-      colorAsAlphaKey,
-      colorAsAlphaTolerance
-    );
-    
-    // Remove cell if either color matches the alpha key
-    if (!bgMatches && !textMatches) {
+    // Keep cell if it doesn't match the alpha key
+    if (!shouldRemove) {
       filteredCells.set(key, cell);
     }
   });
@@ -205,10 +232,6 @@ export function MediaImportPanel() {
   // Preview state management
   const [isPreviewActive, setIsPreviewActive] = useState(false);
   
-  // Eyedropper mode for alpha key color sampling
-  const [isEyedropperMode, setIsEyedropperMode] = useState(false);
-  const eyedropperCanvasRef = useRef<HTMLCanvasElement>(null);
-  
   // Local state for width/height inputs to allow temporary empty values
   const [widthInputValue, setWidthInputValue] = useState<string>(String(settings.characterWidth));
   const [heightInputValue, setHeightInputValue] = useState<string>(String(settings.characterHeight));
@@ -291,74 +314,6 @@ export function MediaImportPanel() {
       handleHeightChange(numValue);
     }
   }, [heightInputValue, settings.characterHeight, handleHeightChange]);
-
-  // Eyedropper mode handlers
-  const handleEyedropperClick = useCallback(() => {
-    setIsEyedropperMode(true);
-  }, []);
-  
-  const handleCanvasClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isEyedropperMode || previewFrames.length === 0) return;
-    
-    // Sample color from the preview frame at click position
-    const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    
-    // Scale click position to canvas coordinates
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const canvasX = Math.floor(x * scaleX);
-    const canvasY = Math.floor(y * scaleY);
-    
-    // Get the pixel from the current preview frame
-    const frame = previewFrames[frameIndex];
-    if (frame && frame.imageData) {
-      const index = (canvasY * frame.imageData.width + canvasX) * 4;
-      const r = frame.imageData.data[index];
-      const g = frame.imageData.data[index + 1];
-      const b = frame.imageData.data[index + 2];
-      
-      const hexColor = ColorMatcher.rgbToHex(r, g, b);
-      updateSettings({ colorAsAlphaKey: hexColor });
-      setLivePreviewEnabled(true); // Trigger preview update
-    }
-    
-    setIsEyedropperMode(false);
-  }, [isEyedropperMode, previewFrames, frameIndex, updateSettings, setLivePreviewEnabled]);
-
-  // Draw preview image to eyedropper canvas when eyedropper mode is active
-  useEffect(() => {
-    if (isEyedropperMode && eyedropperCanvasRef.current && previewFrames.length > 0) {
-      const canvas = eyedropperCanvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const frame = previewFrames[frameIndex];
-      
-      // Set canvas size to match frame
-      canvas.width = frame.imageData.width;
-      canvas.height = frame.imageData.height;
-      
-      // Draw the image data
-      ctx.putImageData(frame.imageData, 0, 0);
-    }
-  }, [isEyedropperMode, previewFrames, frameIndex]);
-
-  // Handle ESC key to exit eyedropper mode
-  useEffect(() => {
-    if (!isEyedropperMode) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsEyedropperMode(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isEyedropperMode]);
 
   // Preview management functions
   const startPreview = useCallback(() => {
@@ -631,11 +586,13 @@ export function MediaImportPanel() {
         const result = asciiConverter.convertFrame(previewFrames[frameIndex], conversionSettings);
         
         // Apply color keying to remove transparent cells
+        // Use original imageData to match colors before any preprocessing
         const filteredCells = applyColorKey(
           result.cells,
           settings.enableColorAsAlpha,
           settings.colorAsAlphaKey,
-          settings.colorAsAlphaTolerance
+          settings.colorAsAlphaTolerance,
+          previewFrames[frameIndex].imageData
         );
         
         // Show preview on canvas overlay (positioned based on alignment)
@@ -868,11 +825,13 @@ export function MediaImportPanel() {
         const result = asciiConverter.convertFrame(previewFrames[0], conversionSettings);
         
         // Apply color keying to remove transparent cells
+        // Use original imageData to match colors before any preprocessing
         const filteredCells = applyColorKey(
           result.cells,
           settings.enableColorAsAlpha,
           settings.colorAsAlphaKey,
-          settings.colorAsAlphaTolerance
+          settings.colorAsAlphaTolerance,
+          previewFrames[0].imageData
         );
         
         const positionedCells = positionCellsOnCanvas(filteredCells, settings.characterWidth, settings.characterHeight);
@@ -912,11 +871,13 @@ export function MediaImportPanel() {
           const result = asciiConverter.convertFrame(previewFrames[i], conversionSettings);
           
           // Apply color keying to remove transparent cells
+          // Use original imageData to match colors before any preprocessing
           const filteredCells = applyColorKey(
             result.cells,
             settings.enableColorAsAlpha,
             settings.colorAsAlphaKey,
-            settings.colorAsAlphaTolerance
+            settings.colorAsAlphaTolerance,
+            previewFrames[i].imageData
           );
           
           const positionedCells = positionCellsOnCanvas(filteredCells, settings.characterWidth, settings.characterHeight);
@@ -1267,26 +1228,6 @@ export function MediaImportPanel() {
                         )}
                       </div>
                     )}
-                    
-                    {/* Eyedropper Canvas - shows source image for color sampling */}
-                    {isEyedropperMode && previewFrames.length > 0 && (
-                      <div className="p-2 bg-primary/10 border-2 border-primary rounded-lg">
-                        <div className="text-xs text-center mb-2 font-medium text-primary">
-                          Click on the image to sample a color
-                        </div>
-                        <div className="relative flex items-center justify-center bg-black/50 rounded overflow-hidden">
-                          <canvas
-                            ref={eyedropperCanvasRef}
-                            onClick={handleCanvasClick}
-                            className="max-w-full h-auto cursor-crosshair"
-                            style={{ imageRendering: 'pixelated' }}
-                          />
-                        </div>
-                        <div className="text-xs text-center mt-2 text-muted-foreground">
-                          Press ESC or click outside to cancel
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </CollapsibleContent>
               </Collapsible>
@@ -1587,7 +1528,8 @@ export function MediaImportPanel() {
               <PanelSeparator marginX="3" side="right" />
               <TransparencySection 
                 onSettingsChange={() => setLivePreviewEnabled(true)} 
-                onEyedropperClick={handleEyedropperClick}
+                previewFrames={previewFrames}
+                frameIndex={frameIndex}
               />
               
               <PanelSeparator marginX="3" side="right" />
