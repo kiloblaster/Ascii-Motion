@@ -518,6 +518,18 @@ export function RemapColorsEffectPanel() {
     const allPalettes = [...palettes, ...customPalettes];
     const selectedPalette = allPalettes.find(p => p.id === remapColorsSettings.selectedPaletteId);
     if (!selectedPalette) return;
+    
+    // If it's a preset palette, create a custom copy first
+    if (selectedPalette.isPreset) {
+      const newPaletteId = createCustomCopy(selectedPalette.id);
+      if (newPaletteId) {
+        updateRemapColorsSettings({ selectedPaletteId: newPaletteId });
+        addColor(newPaletteId, '#000000');
+        updatePreview();
+      }
+      return;
+    }
+    
     addColor(selectedPalette.id, '#000000');
     updatePreview();
   };
@@ -571,6 +583,29 @@ export function RemapColorsEffectPanel() {
     const allPalettes = [...palettes, ...customPalettes];
     const selectedPalette = allPalettes.find(p => p.id === remapColorsSettings.selectedPaletteId);
     if (!selectedPalette) return;
+    
+    // If it's a preset palette, create a custom copy first
+    if (selectedPalette.isPreset) {
+      const newPaletteId = createCustomCopy(selectedPalette.id);
+      if (newPaletteId) {
+        updateRemapColorsSettings({ selectedPaletteId: newPaletteId });
+        // Find the corresponding color in the new palette and remove it
+        const freshCustomPalettes = usePaletteStore.getState().customPalettes;
+        const newPalette = freshCustomPalettes.find(p => p.id === newPaletteId);
+        if (newPalette) {
+          const originalColor = selectedPalette.colors.find(c => c.id === colorId);
+          if (originalColor) {
+            const newColorObj = newPalette.colors.find(c => c.value === originalColor.value);
+            if (newColorObj) {
+              removeColor(newPaletteId, newColorObj.id);
+            }
+          }
+        }
+        updatePreview();
+      }
+      return;
+    }
+    
     removeColor(selectedPalette.id, colorId);
     updatePreview();
   };
@@ -579,6 +614,29 @@ export function RemapColorsEffectPanel() {
     const allPalettes = [...palettes, ...customPalettes];
     const selectedPalette = allPalettes.find(p => p.id === remapColorsSettings.selectedPaletteId);
     if (!selectedPalette) return;
+    
+    // If it's a preset palette, create a custom copy first
+    if (selectedPalette.isPreset) {
+      const newPaletteId = createCustomCopy(selectedPalette.id);
+      if (newPaletteId) {
+        updateRemapColorsSettings({ selectedPaletteId: newPaletteId });
+        // Find the corresponding color in the new palette and move it
+        const freshCustomPalettes = usePaletteStore.getState().customPalettes;
+        const newPalette = freshCustomPalettes.find(p => p.id === newPaletteId);
+        if (newPalette) {
+          const originalColor = selectedPalette.colors.find(c => c.id === colorId);
+          if (originalColor) {
+            const newColorObj = newPalette.colors.find(c => c.value === originalColor.value);
+            if (newColorObj) {
+              moveColorLeft(newPaletteId, newColorObj.id);
+            }
+          }
+        }
+        updatePreview();
+      }
+      return;
+    }
+    
     moveColorLeft(selectedPalette.id, colorId);
     updatePreview();
   };
@@ -587,6 +645,29 @@ export function RemapColorsEffectPanel() {
     const allPalettes = [...palettes, ...customPalettes];
     const selectedPalette = allPalettes.find(p => p.id === remapColorsSettings.selectedPaletteId);
     if (!selectedPalette) return;
+    
+    // If it's a preset palette, create a custom copy first
+    if (selectedPalette.isPreset) {
+      const newPaletteId = createCustomCopy(selectedPalette.id);
+      if (newPaletteId) {
+        updateRemapColorsSettings({ selectedPaletteId: newPaletteId });
+        // Find the corresponding color in the new palette and move it
+        const freshCustomPalettes = usePaletteStore.getState().customPalettes;
+        const newPalette = freshCustomPalettes.find(p => p.id === newPaletteId);
+        if (newPalette) {
+          const originalColor = selectedPalette.colors.find(c => c.id === colorId);
+          if (originalColor) {
+            const newColorObj = newPalette.colors.find(c => c.value === originalColor.value);
+            if (newColorObj) {
+              moveColorRight(newPaletteId, newColorObj.id);
+            }
+          }
+        }
+        updatePreview();
+      }
+      return;
+    }
+    
     moveColorRight(selectedPalette.id, colorId);
     updatePreview();
   };
@@ -595,6 +676,22 @@ export function RemapColorsEffectPanel() {
     const allPalettes = [...palettes, ...customPalettes];
     const selectedPalette = allPalettes.find(p => p.id === remapColorsSettings.selectedPaletteId);
     if (!selectedPalette) return;
+    
+    console.log('[handleReversePalette] isPreset:', selectedPalette.isPreset, 'current selectedPaletteId:', remapColorsSettings.selectedPaletteId);
+    
+    // If it's a preset palette, create a custom copy first
+    if (selectedPalette.isPreset) {
+      const newPaletteId = createCustomCopy(selectedPalette.id);
+      console.log('[handleReversePalette] Created custom copy:', newPaletteId);
+      if (newPaletteId) {
+        updateRemapColorsSettings({ selectedPaletteId: newPaletteId });
+        console.log('[handleReversePalette] Updated selectedPaletteId to:', newPaletteId);
+        reversePalette(newPaletteId);
+        updatePreview();
+      }
+      return;
+    }
+    
     reversePalette(selectedPalette.id);
     updatePreview();
   };
