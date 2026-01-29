@@ -10,7 +10,7 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
-import { useHistoryStore } from '../stores/historyStore';
+import { useProjectMetadataStore } from '../stores/projectMetadataStore';
 import { useMCPStore } from './store';
 import type { MCPCommand, MCPServerMessage, MCPClientAuth, MCPClientHeartbeat, MCPClientStateSnapshot } from './types';
 
@@ -207,20 +207,29 @@ export class MCPClient {
 
   private handleMessage(data: string): void {
     try {
-      const message = JSON.parse(data) as MCPServerMessage;
+      const message = JSON.parse(data);
       
-      switch (message.type) {
+      // Handle JSON-RPC style notifications from MCP server
+      if (message.jsonrpc === '2.0' && message.method) {
+        this.handleNotification(message.method, message.params);
+        return;
+      }
+      
+      // Handle legacy message format
+      const legacyMessage = message as MCPServerMessage;
+      
+      switch (legacyMessage.type) {
         case 'auth_result':
-          if (!message.success) {
-            console.error('[MCP] Auth failed:', message.error);
-            useMCPStore.getState().setError(message.error || 'Authentication failed');
+          if (!legacyMessage.success) {
+            console.error('[MCP] Auth failed:', legacyMessage.error);
+            useMCPStore.getState().setError(legacyMessage.error || 'Authentication failed');
             this.disconnect();
           }
           break;
           
         case 'command':
-          if (message.command) {
-            this.executeCommand(message.command);
+          if (legacyMessage.command) {
+            this.executeCommand(legacyMessage.command);
             useMCPStore.getState().incrementCommandCount();
           }
           break;
@@ -230,11 +239,134 @@ export class MCPClient {
           break;
           
         case 'error':
-          console.error('[MCP] Server error:', message.error);
+          console.error('[MCP] Server error:', legacyMessage.error);
           break;
       }
     } catch (error) {
       console.error('[MCP] Failed to parse message:', error);
+    }
+  }
+
+  private handleNotification(method: string, params: unknown): void {
+    console.log('[MCP] Received notification:', method, params);
+    
+    if (method === 'notifications/connected') {
+      console.log('[MCP] Connected to server');
+      return;
+    }
+    
+    if (method === 'notifications/stateChanged') {
+      const { type, data } = params as { type: string; data: unknown };
+      this.handleStateChange(type, data);
+      useMCPStore.getState().incrementCommandCount();
+    }
+  }
+
+  private handleStateChange(type: string, data: unknown): void {
+    console.log('[MCP] State change:', type, data);
+    
+    switch (type) {
+      case 'new_project': {
+        const projectData = data as { width: number; height: number; name: string; backgroundColor?: string };
+        this.handleNewProject({
+          width: projectData.width,
+          height: projectData.height,
+          name: projectData.name,
+          backgroundColor: projectData.backgroundColor
+        });
+        break;
+      }
+      
+      case 'set_cell': {
+        const cellData = data as { x: number; y: number; cell: Cell };
+        this.handleSetCell(cellData);
+        break;
+      }
+      
+      case 'resize_canvas': {
+        const resizeData = data as { width: number; height: number };
+        this.handleResizeCanvas(resizeData);
+        break;
+      }
+      
+      case 'set_cells_batch': {
+        const batchData = data as { cells: Array<{ x: number; y: number; cell: Cell }> };
+        this.handleSetCellsBatch({ cells: batchData.cells });
+        break;
+      }
+      
+      case 'clear_cell': {
+        const clearData = data as { x: number; y: number };
+        this.handleClearCell(clearData);
+        break;
+      }
+      
+      case 'fill_region': {
+        // Fill region modifies many cells - request a full state refresh
+        // For now, log it; a full sync would require the MCP server to send all cell data
+        console.log('[MCP] Fill region completed, cells filled:', (data as { cellsFilled: number }).cellsFilled);
+        break;
+      }
+      
+      case 'clear_canvas': {
+        // Clear all cells on the current frame
+        useCanvasStore.getState().clearCanvas();
+        break;
+      }
+      
+      case 'add_frame': {
+        // Add a new frame
+        useAnimationStore.getState().addFrame();
+        break;
+      }
+      
+      case 'delete_frame': {
+        const deleteData = data as { index: number; totalFrames: number };
+        useAnimationStore.getState().removeFrame(deleteData.index);
+        break;
+      }
+      
+      case 'duplicate_frame':
+      case 'copy_frame_and_modify': {
+        // These create new frames with data - trigger a full frame sync
+        // For now, just add a frame and the data will be synced on next interaction
+        const copyData = data as { newFrame: { index: number; id: string; name: string; duration: number; data?: Record<string, Cell> }; totalFrames: number };
+        // Add frame at the correct position
+        useAnimationStore.getState().addFrame(copyData.newFrame.index);
+        // Set the frame duration
+        useAnimationStore.getState().updateFrameDuration(copyData.newFrame.index, copyData.newFrame.duration);
+        // If data is provided, set it
+        if (copyData.newFrame.data) {
+          const cellMap = new Map<string, Cell>();
+          for (const [key, cell] of Object.entries(copyData.newFrame.data)) {
+            cellMap.set(key, cell);
+          }
+          useAnimationStore.getState().setFrameData(copyData.newFrame.index, cellMap);
+        }
+        break;
+      }
+      
+      case 'go_to_frame': {
+        const goToData = data as { index: number };
+        useAnimationStore.getState().goToFrame(goToData.index);
+        break;
+      }
+      
+      case 'set_frame_duration': {
+        const durationData = data as { index: number; duration: number };
+        useAnimationStore.getState().updateFrameDuration(durationData.index, durationData.duration);
+        break;
+      }
+      
+      case 'set_frame_name': {
+        // Frame names are currently not stored in the animation store
+        // Just log for now
+        console.log('[MCP] Frame name set:', data);
+        break;
+      }
+      
+      default:
+        console.log('[MCP] Unhandled state change type:', type);
     }
   }
 
@@ -382,11 +514,11 @@ export class MCPClient {
   }
 
   private handleUndo(): void {
-    useHistoryStore.getState().undo();
+    useToolStore.getState().undo();
   }
 
   private handleRedo(): void {
-    useHistoryStore.getState().redo();
+    useToolStore.getState().redo();
   }
 
   private handleNewProject(cmd: { width: number; height: number; backgroundColor?: string; name?: string }): void {
@@ -398,17 +530,22 @@ export class MCPClient {
       canvasStore.setCanvasBackgroundColor(cmd.backgroundColor);
     }
     
+    // Set project name
+    if (cmd.name) {
+      useProjectMetadataStore.getState().setProjectName(cmd.name);
+    }
+    
     // Reset animation
     useAnimationStore.getState().resetAnimation();
     
     // Clear history
-    useHistoryStore.getState().clear();
+    useToolStore.getState().clearHistory();
     
     // Clear selection
     useSelectionStore.getState().clearSelection();
   }
 
-  private handleLoadProject(cmd: { sessionData: unknown }): void {
+  private handleLoadProject(_cmd: { sessionData: unknown }): void {
     // This would need to integrate with the session importer
     // For now, log a warning
     console.warn('[MCP] load_project command received, but session import is not yet implemented in MCP client');
@@ -416,18 +553,22 @@ export class MCPClient {
   }
 
   private handleSetForegroundColor(cmd: { color: string }): void {
-    useToolStore.getState().setColor(cmd.color);
+    useToolStore.getState().setSelectedColor(cmd.color);
   }
 
   private handleSetBackgroundColor(cmd: { color: string }): void {
-    useToolStore.getState().setBackgroundColor(cmd.color);
+    useToolStore.getState().setSelectedBgColor(cmd.color);
   }
 
   private handleSelectRectangle(cmd: { x: number; y: number; width: number; height: number }): void {
-    const selectionStore = useSelectionStore.getState();
-    selectionStore.startSelection(cmd.x, cmd.y);
-    selectionStore.updateSelection(cmd.x + cmd.width - 1, cmd.y + cmd.height - 1);
-    selectionStore.endSelection();
+    // Build a Set of cell keys for the rectangle
+    const cells = new Set<string>();
+    for (let y = cmd.y; y < cmd.y + cmd.height; y++) {
+      for (let x = cmd.x; x < cmd.x + cmd.width; x++) {
+        cells.add(`${x},${y}`);
+      }
+    }
+    useSelectionStore.getState().setSelection(cells);
   }
 
   private handleClearSelection(): void {

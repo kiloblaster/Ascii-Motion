@@ -8,15 +8,18 @@ import {
   MenubarSeparator,
   MenubarTrigger,
 } from '../ui/menubar';
-import { Menu, Info, Keyboard, CloudUpload, CloudDownload, FilePlus2, Settings, Sparkles, Users, Upload, BookOpen, ExternalLink } from 'lucide-react';
+import { Menu, Info, Keyboard, CloudUpload, CloudDownload, FilePlus2, Settings, Sparkles, Users, Upload, BookOpen, ExternalLink, Terminal } from 'lucide-react';
 import { AboutDialog } from './AboutDialog';
 import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
+import { MCPConnectionDialog } from './MCPConnectionDialog';
 import { useAuth } from '@ascii-motion/premium';
 import { useCloudDialogState } from '../../hooks/useCloudDialogState';
 import { useProjectDialogState } from '../../hooks/useProjectDialogState';
 import { useProjectFileActions } from '../../hooks/useProjectFileActions';
 import { useWelcomeDialog } from '../../hooks/useWelcomeDialog';
+import { useMCPStore } from '../../mcp';
 import { FEATURES } from '../../constants/features';
+import { cn } from '../../lib/utils';
 
 interface HamburgerMenuProps {
   onOpenGallery?: () => void;
@@ -30,8 +33,10 @@ interface HamburgerMenuProps {
 export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({ onOpenGallery, onOpenPublish }) => {
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const [showMCPDialog, setShowMCPDialog] = useState(false);
   
   const { user } = useAuth();
+  const mcpConnectionState = useMCPStore((state) => state.connectionState);
   const { 
     setShowProjectsDialog,
   } = useCloudDialogState();
@@ -53,11 +58,22 @@ export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({ onOpenGallery, onO
             <Button
               variant="outline"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-8 w-8 p-0 relative"
               aria-label="Menu"
               tabIndex={1}
             >
               <Menu className="h-4 w-4" />
+              {/* MCP connection status indicator */}
+              {mcpConnectionState !== 'disconnected' && (
+                <span
+                  className={cn(
+                    'absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-background',
+                    mcpConnectionState === 'connected' && 'bg-green-500',
+                    mcpConnectionState === 'connecting' && 'bg-yellow-500 animate-pulse',
+                    mcpConnectionState === 'error' && 'bg-red-500'
+                  )}
+                />
+              )}
             </Button>
           </MenubarTrigger>
           <MenubarContent align="start" className="border-border/50">
@@ -143,6 +159,16 @@ export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({ onOpenGallery, onO
               <ExternalLink className="ml-auto h-3 w-3 text-muted-foreground" />
             </MenubarItem>
             
+            <MenubarSeparator />
+            
+            <MenubarItem onClick={() => setShowMCPDialog(true)} className="cursor-pointer">
+              <Terminal className="mr-2 h-4 w-4" />
+              <span>MCP Connection</span>
+              {mcpConnectionState === 'connected' && (
+                <span className="ml-auto w-2 h-2 rounded-full bg-green-500" />
+              )}
+            </MenubarItem>
+            
             <MenubarItem onClick={() => setShowAboutDialog(true)} className="cursor-pointer">
               <Info className="mr-2 h-4 w-4" />
               <span>About</span>
@@ -159,6 +185,10 @@ export const HamburgerMenu: React.FC<HamburgerMenuProps> = ({ onOpenGallery, onO
       <KeyboardShortcutsDialog 
         isOpen={showKeyboardShortcuts} 
         onOpenChange={setShowKeyboardShortcuts} 
+      />
+      <MCPConnectionDialog
+        isOpen={showMCPDialog}
+        onOpenChange={setShowMCPDialog}
       />
     </>
   );
