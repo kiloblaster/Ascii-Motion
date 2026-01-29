@@ -1,12 +1,20 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.62";
-export const BUILD_DATE = "2026-01-26T22:31:57.959Z";
-export const BUILD_HASH = "e7cfcd2";
+export const VERSION = "0.2.63";
+export const BUILD_DATE = "2026-01-27T05:18:49.318Z";
+export const BUILD_HASH = "93e24fa";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.63",
+    "date": "2026-01-27T05:18:49.318Z",
+    "commits": [
+      "Fix remap color effect with palette bug",
+      "Update version flags"
+    ]
+  },
   {
     "version": "0.2.62",
     "date": "2026-01-26T22:31:57.959Z",

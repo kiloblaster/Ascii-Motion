@@ -1,0 +1,201 @@
+/**
+ * MCP Message Types
+ * 
+ * Defines the message protocol between the MCP server and browser client.
+ */
+
+import type { Cell } from '../types';
+
+/**
+ * Commands sent from MCP server to browser
+ */
+export type MCPCommand = 
+  | MCPSetCellCommand
+  | MCPSetCellsBatchCommand
+  | MCPClearCellCommand
+  | MCPResizeCanvasCommand
+  | MCPSetCanvasDataCommand
+  | MCPAddFrameCommand
+  | MCPDeleteFrameCommand
+  | MCPGoToFrameCommand
+  | MCPSetFrameDurationCommand
+  | MCPSetFrameDataCommand
+  | MCPUndoCommand
+  | MCPRedoCommand
+  | MCPNewProjectCommand
+  | MCPLoadProjectCommand
+  | MCPSetForegroundColorCommand
+  | MCPSetBackgroundColorCommand
+  | MCPSelectRectangleCommand
+  | MCPClearSelectionCommand;
+
+export interface MCPSetCellCommand {
+  type: 'set_cell';
+  x: number;
+  y: number;
+  cell: Cell;
+}
+
+export interface MCPSetCellsBatchCommand {
+  type: 'set_cells_batch';
+  cells: Array<{ x: number; y: number; cell: Cell }>;
+}
+
+export interface MCPClearCellCommand {
+  type: 'clear_cell';
+  x: number;
+  y: number;
+}
+
+export interface MCPResizeCanvasCommand {
+  type: 'resize_canvas';
+  width: number;
+  height: number;
+}
+
+export interface MCPSetCanvasDataCommand {
+  type: 'set_canvas_data';
+  cells: Array<{ key: string; cell: Cell }>;
+}
+
+export interface MCPAddFrameCommand {
+  type: 'add_frame';
+  atIndex?: number;
+  cells?: Array<{ key: string; cell: Cell }>;
+  duration?: number;
+}
+
+export interface MCPDeleteFrameCommand {
+  type: 'delete_frame';
+  index: number;
+}
+
+export interface MCPGoToFrameCommand {
+  type: 'go_to_frame';
+  index: number;
+}
+
+export interface MCPSetFrameDurationCommand {
+  type: 'set_frame_duration';
+  index: number;
+  duration: number;
+}
+
+export interface MCPSetFrameDataCommand {
+  type: 'set_frame_data';
+  index: number;
+  cells: Array<{ key: string; cell: Cell }>;
+}
+
+export interface MCPUndoCommand {
+  type: 'undo';
+}
+
+export interface MCPRedoCommand {
+  type: 'redo';
+}
+
+export interface MCPNewProjectCommand {
+  type: 'new_project';
+  width: number;
+  height: number;
+  backgroundColor?: string;
+  name?: string;
+}
+
+export interface MCPLoadProjectCommand {
+  type: 'load_project';
+  sessionData: unknown; // SessionData type from the MCP server
+}
+
+export interface MCPSetForegroundColorCommand {
+  type: 'set_foreground_color';
+  color: string;
+}
+
+export interface MCPSetBackgroundColorCommand {
+  type: 'set_background_color';
+  color: string;
+}
+
+export interface MCPSelectRectangleCommand {
+  type: 'select_rectangle';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface MCPClearSelectionCommand {
+  type: 'clear_selection';
+}
+
+/**
+ * State updates sent from browser to MCP server
+ */
+export interface MCPStateUpdate {
+  type: 'state_update';
+  timestamp: number;
+  changes: StateChange[];
+}
+
+export interface StateChange {
+  store: 'canvas' | 'animation' | 'selection' | 'tools';
+  property: string;
+  value: unknown;
+}
+
+/**
+ * Base message wrapper
+ */
+export interface MCPMessage {
+  id: string;
+  timestamp: number;
+  payload: MCPCommand | MCPStateUpdate | MCPClientMessage;
+}
+
+/**
+ * Messages sent from browser client to MCP server
+ */
+export type MCPClientMessage =
+  | MCPClientAuth
+  | MCPClientHeartbeat
+  | MCPClientStateSnapshot;
+
+export interface MCPClientAuth {
+  type: 'auth';
+  token: string;
+  sessionId: string;
+}
+
+export interface MCPClientHeartbeat {
+  type: 'heartbeat';
+}
+
+export interface MCPClientStateSnapshot {
+  type: 'state_snapshot';
+  canvas: {
+    width: number;
+    height: number;
+    cellCount: number;
+    backgroundColor: string;
+  };
+  animation: {
+    frameCount: number;
+    currentFrameIndex: number;
+    isPlaying: boolean;
+    looping: boolean;
+    frameRate: number;
+  };
+}
+
+/**
+ * Server responses
+ */
+export interface MCPServerMessage {
+  type: 'auth_result' | 'command' | 'state_request' | 'error';
+  success?: boolean;
+  error?: string;
+  command?: MCPCommand;
+  requestId?: string;
+}
