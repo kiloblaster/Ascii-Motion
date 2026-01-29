@@ -4,6 +4,150 @@ Build a standalone, stdio-based MCP server (`ascii-motion-mcp`) enabling LLM-pow
 
 ---
 
+## 🚀 Implementation Progress
+
+**Repository:** https://github.com/CameronFoxly/ascii-motion-mcp  
+**Local Path:** `/Users/cameronfoxly/GitHubRepos/ascii-motion-mcp`  
+**Last Updated:** January 29, 2026
+
+### Current Status: Phase 3 - Live Browser Sync ✅ COMPLETE
+
+#### Phase 1 - Core Implementation ✅ COMPLETE (40 tools)
+
+| Step | Status | Description |
+|------|--------|-------------|
+| Create GitHub repo | ✅ Complete | Repository created and cloned |
+| Scaffold project | ✅ Complete | package.json, tsconfig, directory structure |
+| Implement types | ✅ Complete | Cell, Frame, Canvas, SessionData with Zod schemas |
+| MCP server entry | ✅ Complete | index.ts with McpServer and stdio transport |
+| Canvas tools | ✅ Complete | set_cell, get_cell, clear_cell, set_cells_batch, paste_ascii_block, fill_region, resize_canvas, clear_canvas |
+| Frame tools | ✅ Complete | add_frame, delete_frame, duplicate_frame, go_to_frame, list_frames, set_frame_duration, set_frame_name |
+| Project tools | ✅ Complete | new_project, load_project, save_project, get_project_info, list_project_files, set_project_name |
+| History tools | ✅ Complete | undo, redo, get_history_status |
+| Preview tools | ✅ Complete | get_canvas_summary, get_canvas_preview, get_canvas_ascii, get_frame_diff, describe_animation |
+| Animation tools | ✅ Complete | copy_frame_and_modify, shift_frame_content, flip_region, copy_region_to_frame, interpolate_frames |
+| Selection tools | ✅ Complete | select_rectangle, select_by_color, get_selection, clear_selection, apply_to_selection, delete_selection_content |
+| MCP Inspector testing | ✅ Complete | All 40 tools verified working |
+
+#### Phase 2 - Import/Export/Effects ✅ COMPLETE (20 tools)
+
+| Step | Status | Description |
+|------|--------|-------------|
+| Export tools (11) | ✅ Complete | export_text, export_json, export_session, export_html, export_react, export_ansi, export_ink, export_bubbletea, export_opentui, export_image, export_video |
+| Import tools (3) | ✅ Complete | import_image, import_video, import_ascii_text |
+| Effects tools (4) | ✅ Complete | apply_effect, get_color_stats, batch_recolor, batch_replace_char |
+| Generator tools (2) | ✅ Complete | run_generator (7 types), preview_generator |
+| MCP Inspector testing | ✅ Complete | All 60 tools verified working |
+
+#### Phase 3 - Live Browser Sync ✅ COMPLETE
+
+| Step | Status | Description |
+|------|--------|-------------|
+| WebSocket transport | ✅ Complete | `--live` mode with auth token on localhost:9876 |
+| HybridTransport | ✅ Complete | Combines stdio (MCP) + WebSocket (browser) |
+| MCP Resources (6) | ✅ Complete | project://state, project://canvas, project://frames, project://selection, project://history, project://ascii |
+| MCP Prompts (6) | ✅ Complete | create-animation, import-and-animate, generate-rain, create-banner, apply-effects, export-for-cli |
+| Browser client module | ✅ Complete | `src/mcp/` in Ascii-Motion repo |
+| Connection status UI | ✅ Complete | `MCPConnectionStatus` component |
+| Version | ✅ Complete | Updated to 0.2.0-alpha.1 |
+
+**Total Tools: 60 | Resources: 6 | Prompts: 6**
+
+### Implementation Log
+
+#### January 29, 2026 - Phase 3 Complete
+- **WebSocket Transport**: Implemented `--live` mode with WebSocket server
+  - Runs on `ws://127.0.0.1:9876` by default (configurable via `--port`)
+  - One-time auth token printed to stdout on startup
+  - Origin validation (localhost only)
+  - Health check endpoint at `/health`
+- **HybridTransport**: Combines stdio for MCP Inspector + WebSocket for browser
+- **MCP Resources (6 total)**:
+  - `project://state` - Full project state snapshot
+  - `project://canvas` - Current frame canvas data  
+  - `project://frames` - Frame list with metadata
+  - `project://selection` - Selection state
+  - `project://history` - Undo/redo history info
+  - `project://ascii` - Plain text ASCII preview
+- **MCP Prompts (6 total)**: Pre-built prompt templates for common workflows
+  - `create-animation` - Simple animation workflow
+  - `import-and-animate` - Image to animation
+  - `generate-rain` - Digital rain effect
+  - `create-banner` - Text banner/logo
+  - `apply-effects` - Visual effects
+  - `export-for-cli` - CLI framework export
+- **Browser Client Module**: Created `src/mcp/` in Ascii-Motion repo
+  - `client.ts` - MCPClient class for WebSocket connection
+  - `store.ts` - Zustand store for connection state
+  - `types.ts` - Message protocol types
+  - `useMCPConnection.ts` - React hook for components
+  - `index.ts` - Module exports
+- **UI Component**: `MCPConnectionStatus` component with popover for connection management
+- **Convenience Script**: `run-server-live.sh` for starting with --live flag
+- **Version**: Updated to 0.2.0-alpha.1
+
+#### January 29, 2026 - Phase 2 Complete
+- **Export Tools (11 total)**: Implemented all export formats
+  - Core: export_text, export_json, export_session, export_html, export_react, export_ansi
+  - CLI frameworks: export_ink (React CLI), export_bubbletea (Go), export_opentui (Python)
+  - Media: export_image (PNG/JPG/SVG), export_video (GIF/MP4/WebM)
+  - Note: PNG/JPG need `canvas` package, GIF needs `gif-encoder-2`, MP4/WebM need ffmpeg
+- **Import Tools (3 total)**: import_image, import_video, import_ascii_text
+  - Note: Image import needs `sharp` or `jimp` package
+- **Effects Tools (4 total)**: apply_effect (7 types), get_color_stats, batch_recolor, batch_replace_char
+- **Generator Tools (2 total)**: run_generator, preview_generator
+  - Supports 7 generator types: digital-rain, radio-waves, turbulent-noise, particle-physics, rain-drops, static-noise, gradient
+- **Total tools now: 60** (40 from Phase 1 + 20 from Phase 2)
+- **MCP Inspector**: Must use absolute path: `npx @modelcontextprotocol/inspector /Users/cameronfoxly/GitHubRepos/ascii-motion-mcp/run-server.sh`
+
+#### January 29, 2026 - Phase 1 Complete & Pushed to GitHub
+- **MCP Inspector Testing**: Verified all 40 tools working via MCP Inspector
+- **Bug Fix**: Fixed `get_canvas_ascii` validation error on empty canvas
+  - Root cause: Zod schema required width/height in optional region object
+  - Solution: Made region fields optional with defaults, added empty canvas handling
+- **Helper Script**: Created `run-server.sh` for easier Inspector testing
+- **Commits pushed to GitHub**:
+  1. `feat: implement Phase 1 MCP server with 30+ tools for ASCII art creation and animation`
+  2. `fix: handle empty canvas and optional region params in preview tools`
+
+#### January 28, 2026 - Major Progress
+- Created GitHub repository: `CameronFoxly/ascii-motion-mcp`
+- Cloned to local development environment
+- Completed full project scaffolding (package.json, tsconfig.json, vitest.config.ts)
+- Implemented core types with Zod schemas (types.ts)
+- Implemented ProjectStateManager with full undo/redo support (state.ts)
+- Implemented 40 MCP tools across 7 tool files:
+  - `tools/canvas.ts` - 8 canvas manipulation tools
+  - `tools/frames.ts` - 7 frame management tools
+  - `tools/project.ts` - 6 project I/O tools
+  - `tools/preview.ts` - 5 token-efficient preview tools
+  - `tools/history.ts` - 3 undo/redo tools
+  - `tools/animation.ts` - 5 animation workflow tools
+  - `tools/selection.ts` - 6 selection tools
+- Successfully built with `npm run build`
+
+### Lessons Learned / Technical Notes
+
+#### MCP Inspector Configuration
+- **Command**: Use `node` as command, script path as argument
+- **Wrapper Script**: `run-server.sh` at `/Users/cameronfoxly/GitHubRepos/ascii-motion-mcp/run-server.sh`
+- **Working Directory**: Inspector runs from its npm cache dir, not your project
+- **CRITICAL**: Always use ABSOLUTE paths when running inspector:
+  ```bash
+  npx @modelcontextprotocol/inspector /Users/cameronfoxly/GitHubRepos/ascii-motion-mcp/run-server.sh
+  ```
+
+#### Zod Schema Best Practices for MCP
+- Make nested object fields optional when the parent is optional (MCP Inspector may send `{}`)
+- Use `.default()` for optional fields that should have sensible fallbacks
+- Always handle edge cases (empty canvas, no frames) gracefully with helpful error messages
+
+#### Tool Registration
+- SDK v1.25+ supports both `server.tool()` (legacy) and `server.registerTool()` (new)
+- Both work - `server.tool()` is more concise for simple tools
+
+---
+
 ## Project Context
 
 ### What is Ascii-Motion?
@@ -168,22 +312,24 @@ interface SessionData {
 
 5. **Implement first tool (`new_project`)**
    - Start with the simplest tool to verify MCP setup works
-   - Test with `npx @modelcontextprotocol/inspector`
+   - Test with `npx @modelcontextprotocol/inspector /Users/cameronfoxly/GitHubRepos/ascii-motion-mcp/run-server.sh`
 
 ### Development Workflow
 
 ```bash
 # Terminal 1: Watch MCP package
-cd ascii-motion-mcp
+cd /Users/cameronfoxly/GitHubRepos/ascii-motion-mcp
 npm run dev
 
-# Terminal 2: Test with MCP inspector
-npx @modelcontextprotocol/inspector ./dist/index.js
+# Terminal 2: Test with MCP inspector (use ABSOLUTE PATH - required!)
+npx @modelcontextprotocol/inspector /Users/cameronfoxly/GitHubRepos/ascii-motion-mcp/run-server.sh
 
 # Terminal 3: Run Ascii-Motion for Phase 3 testing
-cd Ascii-Motion
+cd /Users/cameronfoxly/GitHubRepos/Ascii-Motion
 npm run dev
 ```
+
+**IMPORTANT**: The MCP Inspector requires absolute paths. Using `./run-server.sh` won't connect properly.
 
 ### Validation Checkpoints
 
