@@ -365,6 +365,24 @@ export class MCPClient {
         break;
       }
       
+      case 'set_foreground_color': {
+        const colorData = data as { color: string };
+        useToolStore.getState().setSelectedColor(colorData.color);
+        break;
+      }
+      
+      case 'set_background_color': {
+        const colorData = data as { color: string };
+        useToolStore.getState().setSelectedBgColor(colorData.color);
+        break;
+      }
+      
+      case 'set_selected_character': {
+        const charData = data as { character: string };
+        useToolStore.getState().setSelectedChar(charData.character);
+        break;
+      }
+      
       default:
         console.log('[MCP] Unhandled state change type:', type);
     }

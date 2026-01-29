@@ -10,7 +10,7 @@ Build a standalone, stdio-based MCP server (`ascii-motion-mcp`) enabling LLM-pow
 **Local Path:** `/Users/cameronfoxly/GitHubRepos/ascii-motion-mcp`  
 **Last Updated:** January 29, 2026
 
-### Current Status: Phase 3 - Live Browser Sync ✅ COMPLETE
+### Current Status: Phase 4 - Polish & Documentation 🔄 IN PROGRESS
 
 #### Phase 1 - Core Implementation ✅ COMPLETE (40 tools)
 
@@ -49,13 +49,52 @@ Build a standalone, stdio-based MCP server (`ascii-motion-mcp`) enabling LLM-pow
 | MCP Prompts (6) | ✅ Complete | create-animation, import-and-animate, generate-rain, create-banner, apply-effects, export-for-cli |
 | Browser client module | ✅ Complete | `src/mcp/` in Ascii-Motion repo |
 | Connection status UI | ✅ Complete | `MCPConnectionStatus` component |
+| Broadcast events | ✅ Complete | 26 event types broadcast to connected browsers |
 | Version | ✅ Complete | Updated to 0.2.0-alpha.1 |
 
-**Total Tools: 60 | Resources: 6 | Prompts: 6**
+#### Phase 4 - Polish & Documentation 🔄 IN PROGRESS
+
+| Step | Status | Description |
+|------|--------|-------------|
+| Palette/color tools | ✅ Complete | 9 tools: list/get character palettes, list/get color palettes, get/set active colors, suggest_palette_for_style |
+| Security hardening | ✅ Complete | Path sandboxing, batch limits, WebSocket auth, Zod validation |
+| MCP client docs | ⏳ Pending | Setup guides for Claude Desktop, Cursor, etc. |
+| Workflow tutorials | ⏳ Pending | Common use cases documented |
+| Tool reference | ⏳ Pending | Full API reference with examples |
+| Unit tests | ⏳ Pending | 80% coverage target |
+
+**Total Tools: 69 | Resources: 6 | Prompts: 6**
 
 ### Implementation Log
 
-#### January 29, 2026 - Phase 3 Complete
+#### January 29, 2026 - Phase 4 Progress (Palette Tools + Security)
+- **Palette Tools (9 new tools)**:
+  - `list_character_palettes`, `get_character_palette` - 6 character palettes (minimal, standard, blocks, retro, box-drawing)
+  - `list_color_palettes`, `get_color_palette` - 5 color palettes (ANSI, monochrome-green, grayscale, rainbow, retro-8bit)
+  - `get_active_colors`, `set_foreground_color`, `set_background_color`, `set_selected_character`
+  - `suggest_palette_for_style` - recommendations for terminal, retro, matrix, minimalist, detailed, colorful styles
+- **Security Hardening**:
+  - Path sandboxing: All file operations validated to stay within project directory
+  - WebSocket auth: Per-session token + localhost-only origin validation
+  - Input validation: All tool inputs validated via Zod schemas
+  - Batch limits: `set_cells_batch` limited to 10,000 cells max
+- **Total tools now: 69** (60 from Phase 1-3 + 9 palette tools)
+
+#### January 29, 2026 - Phase 3 Complete + Broadcast Fixes
+- **Comprehensive Broadcast Audit**: Added broadcastStateChange() calls to ALL state-modifying tools
+  - **26 broadcast event types** now sync to connected browsers
+  - Files updated: canvas.ts, frames.ts, animation.ts, history.ts, selection.ts, effects.ts, generators.ts, import.ts, project.ts
+  - Events: set_cell, set_cells_batch, clear_cell, fill_region, resize_canvas, clear_canvas, add_frame, delete_frame, duplicate_frame, go_to_frame, set_frame_duration, set_frame_name, copy_frame_and_modify, shift_frame_content, flip_region, copy_region_to_frame, interpolate_frames, apply_effect, batch_recolor, batch_replace_char, select_rectangle, clear_selection, undo, redo, new_project, import_image, import_ascii_text, run_generator
+- **Browser Client Handlers**: Updated `src/mcp/client.ts` in Ascii-Motion repo
+  - Added `useProjectMetadataStore` for project name sync
+  - Added handlers for all frame-related events
+- **UI Polish**: Changed auth token input from password to text (localhost-only is safe)
+- **Testing**: Successfully created complex animation projects via MCP
+  - "Spinners" project: 3x2 grid of 6 colored CLI spinners, 8 frames, exported to Ink component
+  - "Running Dog" project: 8-frame animation of running dog
+- **Git Commit**: Pushed comprehensive broadcast changes to ascii-motion-mcp repo
+
+#### January 29, 2026 - Phase 3 Core Implementation
 - **WebSocket Transport**: Implemented `--live` mode with WebSocket server
   - Runs on `ws://127.0.0.1:9876` by default (configurable via `--port`)
   - One-time auth token printed to stdout on startup
