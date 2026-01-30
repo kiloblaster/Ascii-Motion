@@ -342,8 +342,22 @@ export class MCPClient {
       }
       
       case 'add_frame': {
-        // Add a new frame
-        useAnimationStore.getState().addFrame();
+        // Add a new frame with optional data
+        const addData = data as { frame?: { index?: number; duration?: number; data?: Record<string, Cell> }; totalFrames?: number };
+        const frameIndex = addData.frame?.index;
+        useAnimationStore.getState().addFrame(frameIndex);
+        // If duration is provided, set it
+        if (addData.frame?.duration && frameIndex !== undefined) {
+          useAnimationStore.getState().updateFrameDuration(frameIndex, addData.frame.duration);
+        }
+        // If data is provided, set it
+        if (addData.frame?.data && frameIndex !== undefined) {
+          const cellMap = new Map<string, Cell>();
+          for (const [key, cell] of Object.entries(addData.frame.data)) {
+            cellMap.set(key, cell);
+          }
+          useAnimationStore.getState().setFrameData(frameIndex, cellMap);
+        }
         break;
       }
       
@@ -407,6 +421,18 @@ export class MCPClient {
       case 'set_selected_character': {
         const charData = data as { character: string };
         useToolStore.getState().setSelectedChar(charData.character);
+        break;
+      }
+      
+      case 'set_frame_data': {
+        // Set all cell data for a specific frame
+        const frameData = data as { frameIndex: number; data: Record<string, Cell> };
+        const cellMap = new Map<string, Cell>();
+        for (const [key, cell] of Object.entries(frameData.data)) {
+          cellMap.set(key, cell);
+        }
+        useAnimationStore.getState().setFrameData(frameData.frameIndex, cellMap);
+        console.log('[MCP] Set frame data for frame', frameData.frameIndex, 'with', cellMap.size, 'cells');
         break;
       }
       
