@@ -157,7 +157,7 @@ export class MCPClient {
         frames,
       },
       project: {
-        name: projectMeta.name,
+        name: projectMeta.projectName,
       }
     };
     
