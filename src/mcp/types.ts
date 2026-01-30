@@ -186,6 +186,15 @@ export interface MCPClientStateSnapshot {
     isPlaying: boolean;
     looping: boolean;
     frameRate: number;
+    frames: Array<{
+      id: string;
+      name: string;
+      duration: number;
+      data: Record<string, { char: string; color: string; bgColor: string }>;
+    }>;
+  };
+  project?: {
+    name: string;
   };
 }
 

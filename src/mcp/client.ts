@@ -58,6 +58,13 @@ export class MCPClient {
           // Start heartbeat
           this.startHeartbeat();
           
+          // Send current state to MCP server so it knows what's in the browser
+          // Small delay to ensure connection is fully established
+          setTimeout(() => {
+            console.log('[MCP] Sending initial state snapshot');
+            this.sendStateSnapshot();
+          }, 100);
+          
           resolve();
         };
         
@@ -110,13 +117,28 @@ export class MCPClient {
   }
 
   /**
-   * Send a state snapshot to the server
+   * Send a state snapshot to the server (includes full frame data for sync)
    */
   sendStateSnapshot(): void {
     if (!this.isConnected()) return;
     
     const canvas = useCanvasStore.getState();
     const animation = useAnimationStore.getState();
+    const projectMeta = useProjectMetadataStore.getState();
+    
+    // Convert frames to serializable format with full cell data
+    const frames = animation.frames.map(frame => {
+      const data: Record<string, { char: string; color: string; bgColor: string }> = {};
+      frame.data.forEach((cell, key) => {
+        data[key] = { char: cell.char, color: cell.color, bgColor: cell.bgColor };
+      });
+      return {
+        id: frame.id,
+        name: frame.name,
+        duration: frame.duration,
+        data,
+      };
+    });
     
     const snapshot: MCPClientStateSnapshot = {
       type: 'state_snapshot',
@@ -131,10 +153,15 @@ export class MCPClient {
         currentFrameIndex: animation.currentFrameIndex,
         isPlaying: animation.isPlaying,
         looping: animation.looping,
-        frameRate: animation.frameRate
+        frameRate: animation.frameRate,
+        frames,
+      },
+      project: {
+        name: projectMeta.name,
       }
     };
     
+    console.log('[MCP] Sending full state snapshot with', frames.length, 'frames');
     this.send(snapshot);
   }
 
