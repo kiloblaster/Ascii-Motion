@@ -5,7 +5,7 @@
 
 ## 1. Acceptance of Terms
 
-Welcome to ASCII Motion ("Service", "we", "us", or "our"). By accessing or using ASCII Motion at https://ascii-motion.vercel.app, you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, please do not use the Service.
+Welcome to ASCII Motion ("Service", "we", "us", or "our"). By accessing or using ASCII Motion at https://ascii-motion.app, you agree to be bound by these Terms of Service ("Terms"). If you do not agree to these Terms, please do not use the Service.
 
 ## 2. Description of Service
 
@@ -241,7 +241,7 @@ You may not assign these Terms. We may assign them to a successor or affiliate.
 For questions about these Terms, contact us at:
 
 **Email:** [your-email@example.com]  
-**Website:** https://ascii-motion.vercel.app  
+**Website:** https://ascii-motion.app  
 **GitHub:** https://github.com/cameronfoxly/Ascii-Motion
 
 ---

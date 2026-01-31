@@ -1,4 +1,4 @@
-# [ASCII Motion](https://ascii-motion.vercel.app)
+# [ASCII Motion](https://ascii-motion.app)
 
 ![ASCII Motion](https://img.shields.io/badge/status-in%20development-yellow)
 ![License - Dual](https://img.shields.io/badge/license-MIT%20%2B%20Proprietary-blue)
