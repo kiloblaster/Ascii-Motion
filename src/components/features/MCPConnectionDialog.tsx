@@ -12,7 +12,8 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardContent } from '../ui/card';
 import { Separator } from '../ui/separator';
-import { Unplug, Plug, Terminal, Copy, Check } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
+import { Unplug, Plug, Terminal, Copy, Check, Info, ChevronDown, ExternalLink } from 'lucide-react';
 import { useMCPConnection } from '../../mcp';
 import { cn } from '../../lib/utils';
 
@@ -38,6 +39,8 @@ export const MCPConnectionDialog: React.FC<MCPConnectionDialogProps> = ({
   const [port, setPort] = useState('9876');
   const [isConnecting, setIsConnecting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedGlobal, setCopiedGlobal] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const handleConnect = async () => {
     if (!token.trim()) return;
@@ -61,6 +64,12 @@ export const MCPConnectionDialog: React.FC<MCPConnectionDialogProps> = ({
     navigator.clipboard.writeText('npx ascii-motion-mcp --live');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyGlobalInstall = () => {
+    navigator.clipboard.writeText('npm install -g ascii-motion-mcp');
+    setCopiedGlobal(true);
+    setTimeout(() => setCopiedGlobal(false), 2000);
   };
 
   return (
@@ -139,7 +148,7 @@ export const MCPConnectionDialog: React.FC<MCPConnectionDialogProps> = ({
               <Separator />
 
               {/* Instructions */}
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
                   Start the MCP server and copy the auth token:
                 </p>
@@ -160,6 +169,56 @@ export const MCPConnectionDialog: React.FC<MCPConnectionDialogProps> = ({
                     )}
                   </Button>
                 </div>
+
+                {/* Info text */}
+                <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <span>This automatically downloads and runs the server. First run may take a few seconds.</span>
+                </div>
+
+                {/* Advanced: Global install option */}
+                <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                  <CollapsibleTrigger className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    <ChevronDown className={cn(
+                      "h-3 w-3 transition-transform",
+                      advancedOpen && "rotate-180"
+                    )} />
+                    <span>Alternative: Install globally</span>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <div className="flex gap-2">
+                      <code className="flex-1 bg-muted px-3 py-2 rounded text-xs font-mono">
+                        npm install -g ascii-motion-mcp
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCopyGlobalInstall}
+                        className="shrink-0"
+                      >
+                        {copiedGlobal ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Then run: <code className="bg-muted px-1 rounded">ascii-motion-mcp --live</code>
+                    </p>
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Docs link */}
+                <a
+                  href="https://docs.ascii-motion.com/mcp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  View full setup guide
+                </a>
               </div>
 
               <Separator />
