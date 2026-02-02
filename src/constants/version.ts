@@ -1,12 +1,33 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.63";
-export const BUILD_DATE = "2026-01-27T05:18:49.318Z";
-export const BUILD_HASH = "93e24fa";
+export const VERSION = "0.2.64";
+export const BUILD_DATE = "2026-02-02T00:20:39.755Z";
+export const BUILD_HASH = "9e7378f";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "0.2.64",
+    "date": "2026-02-02T00:20:39.755Z",
+    "commits": [
+      "docs: update MCP setup instructions for VS Code",
+      "Update web commit",
+      "Added mcp guide",
+      "Update duplicating frame data tool",
+      "Fix: use projectName instead of name in MCP state sync",
+      "Add browser-to-MCP state sync: send full state on connect",
+      "Add WebSocket localhost to CSP for MCP connection",
+      "Merge MCP-exposure: Add MCP client integration for live AI-powered editing",
+      "Update web submodule with MCP docs",
+      "Updated docs",
+      "Added MCP dialog and status bar",
+      "feat: add MCP browser client module for live sync",
+      "Added MCP plan",
+      "Merge pull request #61 from CameronFoxly/dependabot/npm_and_yarn/multi-b4fe5e61b3",
+      "Bump react-router and react-router-dom"
+    ]
+  },
   {
     "version": "0.2.63",
     "date": "2026-01-27T05:18:49.318Z",
