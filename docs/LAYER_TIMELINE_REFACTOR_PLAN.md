@@ -1,7 +1,8 @@
 # Layer Timeline System Refactor Plan
 
-> **Version:** 1.0.0  
+> **Version:** 1.2.0  
 > **Created:** February 1, 2026  
+> **Last Updated:** February 2, 2026  
 > **Status:** Planning  
 > **Target Completion:** TBD
 
@@ -114,6 +115,363 @@ git commit -m "chore: update premium submodule to feature/layer-timeline branch"
 - Require PR reviews before merge
 - Require passing CI checks
 - No direct pushes to `main`
+
+---
+
+## Development Guidelines
+
+### Commit & Deployment Policy
+
+**⚠️ CRITICAL: No Automatic Commits or Deployments**
+
+1. **No Automatic Commits**: Do not commit any changes automatically. All changes must be manually inspected before committing.
+   - Wait for explicit approval before staging changes
+   - Allow manual review of all file modifications
+   - Only commit when explicitly asked to do so
+
+2. **No Automatic Deployments**: Do not deploy to any environment unless explicitly requested.
+   - No `npm run deploy` or `npm run deploy:preview` without explicit instruction
+   - No Vercel CLI deployments without approval
+   - Manual deployment triggers only
+
+3. **Manual Inspection Workflow**:
+   ```bash
+   # After making changes, wait for manual review
+   git status                    # Review changed files
+   git diff                      # Inspect changes
+   # Only after approval:
+   git add <files>               # Stage approved changes
+   git commit -m "..."           # Commit with descriptive message
+   ```
+
+### UI Component Standards
+
+**Use Shadcn/UI Components for All New UI**
+
+All new UI components added during this refactor must use the existing Shadcn component library to maintain consistency with the rest of the application.
+
+**Required Patterns:**
+
+1. **Use Existing Components**: Leverage components from `src/components/ui/`:
+   - `Button`, `Input`, `Switch`, `Slider` for controls
+   - `DropdownMenu`, `ContextMenu` for menus
+   - `Dialog`, `Popover`, `Tooltip` for overlays
+   - `Tabs` for view switching
+   - `Card` for content containers
+
+2. **Shadcn MCP Integration**: Use the installed Shadcn MCP to add any new components needed:
+   ```bash
+   # If a new component is needed, use Shadcn MCP to add it
+   # Components will be added to src/components/ui/
+   ```
+
+3. **Styling Guidelines**:
+   - Use Tailwind CSS classes (v3.x - do NOT upgrade to v4)
+   - Use CSS variables for theming (`hsl(var(--primary))`, etc.)
+   - Follow existing component patterns in the codebase
+   - Refer to `COPILOT_INSTRUCTIONS.md` for Shadcn styling requirements
+
+4. **New Component Checklist**:
+   - [ ] Uses Shadcn base components where applicable
+   - [ ] Follows existing naming conventions
+   - [ ] Uses Radix tooltips (never HTML `title` attributes)
+   - [ ] Respects dark/light theme via CSS variables
+   - [ ] Matches existing visual style and spacing
+
+**Example - Timeline Tab Component:**
+```tsx
+// ✅ CORRECT: Using Shadcn Tabs
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+
+export function TimelineTabs() {
+  return (
+    <Tabs defaultValue="layers">
+      <TabsList>
+        <TabsTrigger value="layers">Timeline</TabsTrigger>
+        <TabsTrigger value="frames">Frames (Simple)</TabsTrigger>
+      </TabsList>
+      <TabsContent value="layers">
+        <LayerTimeline />
+      </TabsContent>
+      <TabsContent value="frames">
+        <FrameTimeline />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+// ❌ WRONG: Custom implementation without Shadcn
+export function TimelineTabs() {
+  return (
+    <div className="flex">
+      <button className="px-4 py-2">Timeline</button>
+      <button className="px-4 py-2">Frames</button>
+    </div>
+  );
+}
+```
+
+---
+
+## State Synchronization Architecture
+
+### Overview
+
+The layer timeline system requires careful synchronization between multiple stores. This section defines the canonical source of truth and sync behavior for each piece of state.
+
+### Store Hierarchy
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        timelineStore                             │
+│  (CANONICAL source for layers, keyframes, playhead, view state) │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ sync
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         canvasStore                              │
+│     (Working buffer for active layer's current content frame)    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Synchronization Rules
+
+**1. Canvas Store ↔ Content Frame Sync**
+
+The `canvasStore.cells` acts as a working buffer for the **active layer's current content frame**.
+
+| Event | Direction | Action |
+|-------|-----------|--------|
+| User draws on canvas | Canvas → Timeline | After debounce (300ms idle), sync `canvasStore.cells` into the active layer's current content frame via `updateContentFrameData()` |
+| User changes active layer | Timeline → Canvas | Copy the new layer's current content frame data into `canvasStore.cells` |
+| User changes current frame | Timeline → Canvas | Copy the active layer's content frame at new frame into `canvasStore.cells` |
+| Playhead enters gap (no content frame) | Timeline → Canvas | Clear `canvasStore.cells` to empty (blank canvas) |
+| User presses Save/Export | Canvas → Timeline | Force immediate sync before serialization |
+
+**2. Drawing Sync Flow**
+
+```typescript
+// When user finishes a drawing operation:
+function onDrawingComplete() {
+  // 1. Drawing updates canvasStore.cells directly (for immediate feedback)
+  // 2. Debounced sync saves to timeline
+  debouncedSyncToContentFrame();
+}
+
+// Implementation in canvasStore:
+const debouncedSyncToContentFrame = debounce(() => {
+  const { activeLayerId, currentFrame } = useTimelineStore.getState().view;
+  const activeLayer = useTimelineStore.getState().layers.find(l => l.id === activeLayerId);
+  
+  if (!activeLayer) return;
+  
+  // Find content frame at current playhead position
+  const contentFrame = activeLayer.contentFrames.find(
+    cf => currentFrame >= cf.startFrame && currentFrame < cf.startFrame + cf.durationFrames
+  );
+  
+  if (contentFrame) {
+    // Update the content frame with current canvas data
+    useTimelineStore.getState().updateContentFrameData(
+      activeLayerId,
+      contentFrame.id,
+      new Map(cells)  // Clone to avoid reference issues
+    );
+  }
+}, 300);
+```
+
+**3. Layer Switch Sync**
+
+```typescript
+// When switching active layers:
+setActiveLayer: (layerId: LayerId | null) => {
+  const { view, config } = get();
+  
+  // 1. Force sync current canvas to previous layer's content frame
+  syncCanvasToTimelineImmediate();
+  
+  // 2. Update active layer
+  set({ view: { ...view, activeLayerId: layerId } });
+  
+  // 3. Load new layer's content frame into canvas
+  const newLayer = get().layers.find(l => l.id === layerId);
+  if (newLayer) {
+    const contentFrame = getContentFrameAtTime(newLayer, view.currentFrame);
+    if (contentFrame) {
+      useCanvasStore.getState().setCells(new Map(contentFrame.data));
+    } else {
+      // Gap in content - show blank canvas
+      useCanvasStore.getState().clearCells();
+    }
+  }
+}
+```
+
+**4. Frame Navigation Sync**
+
+```typescript
+// When playhead moves to a new frame:
+goToFrame: (frame: number) => {
+  const { view } = get();
+  
+  // 1. Sync current canvas to timeline (if changed)
+  if (canvasStore.isDirty) {
+    syncCanvasToTimelineImmediate();
+  }
+  
+  // 2. Update playhead
+  set({ view: { ...view, currentFrame: frame } });
+  
+  // 3. Load content frame at new position
+  const activeLayer = get().layers.find(l => l.id === view.activeLayerId);
+  if (activeLayer) {
+    const contentFrame = getContentFrameAtTime(activeLayer, frame);
+    if (contentFrame) {
+      useCanvasStore.getState().setCells(new Map(contentFrame.data));
+    } else {
+      useCanvasStore.getState().clearCells();
+    }
+  }
+}
+```
+
+### Content Frame Gap Behavior
+
+When the playhead is at a position where no content frame exists for the active layer:
+
+1. **Canvas displays blank** - The `canvasStore.cells` is cleared
+2. **Drawing creates new content frame** - If user draws at a gap position, a new 1-frame content frame is created at that position
+3. **Compositing shows nothing** - The layer contributes nothing to the composite at that frame
+4. **Export renders blank for that layer** - The layer is effectively invisible during gaps
+
+```typescript
+// When user draws during a gap:
+function onDrawAtGap(layerId: LayerId, frame: number) {
+  const newContentFrame: ContentFrame = {
+    id: generateContentFrameId(),
+    name: `Frame at ${frame}`,
+    startFrame: frame,
+    durationFrames: 1,  // Start with 1 frame, user can extend
+    data: new Map(canvasStore.cells),
+  };
+  
+  addContentFrame(layerId, newContentFrame);
+}
+```
+
+---
+
+## Frame View Specification
+
+### Overview
+
+The "Frame View" is a simplified alternative to the full "Layer/Timeline View". It presents the animation as a sequence of flattened frames, similar to the pre-layer workflow, but the underlying data model remains layer-based.
+
+### Frame View Behavior
+
+**Data Presentation:**
+- Each "frame" in Frame View is the **composited result** of all visible layers at that timeline frame
+- Users see a linear sequence of frames, not individual layers
+- Identical consecutive composited frames are merged into a single visual frame with a duration indicator
+
+**No Manual Duration Controls:**
+- Unlike the old frame-based system, frames in Frame View don't have draggable duration handles
+- Duration is determined by the underlying layer content frames and timeline length
+- To adjust timing, users must switch to Layer View
+
+**Flattening Algorithm:**
+
+```typescript
+/**
+ * Generate Frame View frames from layer data.
+ * Consecutive identical frames are merged into one.
+ */
+function generateFrameViewFrames(
+  layers: Layer[],
+  durationFrames: number,
+  canvasWidth: number,
+  canvasHeight: number
+): FrameViewFrame[] {
+  const result: FrameViewFrame[] = [];
+  let currentFrame: FrameViewFrame | null = null;
+  
+  for (let f = 0; f < durationFrames; f++) {
+    const compositedCells = compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight);
+    const hash = hashCellMap(compositedCells);
+    
+    if (currentFrame && currentFrame.hash === hash) {
+      // Same as previous - extend duration
+      currentFrame.durationFrames += 1;
+    } else {
+      // New unique frame
+      if (currentFrame) result.push(currentFrame);
+      currentFrame = {
+        timelineFrame: f,  // First timeline frame this represents
+        durationFrames: 1,
+        cells: compositedCells,
+        hash,
+        thumbnail: generateThumbnail(compositedCells),
+      };
+    }
+  }
+  
+  if (currentFrame) result.push(currentFrame);
+  return result;
+}
+
+interface FrameViewFrame {
+  timelineFrame: number;    // Starting timeline frame
+  durationFrames: number;   // How many consecutive frames look identical
+  cells: Map<string, Cell>; // Composited cell data
+  hash: string;             // For identity comparison
+  thumbnail?: string;       // Base64 preview
+}
+```
+
+**Frame View UI:**
+
+```typescript
+function FrameViewPanel() {
+  const layers = useTimelineStore((s) => s.layers);
+  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const goToFrame = useTimelineStore((s) => s.goToFrame);
+  
+  const frameViewFrames = useMemo(
+    () => generateFrameViewFrames(layers, durationFrames, canvasWidth, canvasHeight),
+    [layers, durationFrames]
+  );
+  
+  return (
+    <div className="flex gap-2 overflow-x-auto p-2">
+      {frameViewFrames.map((frame, idx) => (
+        <div
+          key={idx}
+          className="flex-shrink-0 cursor-pointer border rounded p-1"
+          onClick={() => goToFrame(frame.timelineFrame)}
+        >
+          {/* Thumbnail */}
+          <img src={frame.thumbnail} className="w-24 h-16 object-contain" />
+          
+          {/* Frame info */}
+          <div className="text-xs text-center">
+            {frame.durationFrames > 1 
+              ? `Frames ${frame.timelineFrame}-${frame.timelineFrame + frame.durationFrames - 1}`
+              : `Frame ${frame.timelineFrame}`
+            }
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Editing in Frame View:**
+- Clicking a frame navigates to that timeline position (first frame if merged)
+- Drawing edits the **active layer** at the current frame (same as Layer View)
+- Users must switch to Layer View to manage layers, keyframes, or content frame timing
 
 ---
 
@@ -497,6 +855,9 @@ export interface SessionLayerV2 {
   locked: boolean;
   opacity: number;
   
+  // Group membership (if layer is in a group)
+  parentGroupId?: string;
+  
   // Content frames (serialized)
   contentFrames: SessionContentFrameV2[];
   
@@ -736,6 +1097,19 @@ interface TimelineState {
   setActiveLayer: (layerId: LayerId | null) => void;
   
   // ============================================
+  // LAYER GROUP ACTIONS
+  // ============================================
+  
+  createGroup: (name?: string, layerIds?: LayerId[]) => LayerGroupId;
+  ungroupLayers: (groupId: LayerGroupId) => void;
+  addLayerToGroup: (layerId: LayerId, groupId: LayerGroupId) => void;
+  removeLayerFromGroup: (layerId: LayerId) => void;
+  setGroupVisible: (groupId: LayerGroupId, visible: boolean) => void;
+  setGroupSolo: (groupId: LayerGroupId, solo: boolean) => void;
+  setGroupLocked: (groupId: LayerGroupId, locked: boolean) => void;
+  setGroupCollapsed: (groupId: LayerGroupId, collapsed: boolean) => void;
+  
+  // ============================================
   // CONTENT FRAME ACTIONS
   // ============================================
   
@@ -774,8 +1148,18 @@ interface TimelineState {
   previousFrame: () => void;
   
   setLooping: (looping: boolean) => void;
-  setFrameRate: (fps: number) => void;
+  setFrameRate: (fps: number, maintainDuration: boolean) => void;
   setDuration: (frames: number) => void;
+  
+  // ============================================
+  // TIMELINE AUTO-EXPAND
+  // ============================================
+  
+  /**
+   * Ensure timeline is long enough to contain content at the given frame.
+   * Called automatically when content is added/extended past current duration.
+   */
+  ensureTimelineContains: (frame: number) => void;
   
   // ============================================
   // VIEW ACTIONS
@@ -808,14 +1192,16 @@ interface TimelineState {
 
 export const useTimelineStore = create<TimelineState>()(
   subscribeWithSelector((set, get) => ({
-    // Initial state
+    // Initial state - NEW projects start with 1 layer, 1 frame at 12 FPS
+    // Note: Migrated v1.0.0 projects preserve their original frame rate
     config: {
-      frameRate: 24,
-      durationFrames: 72,  // 3 seconds at 24fps
-      durationMs: 3000,
+      frameRate: 12,
+      durationFrames: 1,  // Start with 1 frame
+      durationMs: 1000 / 12,
     },
     
-    layers: [],
+    layers: [],  // Initialized in createNewProject()
+    layerGroups: [],  // Layer groups for organizational and transform purposes
     globalEffects: [],
     
     view: {
@@ -837,7 +1223,301 @@ export const useTimelineStore = create<TimelineState>()(
 );
 ```
 
-### 1.4 Integrate Undo/Redo
+### 1.4 Timeline Duration Management
+
+**Purpose:** Timeline length automatically expands to contain all content, with user controls for precise duration editing.
+
+**Auto-Expand Behavior:**
+
+The timeline duration automatically increases when:
+1. A content frame is resized past the current timeline end
+2. A content frame is dragged past the current timeline end
+3. A new content frame is created past the current timeline end
+4. A frame is duplicated and placed past the current timeline end
+5. A keyframe is added or moved past the current timeline end
+
+```typescript
+// Implementation in timelineStore.ts
+
+ensureTimelineContains: (frame: number) => {
+  const { config } = get();
+  if (frame >= config.durationFrames) {
+    // Extend timeline to contain the frame (with small buffer)
+    const newDuration = frame + 1;
+    set({
+      config: {
+        ...config,
+        durationFrames: newDuration,
+        durationMs: (newDuration / config.frameRate) * 1000,
+      },
+    });
+  }
+},
+
+// Called from content frame operations:
+updateContentFrameTiming: (layerId, frameId, startFrame, durationFrames) => {
+  const endFrame = startFrame + durationFrames;
+  get().ensureTimelineContains(endFrame - 1);
+  // ... update content frame timing
+},
+
+addKeyframe: (layerId, trackId, frame, value) => {
+  get().ensureTimelineContains(frame);
+  // ... add keyframe
+},
+```
+
+**Frame Duration Dialog:**
+
+Double-clicking a content frame in the timeline opens a dialog for precise duration editing:
+
+```typescript
+// New component: src/components/features/FrameDurationDialog.tsx
+
+interface FrameDurationDialogProps {
+  contentFrame: ContentFrame;
+  layerId: LayerId;
+  onClose: () => void;
+}
+
+function FrameDurationDialog({ contentFrame, layerId, onClose }: FrameDurationDialogProps) {
+  const { frameRate } = useTimelineStore((s) => s.config);
+  const updateContentFrameTiming = useTimelineStore((s) => s.updateContentFrameTiming);
+  
+  const [durationFrames, setDurationFrames] = useState(contentFrame.durationFrames);
+  const [durationSeconds, setDurationSeconds] = useState(contentFrame.durationFrames / frameRate);
+  
+  // Sync between frames and seconds
+  const handleFramesChange = (frames: number) => {
+    setDurationFrames(frames);
+    setDurationSeconds(frames / frameRate);
+  };
+  
+  const handleSecondsChange = (seconds: number) => {
+    setDurationSeconds(seconds);
+    setDurationFrames(Math.round(seconds * frameRate));
+  };
+  
+  const handleApply = () => {
+    updateContentFrameTiming(
+      layerId,
+      contentFrame.id,
+      contentFrame.startFrame,
+      durationFrames
+    );
+    onClose();
+  };
+  
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Frame Duration</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          {/* Frame count input */}
+          <div>
+            <label className="text-sm text-muted-foreground">Duration (frames)</label>
+            <Input
+              type="number"
+              min={1}
+              value={durationFrames}
+              onChange={(e) => handleFramesChange(parseInt(e.target.value) || 1)}
+            />
+            <span className="text-xs text-muted-foreground">at {frameRate} FPS</span>
+          </div>
+          
+          {/* Time input */}
+          <div>
+            <label className="text-sm text-muted-foreground">Duration (seconds)</label>
+            <Input
+              type="number"
+              min={0.001}
+              step={0.001}
+              value={durationSeconds.toFixed(3)}
+              onChange={(e) => handleSecondsChange(parseFloat(e.target.value) || 0.001)}
+            />
+          </div>
+          
+          {/* Extend/add frames buttons */}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => handleFramesChange(durationFrames + 1)}>
+              +1 Frame
+            </Button>
+            <Button variant="outline" onClick={() => handleFramesChange(durationFrames + frameRate)}>
+              +1 Second
+            </Button>
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleApply}>Apply</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Usage in ContentFrameBlock.tsx
+function ContentFrameBlock({ layerId, frame }) {
+  const [showDurationDialog, setShowDurationDialog] = useState(false);
+  
+  return (
+    <>
+      <div
+        onDoubleClick={() => setShowDurationDialog(true)}
+        // ... other props
+      >
+        {/* Content frame UI */}
+      </div>
+      
+      {showDurationDialog && (
+        <FrameDurationDialog
+          contentFrame={frame}
+          layerId={layerId}
+          onClose={() => setShowDurationDialog(false)}
+        />
+      )}
+    </>
+  );
+}
+```
+
+**Frame Rate Conversion:**
+
+When frame rate is changed on an active project, existing content is converted to maintain the same duration in seconds:
+
+```typescript
+setFrameRate: (newFps: number, maintainDuration: boolean = true) => {
+  const { config, layers } = get();
+  const oldFps = config.frameRate;
+  
+  if (newFps === oldFps) return;
+  
+  if (maintainDuration) {
+    // Calculate the conversion ratio
+    const ratio = newFps / oldFps;
+    
+    // Convert all content frame timings
+    const convertedLayers = layers.map((layer) => ({
+      ...layer,
+      contentFrames: layer.contentFrames.map((cf) => ({
+        ...cf,
+        startFrame: Math.round(cf.startFrame * ratio),
+        durationFrames: Math.max(1, Math.round(cf.durationFrames * ratio)),
+      })),
+      propertyTracks: layer.propertyTracks.map((track) => ({
+        ...track,
+        keyframes: track.keyframes.map((kf) => ({
+          ...kf,
+          frame: Math.round(kf.frame * ratio),
+        })),
+      })),
+    }));
+    
+    // Convert timeline duration
+    const newDurationFrames = Math.round(config.durationFrames * ratio);
+    
+    set({
+      config: {
+        frameRate: newFps,
+        durationFrames: newDurationFrames,
+        durationMs: (newDurationFrames / newFps) * 1000,
+      },
+      layers: convertedLayers,
+    });
+    
+    // Record for undo
+    recordHistoryAction({
+      type: 'FRAME_RATE_CHANGE',
+      oldFps,
+      newFps,
+      oldLayers: layers,
+      newLayers: convertedLayers,
+      oldDuration: config.durationFrames,
+      newDuration: newDurationFrames,
+    });
+  } else {
+    // Just change frame rate without converting (duration in seconds changes)
+    set({
+      config: {
+        ...config,
+        frameRate: newFps,
+        durationMs: (config.durationFrames / newFps) * 1000,
+      },
+    });
+  }
+},
+```
+
+**Example Conversion:**
+
+| Original (24 FPS) | After (12 FPS) | Duration |
+|-------------------|----------------|----------|
+| Frame 0-24 | Frame 0-12 | 1 second |
+| Frame 24-48 | Frame 12-24 | 1 second |
+| Keyframe at 12 | Keyframe at 6 | 0.5s in |
+
+### 1.5 New Project Default State
+
+**Purpose:** Define the starting state for new projects.
+
+```typescript
+// In projectStore.ts or timelineStore.ts
+
+function createNewProject(): void {
+  // Reset timeline to defaults
+  useTimelineStore.setState({
+    config: {
+      frameRate: 12,
+      durationFrames: 1,
+      durationMs: 1000 / 12,
+    },
+    layers: [createDefaultLayer()],
+    globalEffects: [],
+    view: {
+      activeView: 'layers',
+      currentFrame: 0,
+      isPlaying: false,
+      looping: true,
+      activeLayerId: 'layer-1' as LayerId,
+      selectedLayerIds: new Set(),
+      selectedKeyframeIds: new Set(),
+      zoom: 1,
+      scrollX: 0,
+      panelHeight: 200,
+      editingKeyframeId: null,
+    },
+  });
+  
+  // Reset canvas
+  useCanvasStore.getState().clearCells();
+}
+
+function createDefaultLayer(): Layer {
+  return {
+    id: 'layer-1' as LayerId,
+    name: 'Layer 1',
+    visible: true,
+    solo: false,
+    locked: false,
+    opacity: 100,
+    blendMode: 'normal',
+    contentFrames: [{
+      id: 'frame-1' as ContentFrameId,
+      name: 'Frame 1',
+      startFrame: 0,
+      durationFrames: 1,
+      data: new Map(),
+    }],
+    propertyTracks: [],
+  };
+}
+```
+
+### 1.6 Integrate Undo/Redo
 
 **Modify:** `src/stores/historyStore.ts`
 
@@ -862,13 +1542,115 @@ type HistoryAction =
   | { type: 'PROPERTY_TRACK_REMOVE'; layerId: LayerId; trackId: PropertyTrackId; trackData: PropertyTrack };
 ```
 
-### 1.5 Testing Checkpoint
+### 1.7 Undo/Redo Batching Strategy
+
+**Purpose:** Batch continuous editing operations to prevent history explosion while maintaining intuitive undo behavior.
+
+**Batching Rules:**
+
+| Operation Type | Batching Behavior |
+|----------------|-------------------|
+| Keyframe value drag | Batch to single undo when mouse released |
+| Keyframe frame drag | Batch to single undo when mouse released |
+| Easing curve handle drag | Batch to single undo when mouse released |
+| Content frame resize drag | Batch to single undo when mouse released |
+| Content frame move drag | Batch to single undo when mouse released |
+| Drawing operations | Batch per stroke (mousedown → mouseup) |
+| Property value slider | Batch to single undo when slider released |
+| Property value input | Record on blur or Enter |
+
+**Implementation Pattern:**
+
+```typescript
+// Pattern for drag-based operations
+interface DragSession {
+  startValue: any;
+  isActive: boolean;
+}
+
+let keyframeDragSession: DragSession | null = null;
+
+function onKeyframeDragStart(keyframeId: KeyframeId) {
+  const keyframe = getKeyframe(keyframeId);
+  keyframeDragSession = {
+    startValue: { ...keyframe },
+    isActive: true,
+  };
+}
+
+function onKeyframeDragMove(keyframeId: KeyframeId, newFrame: number, newValue: number) {
+  // Update in real-time for live preview (no history record yet)
+  updateKeyframeImmediate(keyframeId, { frame: newFrame, value: newValue });
+}
+
+function onKeyframeDragEnd(keyframeId: KeyframeId) {
+  if (!keyframeDragSession) return;
+  
+  const currentKeyframe = getKeyframe(keyframeId);
+  
+  // Only record history if value actually changed
+  if (!deepEqual(keyframeDragSession.startValue, currentKeyframe)) {
+    recordHistoryAction({
+      type: 'KEYFRAME_UPDATE',
+      keyframeId,
+      oldValue: keyframeDragSession.startValue,
+      newValue: currentKeyframe,
+    });
+  }
+  
+  keyframeDragSession = null;
+}
+```
+
+**Easing Curve Editor Batching:**
+
+```typescript
+// Easing curve edits batch to a single undo
+let easingDragSession: DragSession | null = null;
+
+function onEasingHandleDragStart(keyframeId: KeyframeId) {
+  const keyframe = getKeyframe(keyframeId);
+  easingDragSession = {
+    startValue: { ...keyframe.easing },
+    isActive: true,
+  };
+}
+
+function onEasingHandleDragMove(keyframeId: KeyframeId, newCurve: EasingCurve) {
+  // Live update without history
+  updateKeyframeEasingImmediate(keyframeId, newCurve);
+}
+
+function onEasingHandleDragEnd(keyframeId: KeyframeId) {
+  if (!easingDragSession) return;
+  
+  const currentEasing = getKeyframe(keyframeId).easing;
+  
+  if (!deepEqual(easingDragSession.startValue, currentEasing)) {
+    recordHistoryAction({
+      type: 'KEYFRAME_EASING_UPDATE',
+      keyframeId,
+      oldEasing: easingDragSession.startValue,
+      newEasing: currentEasing,
+    });
+  }
+  
+  easingDragSession = null;
+}
+```
+
+### 1.8 Testing Checkpoint
 
 - [ ] All new type files compile without errors
-- [ ] Timeline store creates with initial state
+- [ ] Timeline store creates with initial state (1 layer, 1 frame, 12 FPS)
+- [ ] New project creates default layer with correct structure
 - [ ] Basic layer add/remove works (no UI yet)
-- [ ] Undo/redo framework integrated
+- [ ] Undo/redo framework integrated with new action types
+- [ ] Undo batching works (keyframe drag = single undo)
 - [ ] Session migration function converts v1 to v2 format
+- [ ] Timeline auto-expands when content added past duration
+- [ ] Frame rate change converts content to maintain duration in seconds
+- [ ] ensureTimelineContains() works correctly
 
 ---
 
@@ -960,6 +1742,10 @@ interface CanvasState {
   // NEW: Active layer reference
   activeLayerId: LayerId | null;
   
+  // NEW: Track unsaved changes for sync coordination
+  isDirty: boolean;
+  setDirty: (dirty: boolean) => void;
+  
   // NEW: Sync canvas to/from active layer's content frame
   syncToContentFrame: () => void;
   syncFromContentFrame: () => void;
@@ -1028,7 +1814,7 @@ export function compositeLayersAtFrame(
       const scaledX = Math.round(localX * scale);
       const scaledY = Math.round(localY * scale);
       
-      // Apply rotation (in 90° increments for ASCII)
+      // Apply rotation (in 1° increments, with cell aspect ratio compensation)
       const { rotatedX, rotatedY } = applyRotation(scaledX, scaledY, rotation);
       
       // Apply position offset
@@ -1169,13 +1955,151 @@ interface ToolState {
 }
 ```
 
+**Drawing Tool Layer Interaction Rules:**
+
+| Tool State | Target Layers | Behavior |
+|------------|---------------|----------|
+| `applyToAllLayers: false` | Active layer only | Default - draw only on active layer |
+| `applyToAllLayers: true` | All visible, unlocked layers | Draw affects all eligible layers at once |
+
+**Layer Eligibility Rules:**
+- **Locked layers**: Never affected, even with "apply to all"
+- **Invisible layers**: Never affected
+- **Active layer indicator**: Always shows which layer receives solo drawing
+
+**Tool-Specific Behaviors:**
+
+```typescript
+// Drawing tools (pencil, brush, line, etc.)
+function handleDraw(position: Point, toolState: ToolState) {
+  if (toolState.applyToAllLayers) {
+    // Apply to all visible, unlocked layers
+    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
+    for (const layer of eligibleLayers) {
+      applyDrawToLayer(layer.id, position);
+    }
+  } else {
+    // Apply to active layer only (if not locked)
+    const activeLayer = getActiveLayer();
+    if (activeLayer && !activeLayer.locked) {
+      applyDrawToLayer(activeLayer.id, position);
+    }
+  }
+}
+
+// Eraser tool
+function handleErase(position: Point, toolState: ToolState) {
+  if (toolState.applyToAllLayers) {
+    // Erase from all visible, unlocked layers
+    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
+    for (const layer of eligibleLayers) {
+      eraseFromLayer(layer.id, position);
+    }
+  } else {
+    // Erase from active layer only
+    const activeLayer = getActiveLayer();
+    if (activeLayer && !activeLayer.locked) {
+      eraseFromLayer(activeLayer.id, position);
+    }
+  }
+}
+
+// Paint bucket / fill tool
+function handleFill(position: Point, toolState: ToolState) {
+  // Fill always operates on active layer only
+  // (filling all layers would be confusing behavior)
+  const activeLayer = getActiveLayer();
+  if (activeLayer && !activeLayer.locked) {
+    fillInLayer(activeLayer.id, position);
+  }
+}
+```
+
+**Groups and "Apply to All Layers":**
+- `applyToAllLayers` applies to **all visible, unlocked layers** regardless of group membership
+- Group visibility affects child layer eligibility (if group is hidden, children are not eligible)
+- Group lock affects child layer eligibility (if group is locked, children are not eligible)
+
 **Modify:** All drawing tool hooks to respect `applyToAllLayers`:
 
 - `src/hooks/useDrawingTool.ts`
 - `src/hooks/useCanvasDragAndDrop.ts`
 - `src/hooks/usePaintBucket.ts`
+- `src/hooks/useEraserTool.ts`
 
-### 2.8 Layer Groups
+### 2.8 Selection Tool Layer Targeting
+
+**Purpose:** Control whether selection operations affect only the active layer or all layers.
+
+**Add to:** `src/stores/toolStore.ts`
+
+```typescript
+interface ToolState {
+  // ... existing fields
+  
+  // Selection layer targeting
+  selectionApplyToAllLayers: boolean;  // false = current layer only
+}
+```
+
+**Selection Tool Options Panel:**
+
+```typescript
+// In ToolOptionsPanel.tsx when selection tool is active
+function SelectionToolOptions() {
+  const { selectionApplyToAllLayers, setSelectionApplyToAllLayers } = useToolStore();
+  
+  return (
+    <div className="flex items-center gap-2">
+      <Switch
+        checked={selectionApplyToAllLayers}
+        onCheckedChange={setSelectionApplyToAllLayers}
+      />
+      <label className="text-sm">
+        {selectionApplyToAllLayers ? 'All Layers' : 'Current Layer'}
+      </label>
+    </div>
+  );
+}
+```
+
+**Selection Behavior:**
+
+| Mode | Copy | Cut | Delete | Move | Transform |
+|------|------|-----|--------|------|-----------|
+| Current Layer | Active layer only | Active layer only | Active layer only | Active layer only | Active layer only |
+| All Layers | All visible, unlocked | All visible, unlocked | All visible, unlocked | All visible, unlocked | All visible, unlocked |
+
+```typescript
+// Selection operations
+function handleSelectionAction(action: 'copy' | 'cut' | 'delete' | 'move' | 'transform', selection: Selection) {
+  const { selectionApplyToAllLayers } = useToolStore.getState();
+  
+  if (selectionApplyToAllLayers) {
+    // Apply to all visible, unlocked layers
+    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
+    for (const layer of eligibleLayers) {
+      performSelectionAction(action, layer.id, selection);
+    }
+  } else {
+    // Apply to active layer only
+    const activeLayer = getActiveLayer();
+    if (activeLayer && !activeLayer.locked) {
+      performSelectionAction(action, activeLayer.id, selection);
+    }
+  }
+}
+
+// Paste always creates content on active layer
+function handlePaste(clipboardData: ClipboardData) {
+  const activeLayer = getActiveLayer();
+  if (activeLayer && !activeLayer.locked) {
+    pasteToLayer(activeLayer.id, clipboardData);
+  }
+}
+```
+
+### 2.9 Layer Groups
 
 **Purpose:** Allow grouping layers for organizational and transform purposes. Groups have their own transform properties that apply to all child layers.
 
@@ -1338,7 +2262,7 @@ export function GroupListItem({ group }) {
 }
 ```
 
-### 2.9 Merge Layers
+### 2.10 Merge Layers
 
 **Purpose:** Combine multiple layers into one, flattening their content.
 
@@ -1442,20 +2366,30 @@ mergeVisible: () => {
 </DropdownMenuItem>
 ```
 
-### 2.10 Testing Checkpoint
+### 2.11 Testing Checkpoint
 
 - [ ] Can add layers (up to 5 on free tier)
 - [ ] Can rename, reorder, show/hide, solo, lock layers
 - [ ] Active layer indicator shows in header
 - [ ] Drawing tools target active layer
+- [ ] "Apply to all layers" drawing mode affects all visible, unlocked layers
+- [ ] Locked layers are never affected by drawing operations
+- [ ] Invisible layers are never affected by drawing operations
+- [ ] Eraser with "apply to all layers" works on all visible, unlocked layers
+- [ ] Selection tool has layer mode toggle in options panel
+- [ ] Selection "all layers" mode affects all visible, unlocked layers
 - [ ] Layer compositing renders correctly
+- [ ] Content frame gaps show blank canvas
+- [ ] Drawing at a content frame gap creates new 1-frame content frame
 - [ ] Undo/redo works for all layer operations
 - [ ] Solo mode isolates layer rendering
 - [ ] Hidden layers excluded from render
 - [ ] Can create layer groups
 - [ ] Can add/remove layers from groups
 - [ ] Groups can be collapsed in timeline
-- [ ] Group transforms apply to all child layers
+- [ ] Group transforms apply to all child layers (group first, then layer)
+- [ ] Group visibility affects child layer visibility
+- [ ] Group lock affects child layer editability
 - [ ] Merge Down combines two layers correctly
 - [ ] Merge Visible combines all visible layers
 
@@ -2460,6 +3394,331 @@ function PropertyRow({ label, value, onChange, isKeyframed, hasKeyframe, onToggl
 - [ ] Keyframe icons appear in side panels for tracked properties
 - [ ] Clicking keyframe icon adds property track to timeline
 - [ ] Editing value in side panel creates/updates keyframe at current frame
+- [ ] Layer playback maintains 60fps with pre-computed frames
+- [ ] Onion skinning "current layer" mode shows only active layer ghosts
+- [ ] Onion skinning "all layers" mode shows composited ghosts
+
+### 4.8 Layer Playback Store Architecture (Performance Optimization)
+
+**Purpose:** Achieve high-performance playback with multi-layer compositing by pre-computing frames and using a dedicated non-React store, mirroring the existing `playbackOnlyStore` pattern.
+
+**Analysis of Current Pattern:**
+
+The existing `playbackOnlyStore` (see `src/stores/playbackOnlyStore.ts`) uses:
+1. Non-Zustand store with manual subscriber management
+2. Frame snapshot taken at playback start
+3. `requestAnimationFrame` loop in `useOptimizedPlayback`
+4. Direct canvas rendering via `renderFrameDirectly`
+5. No React state updates during playback
+
+**New Pattern for Layers:**
+
+```typescript
+// src/stores/layerPlaybackStore.ts - NEW FILE
+
+interface LayerPlaybackState {
+  isActive: boolean;
+  currentFrame: number;
+  
+  // Pre-composited frames (computed once at playback start)
+  compositedFrames: Map<string, Cell>[];  // One per timeline frame
+  
+  // Performance metrics
+  startTime: number;
+  lastFrameTime: number;
+}
+
+let playbackState: LayerPlaybackState = {
+  isActive: false,
+  currentFrame: 0,
+  compositedFrames: [],
+  startTime: 0,
+  lastFrameTime: 0,
+};
+
+const subscribers = new Set<() => void>();
+
+export const layerPlaybackStore = {
+  /**
+   * Start layer playback.
+   * Pre-computes all composited frames for smooth playback.
+   */
+  start: (
+    layers: Layer[],
+    durationFrames: number,
+    canvasWidth: number,
+    canvasHeight: number,
+    initialFrame: number = 0
+  ) => {
+    // Pre-compute all composited frames
+    const compositedFrames: Map<string, Cell>[] = [];
+    
+    for (let f = 0; f < durationFrames; f++) {
+      compositedFrames.push(
+        compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight)
+      );
+    }
+    
+    playbackState = {
+      isActive: true,
+      currentFrame: initialFrame,
+      compositedFrames,
+      startTime: performance.now(),
+      lastFrameTime: performance.now(),
+    };
+    
+    emit();
+  },
+  
+  /**
+   * Get composited cells for current frame (direct render).
+   */
+  getCurrentFrameCells: (): Map<string, Cell> | null => {
+    if (!playbackState.isActive) return null;
+    return playbackState.compositedFrames[playbackState.currentFrame] ?? null;
+  },
+  
+  goToFrame: (frame: number) => {
+    if (frame < 0 || frame >= playbackState.compositedFrames.length) return;
+    playbackState = { ...playbackState, currentFrame: frame, lastFrameTime: performance.now() };
+    emit();
+  },
+  
+  stop: () => {
+    playbackState = { ...playbackState, isActive: false };
+    emit();
+  },
+  
+  isActive: () => playbackState.isActive,
+  getState: () => ({ ...playbackState }),
+  
+  subscribe: (listener: () => void) => {
+    subscribers.add(listener);
+    return () => subscribers.delete(listener);
+  },
+  
+  getSnapshot: () => playbackState,
+};
+
+function emit() {
+  subscribers.forEach(l => { try { l(); } catch {} });
+}
+```
+
+**Updated Optimized Playback Hook:**
+
+```typescript
+// Modify src/hooks/useOptimizedPlayback.ts
+
+export const useOptimizedLayerPlayback = () => {
+  const animationRef = useRef<number | undefined>(undefined);
+  const renderSettingsRef = useRef<DirectRenderSettings | null>(null);
+  
+  const { layers, config, view } = useTimelineStore.getState();
+  const { canvasRef } = useCanvasContext();
+  
+  const startOptimizedPlayback = useCallback(() => {
+    const { width, height } = useCanvasStore.getState();
+    const { currentFrame } = useTimelineStore.getState().view;
+    
+    // Pre-compute all composited frames
+    layerPlaybackStore.start(
+      layers,
+      config.durationFrames,
+      width,
+      height,
+      currentFrame
+    );
+    
+    // Initialize render settings
+    renderSettingsRef.current = initializeRenderSettings();
+    
+    // Set playback mode
+    useToolStore.getState().setPlaybackMode(true);
+    
+    // Render initial frame
+    const cells = layerPlaybackStore.getCurrentFrameCells();
+    if (cells) {
+      renderCellsDirectly(cells, canvasRef, renderSettingsRef.current);
+    }
+    
+    // Start playback loop
+    let currentIndex = currentFrame;
+    let lastFrameTime = performance.now();
+    const msPerFrame = 1000 / config.frameRate;
+    
+    const playbackLoop = (timestamp: number) => {
+      if (!layerPlaybackStore.isActive()) return;
+      
+      const elapsed = timestamp - lastFrameTime;
+      
+      if (elapsed >= msPerFrame) {
+        const { looping } = useTimelineStore.getState().view;
+        const atLastFrame = currentIndex >= config.durationFrames - 1;
+        
+        if (atLastFrame) {
+          if (looping) {
+            currentIndex = 0;
+          } else {
+            stopOptimizedPlayback();
+            return;
+          }
+        } else {
+          currentIndex += 1;
+        }
+        
+        layerPlaybackStore.goToFrame(currentIndex);
+        
+        const cells = layerPlaybackStore.getCurrentFrameCells();
+        if (cells) {
+          renderCellsDirectly(cells, canvasRef, renderSettingsRef.current!);
+        }
+        
+        lastFrameTime = timestamp;
+      }
+      
+      animationRef.current = requestAnimationFrame(playbackLoop);
+    };
+    
+    animationRef.current = requestAnimationFrame(playbackLoop);
+  }, [layers, config, canvasRef]);
+  
+  // ... stopOptimizedPlayback, toggleOptimizedPlayback similar to existing
+};
+```
+
+**Performance Optimizations:**
+
+1. **Frame Pre-computation**: All layers composited once at playback start
+2. **Memory Trade-off**: Uses more memory (one composited Map per frame) but zero per-frame computation
+3. **Large Animation Handling**: For animations > 1000 frames, compute on-demand with LRU cache
+4. **Keyframe Change Detection**: If user edits during paused playback, invalidate cache
+
+### 4.9 Onion Skinning Layer Support
+
+**Purpose:** Extend existing onion skinning to work with the layer system, with a toggle for "current layer only" vs "all layers".
+
+**Modify:** `src/stores/toolStore.ts`
+
+```typescript
+interface ToolState {
+  // ... existing onion skinning fields
+  onionSkinEnabled: boolean;
+  onionSkinFramesBefore: number;
+  onionSkinFramesAfter: number;
+  onionSkinOpacity: number;
+  
+  // NEW: Layer mode for onion skinning
+  onionSkinLayerMode: 'current' | 'all';
+}
+```
+
+**Onion Skinning Options UI:**
+
+```typescript
+// In onion skinning settings panel
+function OnionSkinSettings() {
+  const { 
+    onionSkinEnabled, 
+    onionSkinLayerMode, 
+    setOnionSkinLayerMode 
+  } = useToolStore();
+  
+  return (
+    <div className="space-y-2">
+      {/* Existing onion skin controls */}
+      
+      {/* NEW: Layer mode toggle */}
+      <div className="flex items-center gap-2">
+        <label className="text-sm">Show:</label>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              {onionSkinLayerMode === 'current' ? 'Current Layer' : 'All Layers'}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={() => setOnionSkinLayerMode('current')}>
+              Current Layer
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setOnionSkinLayerMode('all')}>
+              All Layers
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+```
+
+**Onion Skin Rendering:**
+
+```typescript
+// Modify onion skinning renderer
+function renderOnionSkins(
+  currentFrame: number,
+  framesBefore: number,
+  framesAfter: number,
+  opacity: number,
+  layerMode: 'current' | 'all'
+) {
+  const { layers, view } = useTimelineStore.getState();
+  const { width, height } = useCanvasStore.getState();
+  
+  const onionFrames: { frame: number; cells: Map<string, Cell>; tint: 'before' | 'after' }[] = [];
+  
+  // Collect frames before
+  for (let f = currentFrame - framesBefore; f < currentFrame; f++) {
+    if (f < 0) continue;
+    
+    let cells: Map<string, Cell>;
+    if (layerMode === 'current') {
+      // Current layer only
+      const activeLayer = layers.find(l => l.id === view.activeLayerId);
+      if (activeLayer) {
+        cells = getLayerCellsAtFrame(activeLayer, f, width, height);
+      } else {
+        continue;
+      }
+    } else {
+      // All layers composited
+      cells = compositeLayersAtFrame(layers, f, width, height);
+    }
+    
+    onionFrames.push({ frame: f, cells, tint: 'before' });
+  }
+  
+  // Collect frames after
+  for (let f = currentFrame + 1; f <= currentFrame + framesAfter; f++) {
+    const durationFrames = useTimelineStore.getState().config.durationFrames;
+    if (f >= durationFrames) continue;
+    
+    let cells: Map<string, Cell>;
+    if (layerMode === 'current') {
+      const activeLayer = layers.find(l => l.id === view.activeLayerId);
+      if (activeLayer) {
+        cells = getLayerCellsAtFrame(activeLayer, f, width, height);
+      } else {
+        continue;
+      }
+    } else {
+      cells = compositeLayersAtFrame(layers, f, width, height);
+    }
+    
+    onionFrames.push({ frame: f, cells, tint: 'after' });
+  }
+  
+  // Render with opacity and tint
+  for (const { frame, cells, tint } of onionFrames) {
+    const distance = Math.abs(frame - currentFrame);
+    const frameOpacity = opacity * (1 - distance / (framesBefore + framesAfter + 1));
+    const tintColor = tint === 'before' ? '#ff6b6b' : '#4ecdc4';  // Red for before, cyan for after
+    
+    renderCellsWithTint(cells, frameOpacity, tintColor);
+  }
+}
+```
 
 ---
 
@@ -2620,6 +3879,9 @@ export function exportSession(): SessionDataV2 {
     
     layers: serializeLayers(timelineState.layers),
     
+    // NEW: Layer groups
+    layerGroups: serializeLayerGroups(timelineState.layerGroups ?? []),
+    
     globalEffects: serializeEffects(timelineState.globalEffects),
     
     // Preserved fields
@@ -2641,6 +3903,7 @@ function serializeLayers(layers: Layer[]): SessionLayerV2[] {
     solo: layer.solo,
     locked: layer.locked,
     opacity: layer.opacity,
+    parentGroupId: layer.parentGroupId,  // Include group reference
     contentFrames: layer.contentFrames.map((cf) => ({
       id: cf.id,
       name: cf.name,
@@ -2654,6 +3917,60 @@ function serializeLayers(layers: Layer[]): SessionLayerV2[] {
       loopKeyframes: track.loopKeyframes,
       keyframes: track.keyframes.map((kf) => ({
         id: kf.id,
+        frame: kf.frame,
+        value: kf.value,
+        easing: kf.easing,
+      })),
+    })),
+  }));
+}
+
+/**
+ * Serialize layer groups for session files.
+ */
+function serializeLayerGroups(groups: LayerGroup[]): SessionLayerGroupV2[] {
+  return groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    childLayerIds: group.childLayerIds,
+    visible: group.visible,
+    solo: group.solo,
+    locked: group.locked,
+    collapsed: group.collapsed,
+    propertyTracks: group.propertyTracks.map((track) => ({
+      id: track.id,
+      propertyPath: track.propertyPath,
+      loopKeyframes: track.loopKeyframes,
+      keyframes: track.keyframes.map((kf) => ({
+        id: kf.id,
+        frame: kf.frame,
+        value: kf.value,
+        easing: kf.easing,
+      })),
+    })),
+  }));
+}
+
+/**
+ * Deserialize layer groups from session files.
+ */
+function deserializeLayerGroups(groups: SessionLayerGroupV2[] | undefined): LayerGroup[] {
+  if (!groups) return [];
+  
+  return groups.map((group) => ({
+    id: group.id as LayerGroupId,
+    name: group.name,
+    childLayerIds: group.childLayerIds.map((id) => id as LayerId),
+    visible: group.visible,
+    solo: group.solo,
+    locked: group.locked,
+    collapsed: group.collapsed,
+    propertyTracks: group.propertyTracks.map((track) => ({
+      id: track.id as PropertyTrackId,
+      propertyPath: track.propertyPath as PropertyPath,
+      loopKeyframes: track.loopKeyframes,
+      keyframes: track.keyframes.map((kf) => ({
+        id: kf.id as KeyframeId,
         frame: kf.frame,
         value: kf.value,
         easing: kf.easing,
@@ -2707,13 +4024,19 @@ function loadSessionIntoStores(session: SessionDataV2): void {
   useCanvasStore.getState().setShowGrid(session.canvas.showGrid);
   
   // Load timeline configuration
-  useTimelineStore.getState().setFrameRate(session.timeline.frameRate);
+  useTimelineStore.getState().setFrameRate(session.timeline.frameRate, false);  // Don't convert, just set
   useTimelineStore.getState().setDuration(session.timeline.durationFrames);
   useTimelineStore.getState().setLooping(session.timeline.looping);
   
   // Load layers
   const layers = deserializeLayers(session.layers);
   useTimelineStore.setState({ layers });
+  
+  // Load layer groups
+  if (session.layerGroups) {
+    const groups = deserializeLayerGroups(session.layerGroups);
+    useTimelineStore.setState({ layerGroups: groups });
+  }
   
   // Load global effects
   if (session.globalEffects) {
@@ -3065,6 +4388,8 @@ interface GeneratorApplyAction {
 
 ### 6.4 Effect Scope Toggle
 
+**Purpose:** Allow users to switch effects between layer-scoped and global-scoped.
+
 Add toggle to all effect UIs:
 
 ```typescript
@@ -3263,7 +4588,7 @@ Content frames can be:
 Each layer has keyframeable transform properties:
 - Position X/Y (in cells)
 - Scale (1.0 = 100%)
-- Rotation (in 90° increments)
+- Rotation (in 1° increments, with cell aspect ratio compensation)
 - Opacity (0-100%)
 - Anchor Point X/Y (rotation/scale center)
 
@@ -3364,6 +4689,10 @@ Keyframes support cubic bezier easing:
 | `src/hooks/useKeyframeableProperty.ts` | 4 | NEW | Side panel hook |
 | `src/components/features/AnchorPointOverlay.tsx` | 4 | NEW | Anchor + motion path overlay |
 | `src/components/features/CanvasOverlay.tsx` | 4 | MODIFY | Add anchor overlay |
+| `src/stores/layerPlaybackStore.ts` | 4 | NEW | Non-React playback store for layers |
+| `src/hooks/useOptimizedLayerPlayback.ts` | 4 | NEW | Layer-aware playback loop |
+| `src/components/features/FrameDurationDialog.tsx` | 3 | NEW | Precise duration editing dialog |
+| `src/components/features/FrameViewPanel.tsx` | 3 | NEW | Flattened frame view |
 | `src/components/features/GroupListItem.tsx` | 2 | NEW | Group UI in timeline |
 | `src/utils/transformComposition.ts` | 2 | NEW | Group + layer transform composition |
 | `src/utils/exportDataCollector.ts` | 5 | MODIFY | Layer data collection |
@@ -3397,24 +4726,123 @@ Keyframes support cubic bezier easing:
 
 ### Unit Tests
 
-- Keyframe interpolation with all easing types
-- Layer compositing with visibility/solo/lock
-- Session migration v1→v2
+**Keyframe & Interpolation:**
+- Keyframe interpolation with all easing types (linear, hold, ease-in, ease-out, ease-in-out, ease-out-back, ease-in-back, bounce)
+- Custom bezier curve interpolation
+- Loop keyframes wrapping behavior
 - Property value calculation at any frame
+- Keyframe interpolation edge cases (single keyframe, no keyframes, keyframe at frame 0)
+
+**Layer Compositing:**
+- Layer compositing with visibility/solo/lock combinations
+- Content frame gap handling (should show blank)
+- Layer order affects cell priority (top wins)
+- Empty cell does not overwrite non-empty cell
+- Transform application (position, scale, rotation with aspect ratio)
+- Rotation at 1° increments with cell aspect ratio compensation
+- Cells rotated off-canvas are preserved, not deleted
+
+**Session Format:**
+- Session migration v1→v2 produces valid v2 structure
+- v1 frames convert to content frames with correct timing
+- v1 frameRate preserved in migration
+- v2 round-trip (serialize → deserialize) preserves all data
+- Layer groups serialize and deserialize correctly
+
+**State Synchronization:**
+- Canvas → Timeline sync on debounce
+- Timeline → Canvas sync on layer switch
+- Timeline → Canvas sync on frame navigation
+- Drawing at content frame gap creates new content frame
 
 ### Integration Tests
 
-- Full save/load cycle with layers
-- Export all formats with multi-layer projects
-- Cloud storage with compression
-- MCP tool round-trips
+**Save/Load Cycle:**
+- Full save/load cycle with layers preserves all data
+- Full save/load cycle with layer groups preserves structure
+- Load v1.0.0 project, make changes, save as v2.0.0
+- Cloud storage with compression handles layer data
+
+**Export Formats:**
+- Export PNG with multi-layer project
+- Export GIF with multi-layer project
+- Export video (MP4/WebM) with multi-layer project
+- Export HTML with layer animation
+- Export JSON with full layer data
+- All 10+ export formats work with layer data
+
+**MCP Integration:**
+- MCP add_layer round-trip
+- MCP add_keyframe round-trip
+- MCP get_layers returns accurate data
+- MCP protocol version is 2.0.0
+
+**Cross-Cutting Concerns:**
+- Undo/redo for all layer operations
+- Undo/redo batching (keyframe drag = single undo)
+- History limit doesn't corrupt layer state
+- Frame rate conversion maintains duration in seconds
+
+### Edge Case Tests
+
+**Content Frame Edge Cases:**
+- Content frame at frame 0 with 0 duration (should be 1 minimum)
+- Overlapping content frames (should not happen, validate on input)
+- Content frame extends past timeline (auto-expand timeline)
+- Double-click content frame opens duration dialog
+- Duration dialog allows fractional seconds
+
+**Keyframe Edge Cases:**
+- Keyframe at frame 0
+- Multiple keyframes at same frame (should not happen, last wins)
+- Keyframe moved past timeline end (auto-expand timeline)
+- Delete all keyframes from track (track remains, shows default value)
+
+**Layer Edge Cases:**
+- Delete active layer (select next layer or none)
+- Delete all layers (should maintain at least one? or allow empty?)
+- Layer limit at exactly 5 (can add 5th, cannot add 6th)
+- Solo multiple layers simultaneously
+- Lock layer prevents all edits (draw, keyframe add, rename)
+
+**Frame Rate Conversion Edge Cases:**
+- Convert 24fps → 12fps (halves frame counts, rounds)
+- Convert 12fps → 30fps (2.5x, rounds to nearest)
+- Keyframes at odd frames after conversion
+- Content frame duration minimum of 1 after conversion
+
+**Playback Edge Cases:**
+- Playback with no layers
+- Playback with all layers hidden
+- Playback with only locked layers
+- Playback performance with maximum layers (5 on free, unlimited on Pro)
+
+### Performance Benchmark Tests
+
+**Layer Compositing Performance:**
+- 5 layers, 100 frames: < 100ms total composite time at playback start
+- 5 layers, 1000 frames: < 1s total composite time
+- Single frame composite: < 5ms for 5 layers on 80x24 canvas
+- Single frame composite: < 20ms for 5 layers on 200x100 canvas
+
+**Playback Performance:**
+- Maintain 60fps with 5 layers (pre-composited)
+- Maintain 30fps with 10 layers (Pro tier stress test)
+- Playback start delay: < 200ms for 5 layers, 100 frames
+
+**Timeline UI Performance:**
+- Scroll/zoom timeline with 100 keyframes: < 16ms per frame
+- Drag content frame: no visible lag
+- Drag keyframe: no visible lag
 
 ### Manual Testing Checklist
 
 #### Phase 1
-- [ ] Create project, verify timeline store initializes
+- [ ] Create new project, verify 1 default layer at 12 FPS
+- [ ] Verify timeline starts with 1 frame duration
 - [ ] Add/remove layers via console
 - [ ] Verify undo/redo for layer operations
+- [ ] Verify timeline auto-expands when content added
 
 #### Phase 2
 - [ ] Add 5 layers (free tier limit)
@@ -3424,6 +4852,13 @@ Keyframes support cubic bezier easing:
 - [ ] Reorder layers
 - [ ] Draw on different layers
 - [ ] Verify compositing renders correctly
+- [ ] Test "apply to all layers" drawing mode
+- [ ] Test selection tool layer modes
+- [ ] Create layer group
+- [ ] Add/remove layers from groups
+- [ ] Verify group transforms apply to children
+- [ ] Test Merge Down command
+- [ ] Test Merge Visible command
 
 #### Phase 3
 - [ ] Resize bottom panel via drag
@@ -3431,27 +4866,34 @@ Keyframes support cubic bezier easing:
 - [ ] Expand/collapse layers
 - [ ] Add properties via menu
 - [ ] Drag content frame edges to resize
+- [ ] Double-click content frame, verify duration dialog
 - [ ] Drag keyframe diamonds
 - [ ] Edit keyframe in side panel
 - [ ] Use easing presets
 - [ ] Create custom easing curve
+- [ ] Verify Frame View shows flattened frames
 
 #### Phase 4
 - [ ] Keyframe position animation plays correctly
 - [ ] Keyframe scale snaps to whole cells
-- [ ] Keyframe rotation snaps to 90°
+- [ ] Keyframe rotation works at 1° increments
 - [ ] Anchor point overlay shows when editing
+- [ ] Motion path dots show position at each frame
 - [ ] Live preview updates on value change
 - [ ] Loop keyframes repeat correctly
+- [ ] Playback maintains 60fps with layers
+- [ ] Onion skinning "current layer" mode works
+- [ ] Onion skinning "all layers" mode works
 
 #### Phase 5
 - [ ] Save project, verify v2.0.0 format
 - [ ] Load old v1.0.0 project, verify migration
-- [ ] Load v2.0.0 project
+- [ ] Load v2.0.0 project with groups
 - [ ] Export PNG with layers
 - [ ] Export video with layers
 - [ ] Cloud save with layers
 - [ ] Community preview shows composited frame
+- [ ] Change frame rate, verify duration maintained
 
 #### Phase 6
 - [ ] Add effect to layer
@@ -3531,6 +4973,15 @@ function getLayerCells(layer: Layer, frame: number): Map<string, Cell> {
 
 ### API Compatibility
 
+**animationStore Deprecation:**
+
+The existing `animationStore` will be **deprecated and eventually removed**. During the transition period:
+1. `timelineStore` becomes the new canonical source of truth
+2. `animationStore` is kept as a compatibility shim that reads from `timelineStore`
+3. All new code must use `timelineStore` directly
+4. A deprecation warning will be logged when accessing `animationStore` methods
+5. Full removal targeted for v2.1.0 after migration period
+
 | Old API | New API | Migration |
 |---------|---------|-----------|
 | `animationStore.frames` | `timelineStore.layers[].contentFrames` | Access via compositing |
@@ -3563,7 +5014,12 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
    - **Decision**: No blend modes. Always "top wins" layering based on z-order in the timeline layer list.
    - **Rationale**: ASCII characters cannot blend - only one character can occupy a cell.
 
-2. **Layer Groups**: 
+3. **Minimum Layer Count**:
+   - **Decision**: A project must always have at least one layer.
+   - **Behavior**: When deleting the last remaining layer, automatically create a new empty layer.
+   - **Rationale**: Canvas always needs an active layer to receive drawing input. This matches behavior in Photoshop, After Effects, etc.
+
+3. **Layer Groups**: 
    - **Decision**: Support one level of layer grouping.
    - Groups have their own transform properties (applied before child layer transforms)
    - Effects applied to a group are applied to each layer individually (no flattening)
@@ -3633,3 +5089,5 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2026-02-01 | Copilot | Initial plan |
+| 1.1.0 | 2026-02-02 | Copilot | Added: State synchronization architecture, Frame View specification, content frame gap behavior (blank), drawing/selection tool layer interaction rules, undo/redo batching strategy, layer playback store architecture, onion skinning layer toggle, timeline auto-expand behavior, frame duration dialog, frame rate conversion, new project default state (1 layer, 1 frame, 12 FPS), layer group serialization, comprehensive unit/integration/edge case/performance tests. Fixed: rotation from 90° to 1° throughout. |
+| 1.2.0 | 2026-02-02 | Copilot | Fixed: Removed duplicate section 2.8 (Selection Tool Layer Targeting). Fixed Phase 4 section numbering (4.10→4.7). Added `parentGroupId` to `SessionLayerV2` interface. Added `layerGroups` to timeline store initial state. Added layer group management actions to store interface. Added `isDirty` to canvas store interface. Added `animationStore` deprecation plan. Added minimum layer count decision (always ≥1 layer). Clarified 12 FPS default for NEW projects only. Added purpose text to Effect Scope Toggle (6.4). |
