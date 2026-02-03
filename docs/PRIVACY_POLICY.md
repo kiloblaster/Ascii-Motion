@@ -5,7 +5,7 @@
 
 ## 1. Introduction
 
-Welcome to ASCII Motion ("we", "us", or "our"). We are committed to protecting your privacy and handling your personal data transparently and securely. This Privacy Policy explains how we collect, use, store, and protect your information when you use our Service at https://ascii-motion.vercel.app.
+Welcome to ASCII Motion ("we", "us", or "our"). We are committed to protecting your privacy and handling your personal data transparently and securely. This Privacy Policy explains how we collect, use, store, and protect your information when you use our Service at https://ascii-motion.app.
 
 **By using ASCII Motion, you agree to the collection and use of information in accordance with this Privacy Policy.**
 
