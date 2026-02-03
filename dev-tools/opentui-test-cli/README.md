@@ -79,5 +79,5 @@ Edit these dictionaries in your exported component to customize colors for each 
 
 ## Links
 
-- [OpenTUI Documentation](https://opentui.dev)
-- [ASCII Motion](https://ascii.motion.app)
+- [OpenTUI Documentation](https://opentui.com)
+- [ASCII Motion](https://ascii-motion.app)

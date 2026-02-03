@@ -335,7 +335,7 @@ export const OpenTuiExportDialog: React.FC = () => {
 
                 <p className="text-xs text-muted-foreground">
                   OpenTUI requires <a href="https://bun.sh" target="_blank" rel="noopener noreferrer" className="underline">Bun</a> and React 19+.
-                  Visit <a href="https://opentui.dev" target="_blank" rel="noopener noreferrer" className="underline">OpenTUI documentation</a> for more details.
+                  Visit <a href="https://opentui.com" target="_blank" rel="noopener noreferrer" className="underline">OpenTUI documentation</a> for more details.
                 </p>
               </CardContent>
             </Card>
