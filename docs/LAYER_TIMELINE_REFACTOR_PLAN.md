@@ -5182,6 +5182,82 @@ mergeDown: (layerId: LayerId) => {
 
 ## Testing Strategy
 
+### Vitest Infrastructure
+
+**Configuration:** `vitest.config.ts` at project root.
+
+| Setting | Value | Rationale |
+|---------|-------|-----------|
+| Environment | `jsdom` | React hooks require DOM APIs |
+| Globals | `true` | `describe`/`it`/`expect` available without import |
+| Test pattern | `src/**/*.test.{ts,tsx}` | Co-located or `__tests__/` both supported |
+| Coverage provider | `v8` | Fast native coverage |
+| Coverage targets | `src/types/timeline.ts`, `src/types/easing.ts`, `src/utils/sessionMigration.ts`, `src/stores/timelineStore.ts`, `src/hooks/useTimelineHistory.ts` | Expand per phase |
+| Path aliases | `@` → `./src`, `@ascii-motion/core`, `@ascii-motion/premium` | Mirrors `vite.config.ts` |
+
+**Scripts (`package.json`):**
+- `npm test` — watch mode (development)
+- `npm run test:run` — single run (CI / pre-commit)
+- `npm run test:coverage` — single run with v8 coverage report
+
+**Dependencies (devDependencies):**
+- `vitest` — test runner
+- `jsdom` — DOM environment
+- `@testing-library/react` — `renderHook`, `act` for hook tests
+- `@testing-library/jest-dom` — extended matchers (`toBeInTheDocument`, etc.)
+
+### Test Patterns by Module Type
+
+**1. Zustand Store Tests** (e.g., `timelineStore.test.ts`)
+- Import the store directly: `import { useTimelineStore } from '../stores/timelineStore'`
+- Call `createNewProject()` in `beforeEach` to reset state
+- Read state with `useTimelineStore.getState()`
+- Call actions directly: `useTimelineStore.getState().addLayer('Test')`
+- Assert state changes: `expect(useTimelineStore.getState().layers).toHaveLength(2)`
+- No React rendering needed — Zustand stores work outside React
+
+**2. Hook Tests** (e.g., `useTimelineHistory.test.ts`)
+- Use `renderHook` from `@testing-library/react`
+- Mock dependencies with `vi.mock()`:
+  ```ts
+  vi.mock('../stores/toolStore', () => ({
+    useToolStore: { getState: () => ({ pushToHistory: mockPushToHistory }) }
+  }));
+  ```
+- Call hook methods inside `act()`:
+  ```ts
+  const { result } = renderHook(() => useTimelineHistory());
+  act(() => result.current.addLayer('Test'));
+  ```
+- Assert both side effects (store state) and history recording (mock calls)
+
+**3. Pure Function Tests** (e.g., `easing.test.ts`, `sessionMigration.test.ts`)
+- Import functions directly, no mocking needed
+- Test boundary conditions: 0, 1, negative values, empty inputs
+- Test mathematical properties: monotonicity, continuity, expected values
+- Test error recovery: malformed input, missing fields, null values
+
+### Test Naming Conventions
+
+- Files: `<module>.test.ts` or `<module>.test.tsx` (for component tests)
+- Location: `src/__tests__/` for unit tests, or co-located next to source files
+- Describe blocks: match module/feature name
+- Test names: action-oriented, describe expected behavior:
+  - ✅ `'addLayer inserts above active layer'`
+  - ✅ `'removeLayer enforces minimum 1 layer'`
+  - ❌ `'test addLayer'` (too vague)
+
+### Per-Phase Testing Checklist Template
+
+Each phase testing checkpoint (§X.Y) should include:
+
+1. **Store tests** — All new store actions have test coverage
+2. **Pure function tests** — All utility functions tested with boundary cases
+3. **Hook tests** — All wrapped operations verify history recording
+4. **Integration tests** — Cross-module interactions verified (when applicable)
+5. **Run full suite** — `npm run test:run` with 0 failures
+6. **Coverage check** — `npm run test:coverage` for new files (target: >80% line coverage)
+
 ### Unit Tests
 
 **Keyframe & Interpolation:**
@@ -5742,9 +5818,9 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 
 ## Implementation Progress
 
-> **Last updated:** 2026-02-05
+> **Last updated:** 2026-02-06
 > **Current branch:** `phase-1/foundation` (off `timeline-refactor` off `main`)
-> **Commit status:** Uncommitted — pending review before first commit.
+> **Commit status:** Phase 1 foundation code committed. Testing checkpoint + vitest infrastructure uncommitted — pending review.
 
 ### Phase 1: Timeline Foundation
 
@@ -5758,7 +5834,7 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | §1.6a Timeline history hook | `src/hooks/useTimelineHistory.ts` | ✅ DONE | Follows `useAnimationHistory.ts` pattern — wraps all timeline mutations with `pushToHistory()` from `toolStore`. All layer, content frame, keyframe, property track, and frame rate operations wrapped. |
 | §1.6b Compatibility adapter | `src/stores/animationStoreAdapter.ts` | ✅ DONE | Provides legacy `useAnimationStore` API backed by `timelineStore`. Syncs via `useTimelineStore.subscribe()`. Handles frame CRUD, batch ops, bulk import, selection, playback delegation, navigation. Marked with `__isAdapter: true`. |
 | §1.7 Undo batching | — | ⬜ NOT STARTED | DragSession pattern defined in plan; will implement when UI drag operations are built (Phase 3) |
-| §1.8 Testing checkpoint | — | ⬜ NOT STARTED | Unit tests for: timelineStore CRUD, easing solver accuracy, session migration, content frame overlap validation, history recording |
+| §1.8 Testing checkpoint | `src/__tests__/*.test.ts`, `vitest.config.ts` | ✅ DONE | 127 tests across 4 files: timelineStore (58), easing (27), sessionMigration (26), useTimelineHistory (16). All passing. vitest + jsdom + @testing-library/react installed. |
 | Plan cleanup: blendMode | `docs/LAYER_TIMELINE_REFACTOR_PLAN.md` | ✅ DONE | Removed stale `blendMode: 'normal'` from 3 guidance code examples (§1.5, §2.x, §7.4) |
 | TypeScript verification | — | ✅ DONE | `npx tsc --noEmit` passes cleanly (exit 0). No errors in new files. |
 
@@ -5775,6 +5851,11 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | `src/stores/animationStoreAdapter.ts` | ~640 | Legacy API compatibility shim |
 | `src/hooks/useTimelineHistory.ts` | ~380 | Undo/redo wrapper hook |
 | `src/types/index.ts` | modified | +16 history action types & interfaces |
+| `vitest.config.ts` | ~30 | Test runner configuration (jsdom, path aliases, coverage) |
+| `src/__tests__/timelineStore.test.ts` | ~400 | 58 tests: layer CRUD, content frames, keyframes, playback, frame rate |
+| `src/__tests__/easing.test.ts` | ~230 | 27 tests: bezier solver, interpolation, monotonicity, presets |
+| `src/__tests__/sessionMigration.test.ts` | ~260 | 26 tests: version detection, v1→v2 migration, validation & repair |
+| `src/__tests__/useTimelineHistory.test.ts` | ~260 | 16 tests: history recording for all wrapped operations |
 
 ---
 
@@ -5788,3 +5869,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 1.3.0 | 2026-02-05 | Copilot | Risk & performance hardening pass. Added: memory thresholds and LRU fallback to playback store (MAX_PRECOMPUTE_FRAMES=500, LRU_CACHE_SIZE=100), `beforeunload`/periodic/visibility sync guards to prevent data loss, full Newton-Raphson bezier solver with iteration limits and LUT caching for common presets, content frame overlap validation on `addContentFrame`/`updateContentFrameTiming`, centralized layer limit enforcement via `src/utils/layerLimits.ts` with all 6 creation paths enumerated, dynamic cell aspect ratio from font metrics replacing hardcoded 0.6, transform composition unit test table (8 cases). Added new sections: Error Recovery (safe compositing wrapper, playback skip, import data repair), Progressive Loading (async chunked import with progress callback), Accessibility (keyboard navigation, ARIA attributes, focus management). Expanded keyboard shortcuts from placeholder to 14 concrete bindings. Fixed Resolved Design Decisions numbering. Added 4 new risks to Risks & Mitigations table. |
 | 2.0.0 | 2026-02-06 | Copilot | **Major revision based on codebase audit.** Fixed 4 factual errors: `historyStore.ts` → `toolStore.ts` (undo/redo lives there), `MainLayout.tsx` → `EditorPage.tsx`, `subscriptionStore.ts` → premium Stripe hooks, and missing `useAnimationHistory.ts` (461 lines). Added: `animationStore` compatibility adapter (§1.6b) for 47-file migration, `useTimelineHistory` hook migration (§1.6a), `useFrameSynchronization` full rewrite to unidirectional `useLayerCanvasSync` (§6.4a), `timeEffectsStore` migration plan (§6.4b), generator migration detail (§6.4c), MCP `ProjectStateManager` migration (§6.4d), dynamic memory budgeting with LRU cache. Restructured: Phase 2 → "Layer Data Model (Core)" with advanced features deferred; new Phase 7: Advanced Layer Features (Layer Groups, Apply-to-All-Layers, Multi-layer Selection, Merge Layers). Updated Phase 3 estimate from 3-4 weeks → 5-6 weeks. Massively expanded Branching & Deployment Safety Strategy with: phase sub-branches, Vercel configuration safety, cross-repository coordination table, rollback plan, pre-merge checklist, hotfix protocol. Updated File Change Matrix with 7 new entries. Added 9 new risks to Risks & Mitigations table. Updated estimated duration to 16-22 weeks. Success probability: 55-60% → 80-85% with adjustments. |
 | 2.0.1 | 2026-02-05 | Copilot | **Phase 1 implementation started.** Created `phase-1/foundation` branch. Implemented: `src/types/timeline.ts` (all type definitions, branded IDs, helpers), `src/types/easing.ts` (Newton-Raphson cubic bezier solver with LUT caching), `src/utils/sessionMigration.ts` (v1→v2 migration, validation & repair), `src/stores/timelineStore.ts` (full Zustand store, ~825 lines), `src/hooks/useTimelineHistory.ts` (undo/redo wrapper hook), `src/stores/animationStoreAdapter.ts` (legacy API compatibility shim). Added 16 history action types to `src/types/index.ts`. Removed stale `blendMode: 'normal'` from 3 code examples. Added Implementation Progress section. TypeScript compilation verified clean. |
+| 2.0.2 | 2026-02-06 | Copilot | **Phase 1 testing checkpoint complete.** Installed vitest + jsdom + @testing-library/react. Created `vitest.config.ts` with jsdom env, path aliases, v8 coverage. Added `test`/`test:run`/`test:coverage` scripts to `package.json`. Wrote 127 tests across 4 files (timelineStore: 58, easing: 27, sessionMigration: 26, useTimelineHistory: 16). All passing. Added Vitest Infrastructure section to Testing Strategy with test patterns, naming conventions, and per-phase checklist template for reuse in later phases. |
