@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useCanvasState } from './useCanvasState';
 import { useMemoizedGrid } from './useMemoizedGrid';
 import { useDrawingTool } from './useDrawingTool';
+import { useCompositedCanvas } from './useCompositedCanvas';
 import { useOnionSkinRenderer } from './useOnionSkinRenderer';
 import { measureCanvasRender, finishCanvasRender } from '../utils/performance';
 import { 
@@ -82,6 +83,11 @@ export const useCanvasRenderer = () => {
     showGrid,
     getCell
   } = useCanvasStore();
+
+  // Layer compositing: provides composited cells from all visible layers
+  const { getCompositedCell, isLayerMode } = useCompositedCanvas();
+  // Use composited cell getter when in layer mode, otherwise use canvasStore directly
+  const getCellForRender = isLayerMode ? getCompositedCell : getCell;
 
   const { activeTool, rectangleFilled, lassoSelection, magicWandSelection, textToolState, linePreview } = useToolStore();
   const { previewData, isPreviewActive } = usePreviewStore();
@@ -266,7 +272,7 @@ export const useCanvasRenderer = () => {
               bgColor: drawingStyles.defaultBgColor 
             });
           } else {
-            const cell = getCell(x, y);
+            const cell = getCellForRender(x, y);
             if (cell) {
               drawCell(ctx, x, y, cell);
             }
@@ -569,6 +575,7 @@ export const useCanvasRenderer = () => {
     overlayState,
   // Keep these individual dependencies for now
   getCell,
+  getCellForRender,
   drawCell,
   drawGridBackground,
     getTotalOffset,

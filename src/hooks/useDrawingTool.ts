@@ -1,10 +1,13 @@
 import { useCallback } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { calculateBrushCells } from '../utils/brushUtils';
 import { useSelectionStore } from '../stores/selectionStore';
 import { isCellDrawableWithState, constrainCellsToSelectionWithState } from '../utils/selectionConstraint';
+import { isLayerEditable } from '../utils/layerCompositing';
+import { toast } from 'sonner';
 import type { Cell } from '../types';
 
 /**
@@ -57,6 +60,30 @@ export const useDrawingTool = () => {
       bgColor: selectedBgColor
     };
   }, [selectedChar, selectedColor, selectedBgColor]);
+
+  /**
+   * Check if drawing is allowed on the active layer.
+   * Returns false and shows a toast if the layer is locked.
+   * Eyedropper tool is always allowed (read-only).
+   */
+  const checkActiveLayerEditable = useCallback((tool?: string): boolean => {
+    const activeLayer = useTimelineStore.getState().layers.find(
+      (l) => l.id === useTimelineStore.getState().view.activeLayerId
+    );
+    // If no layers loaded (v1 mode), allow drawing
+    if (!activeLayer) return true;
+    // Eyedropper is read-only, always allowed
+    if (tool === 'eyedropper') return true;
+    if (!isLayerEditable(activeLayer)) {
+      if (activeLayer.locked) {
+        toast.info('Layer is locked', { duration: 2000 });
+      } else if (!activeLayer.visible) {
+        toast.info('Layer is hidden', { duration: 2000 });
+      }
+      return false;
+    }
+    return true;
+  }, []);
 
   // Bresenham line algorithm for drawing lines between two points
   const getLinePoints = useCallback((x0: number, y0: number, x1: number, y1: number) => {
@@ -147,6 +174,10 @@ export const useDrawingTool = () => {
 
   const drawAtPosition = useCallback((x: number, y: number, isShiftClick = false, toolOverride?: string) => {
     const toolToUse = toolOverride || activeTool;
+
+    // Guard: check if active layer allows editing
+    if (!checkActiveLayerEditable(toolToUse)) return;
+
     switch (toolToUse) {
       case 'pencil': {
         const brushTool: 'pencil' | 'eraser' = 'pencil';
@@ -213,10 +244,14 @@ export const useDrawingTool = () => {
     selectedBgColor,
     toolAffectsChar,
     toolAffectsColor,
-    toolAffectsBgColor
+    toolAffectsBgColor,
+    checkActiveLayerEditable
   ]);
 
   const drawRectangle = useCallback((startX: number, startY: number, endX: number, endY: number) => {
+    // Guard: check if active layer allows editing
+    if (!checkActiveLayerEditable()) return;
+
     const minX = Math.min(startX, endX);
     const maxX = Math.max(startX, endX);
     const minY = Math.min(startY, endY);
@@ -243,7 +278,7 @@ export const useDrawingTool = () => {
         }
       }
     }
-  }, [rectangleFilled, setCell, createCellWithAllAttributes]);
+  }, [rectangleFilled, setCell, createCellWithAllAttributes, checkActiveLayerEditable]);
 
   // Helper function to get ellipse points using a simpler approach
   const getEllipsePoints = useCallback((centerX: number, centerY: number, radiusX: number, radiusY: number, filled: boolean = false) => {
@@ -296,6 +331,9 @@ export const useDrawingTool = () => {
   }, []);
 
   const drawEllipse = useCallback((startX: number, startY: number, endX: number, endY: number) => {
+    // Guard: check if active layer allows editing
+    if (!checkActiveLayerEditable()) return;
+
     const centerX = (startX + endX) / 2;
     const centerY = (startY + endY) / 2;
     const radiusX = Math.abs(endX - startX) / 2;
@@ -314,7 +352,7 @@ export const useDrawingTool = () => {
         setCell(x, y, newCell);
       }
     });
-  }, [rectangleFilled, setCell, getEllipsePoints, createCellWithAllAttributes]);
+  }, [rectangleFilled, setCell, getEllipsePoints, createCellWithAllAttributes, checkActiveLayerEditable]);
 
   return {
     drawAtPosition,
@@ -325,6 +363,7 @@ export const useDrawingTool = () => {
     eraseBrushLine, // Export for eraser gap-filling
     getEllipsePoints, // Export for preview rendering
     getLinePoints, // Export for line preview rendering
+    checkActiveLayerEditable, // Export for locked layer checks
     activeTool
   };
 };

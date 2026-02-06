@@ -5819,8 +5819,8 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 ## Implementation Progress
 
 > **Last updated:** 2026-02-06
-> **Current branch:** `phase-1/foundation` (off `timeline-refactor` off `main`)
-> **Commit status:** Phase 1 foundation code committed. Testing checkpoint + vitest infrastructure uncommitted — pending review.
+> **Current branch:** `phase-2/layer-data-model` (off `timeline-refactor` off `main`)
+> **Commit status:** Phase 1 committed. Phase 2 layer data model code uncommitted — pending review.
 
 ### Phase 1: Timeline Foundation
 
@@ -5840,6 +5840,24 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 
 ### Phase 2-7: Not yet started
 
+### Phase 2: Layer Data Model (Core)
+
+| Task | File(s) | Status | Notes |
+|------|---------|--------|-------|
+| §2.1 Layer limits utility | `src/utils/layerLimits.ts` | ✅ DONE | `canAddLayer()`, `getImportableLayerCount()`, `getRemainingLayerCount()`, `registerSubscriptionLayerLimit()`. FREE_TIER_MAX_LAYERS=5, UNLIMITED_LAYERS=-1 sentinel. Uses `Math.min` for importable count. |
+| §2.2 Layer limit hook | `src/hooks/useLayerLimit.ts` | ✅ DONE | React hook returning `{ maxLayers, canAddLayer, remainingLayers, layerCount, isUnlimited }` for UI components. |
+| §2.1 Store limit integration | `src/stores/timelineStore.ts` | ✅ DONE | `addLayer()` returns `LayerId \| null` (null when limit reached). `duplicateLayer()` returns null when limit reached. Both log warning to console. |
+| §2.4 Layer compositing engine | `src/utils/layerCompositing.ts` | ✅ DONE | `compositeLayersAtFrame()` — composites all visible layers at a frame with transform support (position, scale, rotation, opacity, anchor point). Solo mode, visibility filtering, bounds clipping, content frame gap handling. Utility fns: `getContentFrameAtTime()`, `getPropertyValueAtFrame()`, `getTransformAtFrame()`, `applyRotation()`, `getVisibleLayers()`, `isLayerEditable()`. |
+| §2.3 Canvas store layer sync | `src/stores/canvasStore.ts` | ✅ DONE | Added `activeLayerId`, `isDirty`, `setActiveLayerId()`, `setDirty()`. Dirty tracking on `setCell`, `clearCell`, `clearCanvas`, `fillArea`. `setCanvasData()` does NOT mark dirty (used for sync-in from timeline). |
+| §2.5 Composited canvas hook | `src/hooks/useCompositedCanvas.ts` | ✅ DONE | `useCompositedCanvas()` — provides `getCompositedCell(x,y)` for renderer. When layers exist, composites all layers substituting active layer's canvasStore cells (working copy). Falls back to raw canvasStore when no layers. |
+| §2.5 Renderer integration | `src/hooks/useCanvasRenderer.ts` | ✅ DONE | Swapped `getCell()` → `getCellForRender()` from `useCompositedCanvas` in static cell drawing loop. Non-breaking: compositing only activates when layers array is non-empty. |
+| §2.6 Active layer indicator | `src/components/features/ActiveLayerIndicator.tsx`, `src/App.tsx` | ✅ DONE | Displays `(Layer Name)` in editor header next to project name. Hidden when no layers. Added to App.tsx header center section. |
+| §2.7 Drawing tool layer guard | `src/hooks/useDrawingTool.ts` | ✅ DONE | `checkActiveLayerEditable()` — blocks drawing on locked/invisible layers with toast notification. Guards on `drawAtPosition`, `drawRectangle`, `drawEllipse`. Allows eyedropper (read-only). Passes through in v1 mode (no layers). |
+| §2.8 Testing checkpoint | `src/__tests__/layerLimits.test.ts`, `src/__tests__/layerCompositing.test.ts`, `src/__tests__/canvasStoreLayerSync.test.ts` | ✅ DONE | 78 tests across 3 files: layerLimits (23), layerCompositing (40), canvasStoreLayerSync (15). All passing. Combined with Phase 1: 205/205 tests pass. |
+| TypeScript verification | — | ✅ DONE | `npx tsc --noEmit` passes cleanly. No errors in new/modified files. |
+
+### Phase 3-7: Not yet started
+
 ### Key File Inventory (Phase 1)
 
 | File | Lines | Purpose |
@@ -5857,6 +5875,24 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | `src/__tests__/sessionMigration.test.ts` | ~260 | 26 tests: version detection, v1→v2 migration, validation & repair |
 | `src/__tests__/useTimelineHistory.test.ts` | ~260 | 16 tests: history recording for all wrapped operations |
 
+### Key File Inventory (Phase 2)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/utils/layerLimits.ts` | ~75 | Layer limit checking & subscription tier integration |
+| `src/hooks/useLayerLimit.ts` | ~35 | React hook for layer limit info in UI components |
+| `src/utils/layerCompositing.ts` | ~150 | Multi-layer compositing engine with transforms |
+| `src/hooks/useCompositedCanvas.ts` | ~60 | Composited cell provider for renderer |
+| `src/components/features/ActiveLayerIndicator.tsx` | ~20 | Active layer name display in header |
+| `src/stores/canvasStore.ts` | ~270 | Modified: +activeLayerId, isDirty, layer sync actions |
+| `src/stores/timelineStore.ts` | ~838 | Modified: +layer limit checks on addLayer/duplicateLayer |
+| `src/hooks/useCanvasRenderer.ts` | modified | Swapped getCell → getCellForRender for compositing |
+| `src/hooks/useDrawingTool.ts` | modified | +checkActiveLayerEditable guard on all draw entry points |
+| `src/App.tsx` | modified | +ActiveLayerIndicator in editor header |
+| `src/__tests__/layerLimits.test.ts` | ~230 | 23 tests: limit enforcement, tier integration, store integration |
+| `src/__tests__/layerCompositing.test.ts` | ~430 | 40 tests: compositing, visibility, solo, opacity, transforms, gaps |
+| `src/__tests__/canvasStoreLayerSync.test.ts` | ~170 | 15 tests: dirty tracking, activeLayerId, sync patterns |
+
 ---
 
 ## Revision History
@@ -5870,3 +5906,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 2.0.0 | 2026-02-06 | Copilot | **Major revision based on codebase audit.** Fixed 4 factual errors: `historyStore.ts` → `toolStore.ts` (undo/redo lives there), `MainLayout.tsx` → `EditorPage.tsx`, `subscriptionStore.ts` → premium Stripe hooks, and missing `useAnimationHistory.ts` (461 lines). Added: `animationStore` compatibility adapter (§1.6b) for 47-file migration, `useTimelineHistory` hook migration (§1.6a), `useFrameSynchronization` full rewrite to unidirectional `useLayerCanvasSync` (§6.4a), `timeEffectsStore` migration plan (§6.4b), generator migration detail (§6.4c), MCP `ProjectStateManager` migration (§6.4d), dynamic memory budgeting with LRU cache. Restructured: Phase 2 → "Layer Data Model (Core)" with advanced features deferred; new Phase 7: Advanced Layer Features (Layer Groups, Apply-to-All-Layers, Multi-layer Selection, Merge Layers). Updated Phase 3 estimate from 3-4 weeks → 5-6 weeks. Massively expanded Branching & Deployment Safety Strategy with: phase sub-branches, Vercel configuration safety, cross-repository coordination table, rollback plan, pre-merge checklist, hotfix protocol. Updated File Change Matrix with 7 new entries. Added 9 new risks to Risks & Mitigations table. Updated estimated duration to 16-22 weeks. Success probability: 55-60% → 80-85% with adjustments. |
 | 2.0.1 | 2026-02-05 | Copilot | **Phase 1 implementation started.** Created `phase-1/foundation` branch. Implemented: `src/types/timeline.ts` (all type definitions, branded IDs, helpers), `src/types/easing.ts` (Newton-Raphson cubic bezier solver with LUT caching), `src/utils/sessionMigration.ts` (v1→v2 migration, validation & repair), `src/stores/timelineStore.ts` (full Zustand store, ~825 lines), `src/hooks/useTimelineHistory.ts` (undo/redo wrapper hook), `src/stores/animationStoreAdapter.ts` (legacy API compatibility shim). Added 16 history action types to `src/types/index.ts`. Removed stale `blendMode: 'normal'` from 3 code examples. Added Implementation Progress section. TypeScript compilation verified clean. |
 | 2.0.2 | 2026-02-06 | Copilot | **Phase 1 testing checkpoint complete.** Installed vitest + jsdom + @testing-library/react. Created `vitest.config.ts` with jsdom env, path aliases, v8 coverage. Added `test`/`test:run`/`test:coverage` scripts to `package.json`. Wrote 127 tests across 4 files (timelineStore: 58, easing: 27, sessionMigration: 26, useTimelineHistory: 16). All passing. Added Vitest Infrastructure section to Testing Strategy with test patterns, naming conventions, and per-phase checklist template for reuse in later phases. |
+| 2.1.0 | 2026-02-06 | Copilot | **Phase 2: Layer Data Model (Core) complete.** Created `phase-2/layer-data-model` branch (off `timeline-refactor`, Phase 1 merged in). New files: `src/utils/layerLimits.ts` (subscription-tier-aware layer limit enforcement), `src/hooks/useLayerLimit.ts` (React hook), `src/utils/layerCompositing.ts` (multi-layer compositing engine with position/scale/rotation/opacity/anchor transforms, solo mode, visibility filtering, content frame gap handling), `src/hooks/useCompositedCanvas.ts` (renderer-facing composited cell provider), `src/components/features/ActiveLayerIndicator.tsx` (header display). Modified: `src/stores/timelineStore.ts` (addLayer/duplicateLayer return null at limit), `src/stores/canvasStore.ts` (+activeLayerId, isDirty, layer sync state), `src/hooks/useCanvasRenderer.ts` (getCell→getCellForRender swap), `src/hooks/useDrawingTool.ts` (+locked/invisible layer guards with toast), `src/App.tsx` (+ActiveLayerIndicator). Fixed `getImportableLayerCount()` to use `Math.min(incoming, available)`. 78 new tests (layerLimits: 23, layerCompositing: 40, canvasStoreLayerSync: 15). Total: 205/205 tests passing. TypeScript clean. |

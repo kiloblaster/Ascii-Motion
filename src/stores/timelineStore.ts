@@ -38,6 +38,7 @@ import {
   contentFramesOverlap,
 } from '../types/timeline';
 import { defaultEasing } from '../types/easing';
+import { canAddLayer } from '../utils/layerLimits';
 
 // ============================================
 // STORE INTERFACE
@@ -63,9 +64,9 @@ export interface TimelineState {
   // LAYER ACTIONS
   // ============================================
 
-  addLayer: (name?: string) => LayerId;
+  addLayer: (name?: string) => LayerId | null;
   removeLayer: (layerId: LayerId) => void;
-  duplicateLayer: (layerId: LayerId) => LayerId;
+  duplicateLayer: (layerId: LayerId) => LayerId | null;
   reorderLayers: (fromIndex: number, toIndex: number) => void;
   renameLayer: (layerId: LayerId, name: string) => void;
 
@@ -231,6 +232,12 @@ export const useTimelineStore = create<TimelineState>()(
     // ============================================
 
     addLayer: (name?) => {
+      // Check subscription tier layer limit
+      if (!canAddLayer()) {
+        console.warn('Layer limit reached. Cannot add more layers.');
+        return null;
+      }
+
       const { layers, view } = get();
       const id = generateLayerId();
       const layerName = name ?? `Layer ${layers.length + 1}`;
@@ -304,9 +311,15 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     duplicateLayer: (layerId) => {
+      // Check subscription tier layer limit
+      if (!canAddLayer()) {
+        console.warn('Layer limit reached. Cannot duplicate layer.');
+        return null;
+      }
+
       const { layers, view } = get();
       const source = layers.find((l) => l.id === layerId);
-      if (!source) return layerId; // Return original if not found
+      if (!source) return null; // Return null if not found
 
       const newId = generateLayerId();
       const duplicate: Layer = {

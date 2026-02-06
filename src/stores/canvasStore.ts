@@ -4,11 +4,18 @@ import { createCellKey } from '../types';
 import { DEFAULT_CANVAS_SIZES } from '../constants';
 import { useSelectionStore } from './selectionStore';
 import { isCellDrawableWithState } from '../utils/selectionConstraint';
+import type { LayerId } from '../types/timeline';
 
 interface CanvasState extends Canvas {
   // Canvas display settings
   canvasBackgroundColor: string;
   showGrid: boolean;
+  
+  // Layer sync state
+  /** The layer currently being edited. Canvas cells represent this layer's active content frame. */
+  activeLayerId: LayerId | null;
+  /** Whether the canvas has unsaved changes not yet synced to the timeline store. */
+  isDirty: boolean;
   
   // Actions
   setCanvasSize: (width: number, height: number) => void;
@@ -20,6 +27,10 @@ interface CanvasState extends Canvas {
   clearCanvas: () => void;
   fillArea: (x: number, y: number, cell: Cell, contiguous?: boolean, matchCriteria?: { char: boolean; color: boolean; bgColor: boolean }, affectsCriteria?: { char: boolean; color: boolean; bgColor: boolean }) => void;
   setCanvasData: (cells: Map<string, Cell>) => void;
+  
+  // Layer sync actions
+  setActiveLayerId: (layerId: LayerId | null) => void;
+  setDirty: (dirty: boolean) => void;
   
   // Computed values
   getCellCount: () => number;
@@ -33,6 +44,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   cells: new Map<string, Cell>(),
   canvasBackgroundColor: '#000000',
   showGrid: true,
+  activeLayerId: null,
+  isDirty: false,
 
   // Actions
   setCanvasSize: (width: number, height: number) => {
@@ -81,7 +94,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         newCells.set(key, { ...cell });
       }
       
-      return { cells: newCells };
+      return { cells: newCells, isDirty: true };
     });
   },
 
@@ -103,12 +116,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set((state) => {
       const newCells = new Map(state.cells);
       newCells.delete(createCellKey(x, y));
-      return { cells: newCells };
+      return { cells: newCells, isDirty: true };
     });
   },
 
   clearCanvas: () => {
-    set({ cells: new Map() });
+    set({ cells: new Map(), isDirty: true });
   },
 
   fillArea: (startX: number, startY: number, newCell: Cell, contiguous: boolean = true, matchCriteria?: { char: boolean; color: boolean; bgColor: boolean }, affectsCriteria?: { char: boolean; color: boolean; bgColor: boolean }) => {
@@ -232,11 +245,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
     }
 
-    set({ cells: newCells });
+    set({ cells: newCells, isDirty: true });
   },
 
   setCanvasData: (cells: Map<string, Cell>) => {
     set({ cells: new Map(cells) });
+    // Note: setCanvasData does NOT mark dirty — it's used for sync-in (loading from timeline)
+  },
+
+  // Layer sync actions
+  setActiveLayerId: (layerId: LayerId | null) => {
+    set({ activeLayerId: layerId });
+  },
+
+  setDirty: (dirty: boolean) => {
+    set({ isDirty: dirty });
   },
 
   // Computed values
