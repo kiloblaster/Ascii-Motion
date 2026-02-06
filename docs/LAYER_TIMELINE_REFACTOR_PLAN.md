@@ -3,7 +3,7 @@
 > **Version:** 2.0.0  
 > **Created:** February 1, 2026  
 > **Last Updated:** February 5, 2026  
-> **Status:** Planning  
+> **Status:** In Progress — Phase 1 Foundation (code complete, pending tests)  
 > **Target Completion:** TBD  
 > **Estimated Duration:** 16-22 weeks
 
@@ -25,6 +25,7 @@
 14. [Performance Considerations](#performance-considerations)
 15. [Backward Compatibility](#backward-compatibility)
 16. [Risks & Mitigations](#risks--mitigations)
+17. [Implementation Progress](#implementation-progress)
 
 ---
 
@@ -1225,7 +1226,8 @@ export function migrateV1ToV2(v1: SessionData): SessionDataV2 {
 ## Phase 1: Foundation
 
 **Duration:** 1-2 weeks  
-**Goal:** Establish type system, feature branches, and store architecture
+**Goal:** Establish type system, feature branches, and store architecture  
+**Status:** ✅ Code complete (§1.2–§1.6b done). Undo batching (§1.7) deferred to Phase 3. Tests (§1.8) pending.
 
 ### 1.1 Create Feature Branches
 
@@ -1716,7 +1718,6 @@ function createDefaultLayer(): Layer {
     solo: false,
     locked: false,
     opacity: 100,
-    blendMode: 'normal',
     contentFrames: [{
       id: 'frame-1' as ContentFrameId,
       name: 'Frame 1',
@@ -2039,7 +2040,6 @@ addLayer: (name?: string) => {
     solo: false,
     locked: false,
     opacity: 100,
-    blendMode: 'normal',
     contentFrames: [],
     propertyTracks: [],
   };
@@ -5074,7 +5074,6 @@ mergeDown: (layerId: LayerId) => {
     id: generateLayerId(),
     name: `${bottomLayer.name} + ${topLayer.name}`,
     visible: true, solo: false, locked: false, opacity: 100,
-    blendMode: 'normal',
     contentFrames: mergedContentFrames,
     propertyTracks: [],  // Transforms are baked in
   };
@@ -5741,6 +5740,44 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 
 ---
 
+## Implementation Progress
+
+> **Last updated:** 2026-02-05
+> **Current branch:** `phase-1/foundation` (off `timeline-refactor` off `main`)
+> **Commit status:** Uncommitted — pending review before first commit.
+
+### Phase 1: Timeline Foundation
+
+| Task | File(s) | Status | Notes |
+|------|---------|--------|-------|
+| §1.2 Type definitions | `src/types/timeline.ts` | ✅ DONE | All branded IDs, Layer, ContentFrame, PropertyTrack, Keyframe, EasingCurve, TimelineConfig, TimelineViewState, SessionDataV2, helper fns, PROPERTY_DEFINITIONS registry, EASING_PRESETS |
+| §1.2 Easing utilities | `src/types/easing.ts` | ✅ DONE | Newton-Raphson cubic bezier solver with LUT caching (Float64Array, 256 entries), keyframe interpolation system, preset evaluation |
+| §1.3 Session migration | `src/utils/sessionMigration.ts` | ✅ DONE | Version detection (v1/v2/unknown), v1→v2 migration with frame rate preservation, validation & repair (negative startFrame, duration<1, overlapping frames) |
+| §1.3-§1.5 Timeline store | `src/stores/timelineStore.ts` | ✅ DONE | Full Zustand store with `subscribeWithSelector`. All layer CRUD, content frame CRUD with overlap validation, keyframe CRUD with auto-sort, playback navigation, frame rate conversion with duration maintenance, timeline auto-expand, view state, `createNewProject()`, `loadFromSessionData()` |
+| §1.6 History action types | `src/types/index.ts` | ✅ DONE | 16 new types added: `layer_add`, `layer_remove`, `layer_reorder`, `layer_rename`, `layer_visibility`, `layer_opacity`, `content_frame_add/remove/timing/data`, `keyframe_add/remove/update`, `property_track_add/remove`, `frame_rate_change` |
+| §1.6a Timeline history hook | `src/hooks/useTimelineHistory.ts` | ✅ DONE | Follows `useAnimationHistory.ts` pattern — wraps all timeline mutations with `pushToHistory()` from `toolStore`. All layer, content frame, keyframe, property track, and frame rate operations wrapped. |
+| §1.6b Compatibility adapter | `src/stores/animationStoreAdapter.ts` | ✅ DONE | Provides legacy `useAnimationStore` API backed by `timelineStore`. Syncs via `useTimelineStore.subscribe()`. Handles frame CRUD, batch ops, bulk import, selection, playback delegation, navigation. Marked with `__isAdapter: true`. |
+| §1.7 Undo batching | — | ⬜ NOT STARTED | DragSession pattern defined in plan; will implement when UI drag operations are built (Phase 3) |
+| §1.8 Testing checkpoint | — | ⬜ NOT STARTED | Unit tests for: timelineStore CRUD, easing solver accuracy, session migration, content frame overlap validation, history recording |
+| Plan cleanup: blendMode | `docs/LAYER_TIMELINE_REFACTOR_PLAN.md` | ✅ DONE | Removed stale `blendMode: 'normal'` from 3 guidance code examples (§1.5, §2.x, §7.4) |
+| TypeScript verification | — | ✅ DONE | `npx tsc --noEmit` passes cleanly (exit 0). No errors in new files. |
+
+### Phase 2-7: Not yet started
+
+### Key File Inventory (Phase 1)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/types/timeline.ts` | ~350 | All type definitions, ID generators, helpers |
+| `src/types/easing.ts` | ~200 | Cubic bezier solver, LUT cache, interpolation |
+| `src/utils/sessionMigration.ts` | ~200 | v1→v2 migration, validation |
+| `src/stores/timelineStore.ts` | ~825 | Central timeline state store |
+| `src/stores/animationStoreAdapter.ts` | ~640 | Legacy API compatibility shim |
+| `src/hooks/useTimelineHistory.ts` | ~380 | Undo/redo wrapper hook |
+| `src/types/index.ts` | modified | +16 history action types & interfaces |
+
+---
+
 ## Revision History
 
 | Version | Date | Author | Changes |
@@ -5750,3 +5787,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 1.2.0 | 2026-02-02 | Copilot | Fixed: Removed duplicate section 2.8 (Selection Tool Layer Targeting). Fixed Phase 4 section numbering (4.10→4.7). Added `parentGroupId` to `SessionLayerV2` interface. Added `layerGroups` to timeline store initial state. Added layer group management actions to store interface. Added `isDirty` to canvas store interface. Added `animationStore` deprecation plan. Added minimum layer count decision (always ≥1 layer). Clarified 12 FPS default for NEW projects only. Added purpose text to Effect Scope Toggle (6.4). |
 | 1.3.0 | 2026-02-05 | Copilot | Risk & performance hardening pass. Added: memory thresholds and LRU fallback to playback store (MAX_PRECOMPUTE_FRAMES=500, LRU_CACHE_SIZE=100), `beforeunload`/periodic/visibility sync guards to prevent data loss, full Newton-Raphson bezier solver with iteration limits and LUT caching for common presets, content frame overlap validation on `addContentFrame`/`updateContentFrameTiming`, centralized layer limit enforcement via `src/utils/layerLimits.ts` with all 6 creation paths enumerated, dynamic cell aspect ratio from font metrics replacing hardcoded 0.6, transform composition unit test table (8 cases). Added new sections: Error Recovery (safe compositing wrapper, playback skip, import data repair), Progressive Loading (async chunked import with progress callback), Accessibility (keyboard navigation, ARIA attributes, focus management). Expanded keyboard shortcuts from placeholder to 14 concrete bindings. Fixed Resolved Design Decisions numbering. Added 4 new risks to Risks & Mitigations table. |
 | 2.0.0 | 2026-02-06 | Copilot | **Major revision based on codebase audit.** Fixed 4 factual errors: `historyStore.ts` → `toolStore.ts` (undo/redo lives there), `MainLayout.tsx` → `EditorPage.tsx`, `subscriptionStore.ts` → premium Stripe hooks, and missing `useAnimationHistory.ts` (461 lines). Added: `animationStore` compatibility adapter (§1.6b) for 47-file migration, `useTimelineHistory` hook migration (§1.6a), `useFrameSynchronization` full rewrite to unidirectional `useLayerCanvasSync` (§6.4a), `timeEffectsStore` migration plan (§6.4b), generator migration detail (§6.4c), MCP `ProjectStateManager` migration (§6.4d), dynamic memory budgeting with LRU cache. Restructured: Phase 2 → "Layer Data Model (Core)" with advanced features deferred; new Phase 7: Advanced Layer Features (Layer Groups, Apply-to-All-Layers, Multi-layer Selection, Merge Layers). Updated Phase 3 estimate from 3-4 weeks → 5-6 weeks. Massively expanded Branching & Deployment Safety Strategy with: phase sub-branches, Vercel configuration safety, cross-repository coordination table, rollback plan, pre-merge checklist, hotfix protocol. Updated File Change Matrix with 7 new entries. Added 9 new risks to Risks & Mitigations table. Updated estimated duration to 16-22 weeks. Success probability: 55-60% → 80-85% with adjustments. |
+| 2.0.1 | 2026-02-05 | Copilot | **Phase 1 implementation started.** Created `phase-1/foundation` branch. Implemented: `src/types/timeline.ts` (all type definitions, branded IDs, helpers), `src/types/easing.ts` (Newton-Raphson cubic bezier solver with LUT caching), `src/utils/sessionMigration.ts` (v1→v2 migration, validation & repair), `src/stores/timelineStore.ts` (full Zustand store, ~825 lines), `src/hooks/useTimelineHistory.ts` (undo/redo wrapper hook), `src/stores/animationStoreAdapter.ts` (legacy API compatibility shim). Added 16 history action types to `src/types/index.ts`. Removed stale `blendMode: 'normal'` from 3 code examples. Added Implementation Progress section. TypeScript compilation verified clean. |

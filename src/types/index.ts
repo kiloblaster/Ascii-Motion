@@ -270,7 +270,24 @@ export type HistoryActionType =
   | 'bezier_toggle_handles' // Toggle handles on/off for a point
   | 'bezier_delete_point'   // Delete anchor point
   | 'bezier_close_shape'    // Close the bezier shape
-  | 'bezier_commit';        // Commit bezier shape to canvas
+  | 'bezier_commit'         // Commit bezier shape to canvas
+  // Layer/Timeline actions (v2.0.0)
+  | 'layer_add'
+  | 'layer_remove'
+  | 'layer_reorder'
+  | 'layer_rename'
+  | 'layer_visibility'
+  | 'layer_opacity'
+  | 'content_frame_add'
+  | 'content_frame_remove'
+  | 'content_frame_timing'
+  | 'content_frame_data'
+  | 'keyframe_add'
+  | 'keyframe_remove'
+  | 'keyframe_update'
+  | 'property_track_add'
+  | 'property_track_remove'
+  | 'frame_rate_change';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -577,6 +594,162 @@ export interface BezierCommitHistoryAction extends HistoryAction {
   };
 }
 
+// ============================================
+// Layer/Timeline History Actions (v2.0.0)
+// ============================================
+
+export interface LayerAddHistoryAction extends HistoryAction {
+  type: 'layer_add';
+  data: {
+    layerId: string;
+    layerData: import('../types/timeline').Layer;
+    insertIndex: number;
+  };
+}
+
+export interface LayerRemoveHistoryAction extends HistoryAction {
+  type: 'layer_remove';
+  data: {
+    layerId: string;
+    layerData: import('../types/timeline').Layer;
+    index: number;
+  };
+}
+
+export interface LayerReorderHistoryAction extends HistoryAction {
+  type: 'layer_reorder';
+  data: {
+    fromIndex: number;
+    toIndex: number;
+  };
+}
+
+export interface LayerRenameHistoryAction extends HistoryAction {
+  type: 'layer_rename';
+  data: {
+    layerId: string;
+    oldName: string;
+    newName: string;
+  };
+}
+
+export interface LayerVisibilityHistoryAction extends HistoryAction {
+  type: 'layer_visibility';
+  data: {
+    layerId: string;
+    oldVisible: boolean;
+    newVisible: boolean;
+  };
+}
+
+export interface LayerOpacityHistoryAction extends HistoryAction {
+  type: 'layer_opacity';
+  data: {
+    layerId: string;
+    oldOpacity: number;
+    newOpacity: number;
+  };
+}
+
+export interface ContentFrameAddHistoryAction extends HistoryAction {
+  type: 'content_frame_add';
+  data: {
+    layerId: string;
+    frameId: string;
+    frameData: import('../types/timeline').ContentFrame;
+  };
+}
+
+export interface ContentFrameRemoveHistoryAction extends HistoryAction {
+  type: 'content_frame_remove';
+  data: {
+    layerId: string;
+    frameId: string;
+    frameData: import('../types/timeline').ContentFrame;
+  };
+}
+
+export interface ContentFrameTimingHistoryAction extends HistoryAction {
+  type: 'content_frame_timing';
+  data: {
+    layerId: string;
+    frameId: string;
+    oldTiming: { startFrame: number; durationFrames: number };
+    newTiming: { startFrame: number; durationFrames: number };
+  };
+}
+
+export interface ContentFrameDataHistoryAction extends HistoryAction {
+  type: 'content_frame_data';
+  data: {
+    layerId: string;
+    frameId: string;
+    previousData: Map<string, Cell>;
+    newData: Map<string, Cell>;
+  };
+}
+
+export interface KeyframeAddHistoryAction extends HistoryAction {
+  type: 'keyframe_add';
+  data: {
+    layerId: string;
+    trackId: string;
+    keyframeId: string;
+    keyframe: import('../types/timeline').Keyframe;
+  };
+}
+
+export interface KeyframeRemoveHistoryAction extends HistoryAction {
+  type: 'keyframe_remove';
+  data: {
+    layerId: string;
+    trackId: string;
+    keyframeId: string;
+    keyframe: import('../types/timeline').Keyframe;
+  };
+}
+
+export interface KeyframeUpdateHistoryAction extends HistoryAction {
+  type: 'keyframe_update';
+  data: {
+    layerId: string;
+    trackId: string;
+    keyframeId: string;
+    oldValue: import('../types/timeline').Keyframe;
+    newValue: import('../types/timeline').Keyframe;
+  };
+}
+
+export interface PropertyTrackAddHistoryAction extends HistoryAction {
+  type: 'property_track_add';
+  data: {
+    layerId: string;
+    trackId: string;
+    propertyPath: string;
+  };
+}
+
+export interface PropertyTrackRemoveHistoryAction extends HistoryAction {
+  type: 'property_track_remove';
+  data: {
+    layerId: string;
+    trackId: string;
+    trackData: import('../types/timeline').PropertyTrack;
+  };
+}
+
+export interface FrameRateChangeHistoryAction extends HistoryAction {
+  type: 'frame_rate_change';
+  data: {
+    oldFps: number;
+    newFps: number;
+    oldLayers: import('../types/timeline').Layer[];
+    newLayers: import('../types/timeline').Layer[];
+    oldDuration: number;
+    newDuration: number;
+  };
+}
+
 export type AnyHistoryAction = 
   | CanvasHistoryAction
   | CanvasResizeHistoryAction
@@ -602,5 +775,22 @@ export type AnyHistoryAction =
   | BezierToggleHandlesHistoryAction
   | BezierDeletePointHistoryAction
   | BezierCloseShapeHistoryAction
-  | BezierCommitHistoryAction;
+  | BezierCommitHistoryAction
+  // Layer/Timeline actions (v2.0.0)
+  | LayerAddHistoryAction
+  | LayerRemoveHistoryAction
+  | LayerReorderHistoryAction
+  | LayerRenameHistoryAction
+  | LayerVisibilityHistoryAction
+  | LayerOpacityHistoryAction
+  | ContentFrameAddHistoryAction
+  | ContentFrameRemoveHistoryAction
+  | ContentFrameTimingHistoryAction
+  | ContentFrameDataHistoryAction
+  | KeyframeAddHistoryAction
+  | KeyframeRemoveHistoryAction
+  | KeyframeUpdateHistoryAction
+  | PropertyTrackAddHistoryAction
+  | PropertyTrackRemoveHistoryAction
+  | FrameRateChangeHistoryAction;
 
