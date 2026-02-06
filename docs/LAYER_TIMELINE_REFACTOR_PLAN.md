@@ -5818,9 +5818,9 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 
 ## Implementation Progress
 
-> **Last updated:** 2026-02-06
+> **Last updated:** 2026-02-05
 > **Current branch:** `phase-2/layer-data-model` (off `timeline-refactor` off `main`)
-> **Commit status:** Phase 1 committed. Phase 2 layer data model code uncommitted — pending review.
+> **Commit status:** Phase 1 and Phase 2 committed and published.
 
 ### Phase 1: Timeline Foundation
 
@@ -5838,7 +5838,7 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | Plan cleanup: blendMode | `docs/LAYER_TIMELINE_REFACTOR_PLAN.md` | ✅ DONE | Removed stale `blendMode: 'normal'` from 3 guidance code examples (§1.5, §2.x, §7.4) |
 | TypeScript verification | — | ✅ DONE | `npx tsc --noEmit` passes cleanly (exit 0). No errors in new files. |
 
-### Phase 2-7: Not yet started
+### Phase 4-7: Not yet started
 
 ### Phase 2: Layer Data Model (Core)
 
@@ -5858,7 +5858,42 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 
 ### Phase 3-7: Not yet started
 
-### Key File Inventory (Phase 1)
+### Phase 3: Timeline UI
+
+| Task | File(s) | Status | Notes |
+|------|---------|--------|-------|
+| §3.1 Resizable bottom panel | `src/components/features/timeline/TimelineResizeHandle.tsx`, `src/pages/EditorPage.tsx` | ✅ DONE | Drag handle at top of bottom panel. Min 140px, max 600px. Syncs to `panelHeight` in timeline store. Cursor feedback + visual indicator. |
+| §3.2 Tab container + toolbar | `src/components/features/TimelinePanel.tsx`, `src/components/features/timeline/TimelineToolbar.tsx` | ✅ DONE | TimelinePanel wraps tabs (Timeline/Frames). Timeline tab: 3-column layout (LayerList \| ruler+tracks \| optional KeyframeEditorPanel). Frames tab: existing AnimationTimeline. TimelineToolbar: add layer, play/pause/prev/next/first/last/loop buttons, frame counter. |
+| §3.3 Layer list panel | `src/components/features/timeline/LayerList.tsx` | ✅ DONE | Left sidebar (w-52) showing layers in visual z-order (reversed from store array). Native HTML5 drag-and-drop reordering with index conversion. |
+| §3.4 Layer list item | `src/components/features/timeline/LayerListItem.tsx` | ✅ DONE | Row with: visibility (eye), solo (S), lock, name (double-click edit via Input), expand arrow, keyframe indicator dot, delete button (hidden when 1 layer). Expanded state shows property track labels. |
+| §3.7 Timeline ruler | `src/components/features/timeline/TimelineRuler.tsx` | ✅ DONE | Frame ruler with adaptive tick intervals based on zoom (1/2/5/fps/2fps). Major/minor ticks, time labels (seconds/minutes). Click-to-seek. Red playhead line + circle. |
+| §3.8 Track area + content frames | `src/components/features/timeline/TimelineTrackArea.tsx`, `src/components/features/timeline/ContentFrameBlock.tsx` | ✅ DONE | Horizontally scrollable area with Ctrl+scroll zoom. ContentFrameBlock: drag center to move, drag edges to resize, shows name + cell count. Active layer highlighted with primary color. BASE_PX_PER_FRAME=12. |
+| §3.9 Keyframe diamonds | `src/components/features/timeline/KeyframeDiamond.tsx` | ✅ DONE | Rotated square on property tracks. Click to select + open editor. Drag to move in time. Yellow color, brighter when selected. |
+| §3.10 Keyframe editor panel | `src/components/features/timeline/KeyframeEditorPanel.tsx` | ✅ DONE | Right panel (w-64) for editing selected keyframe. Shows: property definition, frame input, value input (with min/max/step), EasingCurveEditor, loop toggle, delete button. Finds keyframe by ID across all layers/tracks. |
+| §3.11 Easing curve editor | `src/components/features/timeline/EasingCurveEditor.tsx` | ✅ DONE | Interactive SVG canvas (160×160) for cubic bezier curves. Draggable control points (P1/P2) with overshoot support (y -0.5 to 1.5). Grid, diagonal reference line, control handle lines. 8 preset buttons with mini curve previews. Active preset detection. |
+| §3.12 Timecode display | `src/components/features/timeline/TimecodeDisplay.tsx` | ✅ DONE | Dropdown format selector: timecode (MM:SS:FF), frames (F##), seconds (##.##s), milliseconds (####ms). Extracted `formatTimecodeValue()` pure function for testing. |
+| §3.1 EditorPage integration | `src/pages/EditorPage.tsx` | ✅ DONE | Swapped `AnimationTimeline` → `TimelinePanel` in bottom panel. Added `TimelineResizeHandle` inside CollapsiblePanel. |
+| §3.13 Testing checkpoint | `src/__tests__/timelineUI.test.ts` | ✅ DONE | 92 tests across 11 describe blocks: timecode formatting (19), tick intervals (8), frame labels (8), store view state (20), easing presets (7), layer toggles (4), layer reordering (3), content frame timing (5), keyframe operations (5), playback controls (8), pixel calculations (5). All passing. Combined total: 297/297 tests pass. |
+| TypeScript verification | — | ✅ DONE | `npx tsc --noEmit` passes cleanly. Zero errors across all new/modified files. |
+
+### Key File Inventory (Phase 3)
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/components/features/TimelinePanel.tsx` | ~65 | Main wrapper: tabs (Timeline/Frames), layout |
+| `src/components/features/timeline/TimelineToolbar.tsx` | ~95 | Playback controls, add layer button, frame counter |
+| `src/components/features/timeline/TimecodeDisplay.tsx` | ~70 | Timecode format display + selector |
+| `src/components/features/timeline/LayerList.tsx` | ~85 | Layer list panel with DnD reordering |
+| `src/components/features/timeline/LayerListItem.tsx` | ~200 | Individual layer row with all controls |
+| `src/components/features/timeline/TimelineRuler.tsx` | ~110 | Frame ruler, ticks, playhead, click-to-seek |
+| `src/components/features/timeline/TimelineTrackArea.tsx` | ~140 | Scrollable track area with zoom |
+| `src/components/features/timeline/ContentFrameBlock.tsx` | ~120 | Draggable/resizable content frame block |
+| `src/components/features/timeline/KeyframeDiamond.tsx` | ~90 | Clickable/draggable keyframe marker |
+| `src/components/features/timeline/KeyframeEditorPanel.tsx` | ~145 | Keyframe property editor panel |
+| `src/components/features/timeline/EasingCurveEditor.tsx` | ~260 | Interactive bezier curve editor + presets |
+| `src/components/features/timeline/TimelineResizeHandle.tsx` | ~85 | Drag handle for panel resizing |
+| `src/pages/EditorPage.tsx` | ~216 | Modified: TimelinePanel + resize handle |
+| `src/__tests__/timelineUI.test.ts` | ~700 | 92 tests for Phase 3 components |
 
 | File | Lines | Purpose |
 |------|-------|---------|
@@ -5907,3 +5942,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 2.0.1 | 2026-02-05 | Copilot | **Phase 1 implementation started.** Created `phase-1/foundation` branch. Implemented: `src/types/timeline.ts` (all type definitions, branded IDs, helpers), `src/types/easing.ts` (Newton-Raphson cubic bezier solver with LUT caching), `src/utils/sessionMigration.ts` (v1→v2 migration, validation & repair), `src/stores/timelineStore.ts` (full Zustand store, ~825 lines), `src/hooks/useTimelineHistory.ts` (undo/redo wrapper hook), `src/stores/animationStoreAdapter.ts` (legacy API compatibility shim). Added 16 history action types to `src/types/index.ts`. Removed stale `blendMode: 'normal'` from 3 code examples. Added Implementation Progress section. TypeScript compilation verified clean. |
 | 2.0.2 | 2026-02-06 | Copilot | **Phase 1 testing checkpoint complete.** Installed vitest + jsdom + @testing-library/react. Created `vitest.config.ts` with jsdom env, path aliases, v8 coverage. Added `test`/`test:run`/`test:coverage` scripts to `package.json`. Wrote 127 tests across 4 files (timelineStore: 58, easing: 27, sessionMigration: 26, useTimelineHistory: 16). All passing. Added Vitest Infrastructure section to Testing Strategy with test patterns, naming conventions, and per-phase checklist template for reuse in later phases. |
 | 2.1.0 | 2026-02-06 | Copilot | **Phase 2: Layer Data Model (Core) complete.** Created `phase-2/layer-data-model` branch (off `timeline-refactor`, Phase 1 merged in). New files: `src/utils/layerLimits.ts` (subscription-tier-aware layer limit enforcement), `src/hooks/useLayerLimit.ts` (React hook), `src/utils/layerCompositing.ts` (multi-layer compositing engine with position/scale/rotation/opacity/anchor transforms, solo mode, visibility filtering, content frame gap handling), `src/hooks/useCompositedCanvas.ts` (renderer-facing composited cell provider), `src/components/features/ActiveLayerIndicator.tsx` (header display). Modified: `src/stores/timelineStore.ts` (addLayer/duplicateLayer return null at limit), `src/stores/canvasStore.ts` (+activeLayerId, isDirty, layer sync state), `src/hooks/useCanvasRenderer.ts` (getCell→getCellForRender swap), `src/hooks/useDrawingTool.ts` (+locked/invisible layer guards with toast), `src/App.tsx` (+ActiveLayerIndicator). Fixed `getImportableLayerCount()` to use `Math.min(incoming, available)`. 78 new tests (layerLimits: 23, layerCompositing: 40, canvasStoreLayerSync: 15). Total: 205/205 tests passing. TypeScript clean. |
+| 2.2.0 | 2026-02-06 | Copilot | **Phase 3: Timeline UI complete.** Created `phase-3/timeline-ui` branch (off `timeline-refactor`, Phase 2 merged in). 12 new component files: `TimelinePanel.tsx` (tab wrapper), `TimelineToolbar.tsx` (playback controls), `TimecodeDisplay.tsx` (format display), `LayerList.tsx` (DnD layer list), `LayerListItem.tsx` (layer row controls), `TimelineRuler.tsx` (ruler + playhead), `TimelineTrackArea.tsx` (scrollable tracks), `ContentFrameBlock.tsx` (draggable/resizable blocks), `KeyframeDiamond.tsx` (draggable keyframe markers), `KeyframeEditorPanel.tsx` (keyframe property editor), `EasingCurveEditor.tsx` (interactive bezier editor + 8 presets), `TimelineResizeHandle.tsx` (panel resize drag handle). Modified: `EditorPage.tsx` (swapped AnimationTimeline→TimelinePanel + resize handle), `TimecodeDisplay.tsx` (extracted pure `formatTimecodeValue()` function), `TimelineRuler.tsx` (exported `getTickInterval()` and `formatFrameLabel()` for testing). 92 new tests in `timelineUI.test.ts`. Total: 297/297 tests passing. TypeScript clean. |

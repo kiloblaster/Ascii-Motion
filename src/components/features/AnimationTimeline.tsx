@@ -12,7 +12,6 @@ import { FrameThumbnail } from './FrameThumbnail';
 import { PlaybackControls } from './PlaybackControls';
 import { FrameControls } from './FrameControls';
 import { OnionSkinControls } from './OnionSkinControls';
-import { TimelineZoomControl } from './TimelineZoomControl';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
@@ -45,7 +44,6 @@ export const AnimationTimeline: React.FC = () => {
     isPlaying,
     looping,
     onionSkin,
-    timelineZoom,
     setLooping,
     setDraggingFrame,
     selectFrameRange,
@@ -574,9 +572,34 @@ export const AnimationTimeline: React.FC = () => {
   // Calculate total animation duration
   const totalDuration = frames.reduce((total, frame) => total + frame.duration, 0);
 
+  // Auto-scale frame cards to fill available height
+  const framesContainerRef = useRef<HTMLDivElement>(null);
+  const [frameScale, setFrameScale] = useState(1.0);
+
+  useEffect(() => {
+    const container = framesContainerRef.current;
+    if (!container) return;
+
+    const BASE_CARD_HEIGHT = 160; // Approximate card height at scale 1.0
+    const MIN_SCALE = 0.5;
+    const MAX_SCALE = 2.5;
+
+    const updateScale = () => {
+      const availableHeight = container.clientHeight;
+      if (availableHeight <= 0) return;
+      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, availableHeight / BASE_CARD_HEIGHT));
+      setFrameScale(scale);
+    };
+
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <Card className="border-border/50">
-      <CardHeader className="py-2 px-3">
+    <Card className="border-border/50 h-full flex flex-col">
+      <CardHeader className="py-2 px-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AnimationControlsMenu />
@@ -588,9 +611,9 @@ export const AnimationTimeline: React.FC = () => {
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-2 p-2 pt-0 overflow-hidden">
+      <CardContent className="flex-1 flex flex-col min-h-0 p-2 pt-0 overflow-hidden">
         {/* Combined Controls Row */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex-shrink-0 flex items-center justify-between gap-2 mb-1">
           {/* Frame Controls - Left Side */}
           <FrameControls
             canAddFrame={frames.length < MAX_LIMITS.FRAME_COUNT}
@@ -621,15 +644,11 @@ export const AnimationTimeline: React.FC = () => {
           <OnionSkinControls />
         </div>
 
-        {/* Frame Timeline */}
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-medium text-muted-foreground">Frames</h4>
-            <TimelineZoomControl />
-          </div>
-          <div className="w-full overflow-x-auto scrollbar-gutter-horizontal" ref={scrollContainerRef}>
+        {/* Frame Timeline — fills remaining space, cards auto-scale to fit */}
+        <div ref={framesContainerRef} className="flex-1 min-h-0 overflow-hidden">
+          <div className="w-full h-full overflow-x-auto overflow-y-hidden scrollbar-gutter-horizontal" ref={scrollContainerRef}>
             <div 
-              className="flex gap-1" 
+              className="flex gap-1 items-end h-full" 
               style={{ 
                 minWidth: 'max-content',
                 userSelect: 'none', // Prevent text selection
@@ -653,7 +672,7 @@ export const AnimationTimeline: React.FC = () => {
                     isSelected={isFrameSelected(index)}
                     canvasWidth={canvasWidth}
                     canvasHeight={canvasHeight}
-                    scaleZoom={timelineZoom}
+                    scaleZoom={frameScale}
                     onSelect={(e) => handleFrameSelect(index, e)}
                     onDuplicate={() => handleFrameDuplicate(index)}
                     onDelete={() => handleFrameDelete(index)}

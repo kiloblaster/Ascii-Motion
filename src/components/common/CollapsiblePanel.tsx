@@ -19,27 +19,9 @@ export const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // For bottom panels, update CSS custom property with actual height
+  // For bottom panels, manage CSS variable for closed state
   useEffect(() => {
-    if (side === 'bottom' && panelRef.current && isOpen) {
-      const updateHeight = () => {
-        const height = panelRef.current?.offsetHeight;
-        if (height) {
-          document.documentElement.style.setProperty('--bottom-panel-height', `${height}px`);
-        }
-      };
-
-      // Update height initially and on content changes
-      updateHeight();
-      
-      // Use ResizeObserver to watch for content changes
-      const resizeObserver = new ResizeObserver(updateHeight);
-      resizeObserver.observe(panelRef.current);
-
-      return () => {
-        resizeObserver.disconnect();
-      };
-    } else if (side === 'bottom' && !isOpen) {
+    if (side === 'bottom' && !isOpen) {
       // When closed, set a minimal height for the visible strip
       document.documentElement.style.setProperty('--bottom-panel-height', '1.1875rem'); // 19px for toggle button
     }
@@ -71,7 +53,6 @@ export const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
         return cn(
           baseClasses,
           'border-t bg-background',
-          // Remove fixed height, let content determine size
           isOpen ? 'translate-y-0' : 'translate-y-[calc(100%-1.1875rem)]', // Show 19px for toggle button (h-4 + spacing)
           isOpen && 'pointer-events-auto', // Ensure panel content can receive events when open
           className
@@ -82,12 +63,16 @@ export const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
   };
 
   return (
-    <div ref={side === 'bottom' ? panelRef : undefined} className={getPanelClasses()}>
+    <div
+      ref={side === 'bottom' ? panelRef : undefined}
+      className={getPanelClasses()}
+      style={side === 'bottom' && isOpen ? { height: 'var(--bottom-panel-height, 200px)' } : undefined}
+    >
       <div 
         id={`panel-${side}`}
         className={cn(
           'h-full',
-          side === 'bottom' ? 'px-4 pt-4 pb-2' : 'p-4 overflow-y-auto overflow-x-hidden scrollbar-gutter-stable', // Bottom panel has different padding, side panels scroll with stable gutter
+          side === 'bottom' ? 'px-4 pt-4 pb-2 overflow-y-auto' : 'p-4 overflow-y-auto overflow-x-hidden scrollbar-gutter-stable', // Bottom panel has explicit height from CSS var, side panels scroll with stable gutter
           side === 'left' && 'scrollbar-left pl-3' // Put scrollbar on left side for left panel, reduce left padding
         )}
         role="region"

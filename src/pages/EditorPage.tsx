@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useLayoutState } from '../hooks/useLayoutState'
 import { cn } from '@/lib/utils'
 import { CanvasWithShortcuts } from '../components/features/CanvasWithShortcuts'
@@ -10,6 +11,8 @@ import { ColorPicker } from '../components/features/ColorPicker'
 import { ActiveStyleSection } from '../components/features/ActiveStyleSection'
 import { CanvasSettings } from '../components/features/CanvasSettings'
 import { AnimationTimeline } from '../components/features/AnimationTimeline'
+import { TimelinePanel } from '../components/features/TimelinePanel'
+import { TimelineResizeHandle } from '../components/features/timeline/TimelineResizeHandle'
 import { PlaybackOverlay } from '../components/features/PlaybackOverlay'
 import { FullscreenToggle } from '../components/features/FullscreenToggle'
 import { AsciiTypePanel } from '../components/features/AsciiTypePanel'
@@ -38,6 +41,7 @@ import { WiggleDialog } from '../components/features/timeEffects/WiggleDialog'
 import { NewProjectDialog } from '../components/features/NewProjectDialog'
 import { ProjectSettingsDialog } from '../components/features/ProjectSettingsDialog'
 import { WelcomeDialog } from '../components/features/WelcomeDialog'
+import { useTimelineStore } from '@/stores/timelineStore'
 
 /**
  * Main editor page component
@@ -45,6 +49,14 @@ import { WelcomeDialog } from '../components/features/WelcomeDialog'
  */
 export function EditorPage() {
   const { layout, toggleLeftPanel, toggleRightPanel, toggleBottomPanel, toggleFullscreen } = useLayoutState()
+  const panelHeight = useTimelineStore((s) => s.view.panelHeight)
+
+  // Initialize --bottom-panel-height CSS variable from store on mount and when panelHeight changes
+  useEffect(() => {
+    if (layout.bottomPanelOpen) {
+      document.documentElement.style.setProperty('--bottom-panel-height', `${panelHeight}px`)
+    }
+  }, [panelHeight, layout.bottomPanelOpen])
 
   return (
     <div className="relative flex-1 overflow-hidden">
@@ -127,6 +139,9 @@ export function EditorPage() {
             isOpen={layout.bottomPanelOpen}
             side="bottom"
           >
+            {/* Resize drag handle */}
+            <TimelineResizeHandle />
+            
             {/* Bottom Panel Toggle Button - moves with the panel */}
             <div className="absolute left-1/2 -translate-x-1/2 -top-0.5 z-20 pointer-events-auto">
               <PanelToggleButton
@@ -136,7 +151,7 @@ export function EditorPage() {
               />
             </div>
             
-            <AnimationTimeline />
+            <TimelinePanel />
           </CollapsiblePanel>
         </div>
 

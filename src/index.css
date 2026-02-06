@@ -352,3 +352,8 @@
     opacity: 1;
   }
 }
+
+/* Disable transitions during panel resize drag */
+.panel-resizing * {
+  transition-duration: 0s !important;
+}

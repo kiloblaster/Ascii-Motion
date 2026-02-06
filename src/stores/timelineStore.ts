@@ -145,6 +145,7 @@ export interface TimelineState {
   nextFrame: () => void;
   previousFrame: () => void;
 
+  setPlaying: (playing: boolean) => void;
   setLooping: (looping: boolean) => void;
   setFrameRate: (fps: number, maintainDuration?: boolean) => void;
   setDuration: (frames: number) => void;
@@ -166,6 +167,7 @@ export interface TimelineState {
 
   selectKeyframes: (keyframeIds: KeyframeId[]) => void;
   setEditingKeyframe: (keyframeId: KeyframeId | null) => void;
+  toggleLayerExpanded: (layerId: LayerId) => void;
 
   // ============================================
   // PROJECT LIFECYCLE
@@ -200,6 +202,7 @@ const INITIAL_VIEW: TimelineViewState = {
   scrollX: 0,
   panelHeight: 200,
   editingKeyframeId: null,
+  expandedLayerIds: new Set(),
 };
 
 // ============================================
@@ -218,14 +221,17 @@ function updateLayer(
 // STORE IMPLEMENTATION
 // ============================================
 
+// Create default layer so the app always starts with one layer + one frame
+const DEFAULT_LAYER = createDefaultLayer();
+
 export const useTimelineStore = create<TimelineState>()(
   subscribeWithSelector((set, get) => ({
     // ----- Initial State -----
     config: { ...INITIAL_CONFIG },
-    layers: [],
+    layers: [DEFAULT_LAYER],
     layerGroups: [],
     globalEffects: [],
-    view: { ...INITIAL_VIEW },
+    view: { ...INITIAL_VIEW, activeLayerId: DEFAULT_LAYER.id },
 
     // ============================================
     // LAYER ACTIONS
@@ -678,6 +684,10 @@ export const useTimelineStore = create<TimelineState>()(
       }
     },
 
+    setPlaying: (playing) => {
+      set((state) => ({ view: { ...state.view, isPlaying: playing } }));
+    },
+
     setLooping: (looping) => {
       set((state) => ({ view: { ...state.view, looping } }));
     },
@@ -791,6 +801,18 @@ export const useTimelineStore = create<TimelineState>()(
       set((state) => ({
         view: { ...state.view, editingKeyframeId: keyframeId },
       }));
+    },
+
+    toggleLayerExpanded: (layerId) => {
+      set((state) => {
+        const next = new Set(state.view.expandedLayerIds);
+        if (next.has(layerId)) {
+          next.delete(layerId);
+        } else {
+          next.add(layerId);
+        }
+        return { view: { ...state.view, expandedLayerIds: next } };
+      });
     },
 
     // ============================================

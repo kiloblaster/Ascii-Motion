@@ -341,6 +341,9 @@ export interface TimelineViewState {
 
   // Property editing
   editingKeyframeId: KeyframeId | null;
+
+  // Layer expand/collapse state
+  expandedLayerIds: Set<LayerId>;
 }
 
 /**
