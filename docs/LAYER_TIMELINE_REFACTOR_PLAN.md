@@ -1,28 +1,30 @@
 # Layer Timeline System Refactor Plan
 
-> **Version:** 1.2.0  
+> **Version:** 2.0.0  
 > **Created:** February 1, 2026  
-> **Last Updated:** February 2, 2026  
+> **Last Updated:** February 5, 2026  
 > **Status:** Planning  
-> **Target Completion:** TBD
+> **Target Completion:** TBD  
+> **Estimated Duration:** 16-22 weeks
 
 ## 📋 Table of Contents
 
 1. [Executive Summary](#executive-summary)
 2. [Vision & Goals](#vision--goals)
-3. [Branching Strategy](#branching-strategy)
+3. [Branching & Deployment Safety Strategy](#branching--deployment-safety-strategy)
 4. [New Data Model](#new-data-model)
 5. [Phase 1: Foundation](#phase-1-foundation)
-6. [Phase 2: Layer Data Model](#phase-2-layer-data-model)
+6. [Phase 2: Layer Data Model (Core)](#phase-2-layer-data-model-core)
 7. [Phase 3: Timeline UI](#phase-3-timeline-ui)
 8. [Phase 4: Keyframe System](#phase-4-keyframe-system)
 9. [Phase 5: Export & Migration](#phase-5-export--migration)
 10. [Phase 6: Integration](#phase-6-integration)
-11. [File Change Matrix](#file-change-matrix)
-12. [Testing Strategy](#testing-strategy)
-13. [Performance Considerations](#performance-considerations)
-14. [Backward Compatibility](#backward-compatibility)
-15. [Risks & Mitigations](#risks--mitigations)
+11. [Phase 7: Advanced Layer Features](#phase-7-advanced-layer-features)
+12. [File Change Matrix](#file-change-matrix)
+13. [Testing Strategy](#testing-strategy)
+14. [Performance Considerations](#performance-considerations)
+15. [Backward Compatibility](#backward-compatibility)
+16. [Risks & Mitigations](#risks--mitigations)
 
 ---
 
@@ -68,53 +70,209 @@ This document outlines a major architectural refactor to introduce an After Effe
 
 ---
 
-## Branching Strategy
+## Branching & Deployment Safety Strategy
+
+### ⚠️ Core Principle: Zero Risk to Production
+
+The deployed `main` branch must remain fully functional and deployable at all times throughout this multi-month refactor. No experimental layer code will ever reach production until the entire feature is verified and approved.
 
 ### Repository Overview
 
 This refactor spans multiple repositories in the workspace:
 
-| Repository | Purpose | Branch Name |
-|------------|---------|-------------|
-| **Ascii-Motion** (main) | Core application | `feature/layer-timeline` |
-| **ascii-motion-mcp** | MCP server package | `feature/layer-timeline` |
-| **premium submodule** | Cloud storage, auth, subscriptions | `feature/layer-timeline` |
+| Repository | Purpose | Branch Name | Production Branch |
+|------------|---------|-------------|-------------------|
+| **Ascii-Motion** (main) | Core application | `feature/layer-timeline` | `main` |
+| **ascii-motion-mcp** | MCP server package | `feature/layer-timeline` | `main` |
+| **premium submodule** | Cloud storage, auth, subscriptions | `feature/layer-timeline` | `main` |
+
+### Branch Architecture
+
+```
+main (PRODUCTION - NEVER TOUCHED DIRECTLY)
+ │
+ ├── Vercel auto-deploys from main → production URL
+ │
+ └── feature/layer-timeline (LONG-LIVED FEATURE BRANCH)
+      │
+      ├── feature/layer-timeline/phase-1-foundation
+      ├── feature/layer-timeline/phase-2-layer-model
+      ├── feature/layer-timeline/phase-3-timeline-ui
+      ├── feature/layer-timeline/phase-4-keyframes
+      ├── feature/layer-timeline/phase-5-export
+      ├── feature/layer-timeline/phase-6-integration
+      └── feature/layer-timeline/phase-7-advanced
+```
 
 ### Branch Creation Order
 
 ```bash
 # 1. Main repository (create first)
 cd Ascii-Motion
+git checkout main
+git pull origin main
 git checkout -b feature/layer-timeline
 git push -u origin feature/layer-timeline
 
-# 2. MCP repository
-cd ascii-motion-mcp
+# 2. Create phase sub-branch (repeat for each phase)
+git checkout feature/layer-timeline
+git checkout -b feature/layer-timeline/phase-1-foundation
+git push -u origin feature/layer-timeline/phase-1-foundation
+
+# 3. MCP repository (only when Phase 6 begins)
+cd ../ascii-motion-mcp
+git checkout main
+git pull origin main
 git checkout -b feature/layer-timeline
 git push -u origin feature/layer-timeline
 
-# 3. Premium submodule (from within main repo)
-cd packages/premium
+# 4. Premium submodule (only when Phase 2 begins - subscription tier)
+cd ../Ascii-Motion/packages/premium
+git checkout main
+git pull origin main
 git checkout -b feature/layer-timeline
 git push -u origin feature/layer-timeline
 
-# 4. Update main repo's submodule reference
+# 5. Update main repo's submodule reference on feature branch only
 cd ../..
+git checkout feature/layer-timeline
 git add packages/premium
 git commit -m "chore: update premium submodule to feature/layer-timeline branch"
 ```
 
-### Merge Strategy
+### Merge Strategy (Phase-by-Phase)
 
-1. **Phase completion**: Merge feature branches to `develop` (if exists) or `main`
-2. **Cross-repo coordination**: Premium submodule merges first, then main repo updates reference
-3. **MCP**: Can merge independently after protocol stabilizes (Phase 6)
+Each phase follows a strict merge ladder:
+
+```
+1. Work on: feature/layer-timeline/phase-N-xxx
+2. PR → feature/layer-timeline (squash merge, require review)
+3. Run full test suite on feature/layer-timeline
+4. Deploy preview from feature/layer-timeline for manual QA
+5. Only after ALL phases complete: PR → main (final merge)
+```
+
+**Phase sub-branches merge UP to `feature/layer-timeline` only.** The `feature/layer-timeline` branch does NOT merge to `main` until the entire feature is complete and verified.
+
+### Deployment Safety Rules
+
+| Environment | Branch Source | Trigger | Risk Level |
+|-------------|-------------|---------|------------|
+| **Production** (vercel.com) | `main` | Auto-deploy on push to `main` | 🟢 Zero — never touched during refactor |
+| **Preview** (preview URL) | `feature/layer-timeline` | Manual `vercel deploy --preview` | 🟡 Low — isolated URL, not public |
+| **Local Dev** | Any phase branch | `npm run dev` | 🟢 Zero — local only |
+
+**Critical deployment rules:**
+1. **NEVER** merge `feature/layer-timeline` → `main` until ALL phases complete
+2. **NEVER** run `vercel deploy --prod` from any feature branch
+3. **NEVER** push directly to `main` — all changes go through PRs
+4. Preview deployments use Vercel's preview URLs (not the production domain)
+5. The production Vercel deployment only triggers on `main` branch pushes
+
+### Vercel Configuration Safety
+
+Ensure `vercel.json` and Vercel dashboard settings enforce:
+
+```json
+// vercel.json - already configured, but verify:
+{
+  "git": {
+    "deploymentEnabled": {
+      "main": true,
+      "feature/layer-timeline": false
+    }
+  }
+}
+```
+
+If Vercel auto-deploys on all branches, **disable it** for feature branches in the Vercel dashboard:
+- Go to Project Settings → Git → Production Branch → set to `main` only
+- Disable "Preview Deployments" for the `feature/layer-timeline` pattern, OR
+- Use manual `vercel deploy` for preview testing only when needed
+
+### Regular Sync with Main
+
+To prevent divergence, regularly sync `main` into the feature branch:
+
+```bash
+# Weekly sync (or after any hotfix to main):
+git checkout feature/layer-timeline
+git pull origin main
+# Resolve any conflicts
+git push origin feature/layer-timeline
+```
+
+**If a hotfix is needed on production during the refactor:**
+1. Branch from `main` → `hotfix/xxx`
+2. Fix, PR, merge to `main` (production deploys automatically)
+3. Sync `main` into `feature/layer-timeline` to pick up the fix
+4. Never branch hotfixes from the feature branch
+
+### Cross-Repository Coordination
+
+| Phase | Ascii-Motion | premium submodule | ascii-motion-mcp |
+|-------|-------------|-------------------|------------------|
+| 1-Foundation | ✅ Active | ❌ Not needed | ❌ Not needed |
+| 2-Layer Model | ✅ Active | ✅ Subscription tier | ❌ Not needed |
+| 3-Timeline UI | ✅ Active | ❌ Not needed | ❌ Not needed |
+| 4-Keyframes | ✅ Active | ❌ Not needed | ❌ Not needed |
+| 5-Export | ✅ Active | ✅ Cloud storage | ❌ Not needed |
+| 6-Integration | ✅ Active | ❌ Not needed | ✅ MCP v2 protocol |
+| 7-Advanced | ✅ Active | ❌ Not needed | ❌ Not needed |
+
+**Merge order for final release:**
+1. Premium submodule → merge `feature/layer-timeline` to `main` first
+2. Update Ascii-Motion submodule reference to premium `main`
+3. MCP package → merge `feature/layer-timeline` to `main`, publish to npm
+4. Ascii-Motion → final PR from `feature/layer-timeline` to `main`
+5. Verify production deployment
+
+### Rollback Plan
+
+If critical issues are discovered after the final merge to `main`:
+
+```bash
+# Immediate rollback: revert the merge commit
+git revert -m 1 <merge-commit-hash>
+git push origin main
+# Vercel auto-deploys the reverted main → production restored
+
+# Then fix issues on feature branch and re-merge when ready
+```
+
+For the premium submodule and MCP package, the same revert strategy applies independently.
 
 ### Branch Protection Rules
 
-- Require PR reviews before merge
+**`main` branch:**
+- Require PR reviews before merge (minimum 1 reviewer)
+- Require passing CI checks (lint, type-check, unit tests)
+- No direct pushes
+- No force pushes
+- Require linear history (squash merges preferred)
+
+**`feature/layer-timeline` branch:**
+- Require PR reviews for phase sub-branch merges
 - Require passing CI checks
-- No direct pushes to `main`
+- Allow direct pushes during active development (for iteration speed)
+- Protect against force pushes (preserve history)
+
+### Pre-Merge Checklist (Final Merge to Main)
+
+Before the final `feature/layer-timeline` → `main` PR is approved:
+
+- [ ] All phase testing checkpoints pass
+- [ ] v1.0.0 session files load correctly (backward compatibility)
+- [ ] v2.0.0 session save/load round-trip works
+- [ ] Cloud save/load works with both v1 and v2 projects
+- [ ] All 12+ export formats produce correct output
+- [ ] Performance benchmarks pass (60fps playback with 5 layers)
+- [ ] MCP tools work with new protocol
+- [ ] No console errors in production build
+- [ ] `npm run build` succeeds with zero warnings
+- [ ] Preview deployment tested manually for 24+ hours
+- [ ] Memory usage stays under 200MB for typical projects
+- [ ] No regressions in existing single-layer workflows
 
 ---
 
@@ -248,6 +406,48 @@ The `canvasStore.cells` acts as a working buffer for the **active layer's curren
 | User changes current frame | Timeline → Canvas | Copy the active layer's content frame at new frame into `canvasStore.cells` |
 | Playhead enters gap (no content frame) | Timeline → Canvas | Clear `canvasStore.cells` to empty (blank canvas) |
 | User presses Save/Export | Canvas → Timeline | Force immediate sync before serialization |
+| Browser tab closing | Canvas → Timeline | Force immediate sync via `beforeunload` event |
+
+**Data Loss Prevention:**
+
+```typescript
+// src/utils/syncGuard.ts - NEW FILE
+
+/**
+ * Ensures unsaved canvas changes are synced to timeline before data loss events.
+ * Solves the risk of 300ms debounce losing data on rapid tab close.
+ */
+export function initSyncGuard() {
+  // 1. Force sync before tab close
+  window.addEventListener('beforeunload', (e) => {
+    const { isDirty } = useCanvasStore.getState();
+    if (isDirty) {
+      syncCanvasToTimelineImmediate();
+    }
+  });
+  
+  // 2. Periodic background sync (every 30 seconds) as insurance
+  setInterval(() => {
+    const { isDirty } = useCanvasStore.getState();
+    if (isDirty) {
+      syncCanvasToTimelineImmediate();
+    }
+  }, 30_000);
+  
+  // 3. Sync before visibility change (tab switch, minimize)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      const { isDirty } = useCanvasStore.getState();
+      if (isDirty) {
+        syncCanvasToTimelineImmediate();
+      }
+    }
+  });
+}
+
+// Call during app initialization:
+// initSyncGuard();
+```
 
 **2. Drawing Sync Flow**
 
@@ -1113,12 +1313,24 @@ interface TimelineState {
   // CONTENT FRAME ACTIONS
   // ============================================
   
-  addContentFrame: (layerId: LayerId, startFrame: number, durationFrames: number) => ContentFrameId;
+  /**
+   * All content frame mutations validate against overlaps.
+   * Content frames on the same layer must NOT overlap in time.
+   * If a mutation would cause overlap, it is rejected and returns null.
+   */
+  addContentFrame: (layerId: LayerId, startFrame: number, durationFrames: number) => ContentFrameId | null;
   removeContentFrame: (layerId: LayerId, frameId: ContentFrameId) => void;
-  updateContentFrameTiming: (layerId: LayerId, frameId: ContentFrameId, startFrame: number, durationFrames: number) => void;
+  updateContentFrameTiming: (layerId: LayerId, frameId: ContentFrameId, startFrame: number, durationFrames: number) => boolean;
   updateContentFrameData: (layerId: LayerId, frameId: ContentFrameId, data: Map<string, Cell>) => void;
   
   getContentFrameAtTime: (layerId: LayerId, frame: number) => ContentFrame | null;
+  
+  /**
+   * Validate that no content frames overlap on a given layer.
+   * Called internally by addContentFrame and updateContentFrameTiming.
+   * Also called by importSession to validate incoming data.
+   */
+  validateContentFrameTimings: (layerId: LayerId) => boolean;
   
   // ============================================
   // KEYFRAME ACTIONS
@@ -1519,7 +1731,13 @@ function createDefaultLayer(): Layer {
 
 ### 1.6 Integrate Undo/Redo
 
-**Modify:** `src/stores/historyStore.ts`
+> **⚠️ Architecture Note:** There is no standalone `historyStore.ts` in this codebase.
+> Undo/redo logic lives in **`src/stores/toolStore.ts`** (historyStack, historyPosition, pushToHistory, undo, redo).
+> All frame mutations are wrapped by **`src/hooks/useAnimationHistory.ts`** (461 lines), which creates
+> typed HistoryAction objects and calls `toolStore.pushToHistory()`. Both files must be updated.
+
+**Modify:** `src/stores/toolStore.ts` — Add new layer action types to the history system
+**Migrate:** `src/hooks/useAnimationHistory.ts` → `src/hooks/useTimelineHistory.ts` — New hook wrapping all layer/timeline mutations with undo/redo recording (see §1.6a below)
 
 Add new action types for layer operations:
 
@@ -1541,6 +1759,148 @@ type HistoryAction =
   | { type: 'PROPERTY_TRACK_ADD'; layerId: LayerId; trackId: PropertyTrackId; propertyPath: PropertyPath }
   | { type: 'PROPERTY_TRACK_REMOVE'; layerId: LayerId; trackId: PropertyTrackId; trackData: PropertyTrack };
 ```
+
+### 1.6a useTimelineHistory Hook Migration
+
+**Purpose:** Replace `useAnimationHistory.ts` (461 lines) with a new `useTimelineHistory.ts` that wraps all layer/timeline mutations with undo/redo recording against the new `timelineStore`.
+
+**Migrate:** `src/hooks/useAnimationHistory.ts` → `src/hooks/useTimelineHistory.ts`
+
+> **⚠️ Critical:** The existing `useAnimationHistory.ts` wraps every frame mutation (add, delete, reorder, duplicate, copy, paste, clear, etc.) with typed HistoryAction creation and calls `toolStore.pushToHistory()`. The new hook must cover ALL existing operations plus layer-specific ones.
+
+```typescript
+// src/hooks/useTimelineHistory.ts
+export function useTimelineHistory() {
+  const timelineStore = useTimelineStore();
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
+  
+  // Layer operations (NEW)
+  const addLayer = useCallback((name?: string) => {
+    const layer = timelineStore.addLayer(name);
+    pushToHistory({
+      type: 'LAYER_ADD',
+      layerId: layer.id,
+      layerData: structuredClone(layer),
+    });
+    return layer;
+  }, [timelineStore, pushToHistory]);
+
+  const removeLayer = useCallback((layerId: LayerId) => {
+    const layer = timelineStore.getLayer(layerId);
+    const index = timelineStore.layers.findIndex(l => l.id === layerId);
+    timelineStore.removeLayer(layerId);
+    pushToHistory({
+      type: 'LAYER_REMOVE',
+      layerId,
+      layerData: structuredClone(layer),
+      index,
+    });
+  }, [timelineStore, pushToHistory]);
+
+  // Content frame operations (replaces existing frame operations)
+  const addContentFrame = useCallback((layerId: LayerId, atTime?: number) => {
+    const frame = timelineStore.addContentFrame(layerId, atTime);
+    pushToHistory({
+      type: 'CONTENT_FRAME_ADD',
+      layerId,
+      frameId: frame.id,
+      frameData: structuredClone(frame),
+    });
+    return frame;
+  }, [timelineStore, pushToHistory]);
+
+  // ... remaining frame ops: deleteContentFrame, moveContentFrame, etc.
+  // Each wraps the raw timelineStore mutation with a pushToHistory call
+
+  return {
+    addLayer, removeLayer,
+    addContentFrame, /* deleteContentFrame, moveContentFrame, ... */
+  };
+}
+```
+
+**Migration strategy for consumers:**
+1. Components currently importing `useAnimationHistory` should be updated to import `useTimelineHistory`
+2. The function signatures change because frame operations now require a `layerId` parameter
+3. During Phase 1, `useAnimationHistory` can be kept as a thin wrapper that delegates to `useTimelineHistory` with the active layer ID
+
+### 1.6b animationStore Compatibility Adapter
+
+**Purpose:** The `useAnimationStore` is imported by **47 files** across the codebase. Rather than updating all 47 consumers simultaneously (which would cause a massive, risky PR), we create a backward-compatible adapter that provides the same API surface over the new `timelineStore`.
+
+**Create:** `src/stores/animationStoreAdapter.ts`
+
+```typescript
+/**
+ * Compatibility adapter: provides the legacy useAnimationStore API
+ * backed by the new timelineStore. This allows incremental migration
+ * of the 47 files that import useAnimationStore.
+ * 
+ * Usage: Replace `import { useAnimationStore } from './animationStore'`
+ *   with `import { useAnimationStore } from './animationStoreAdapter'`
+ * 
+ * Consumer code continues to work unchanged.
+ */
+import { useTimelineStore } from './timelineStore';
+
+export const useAnimationStore = create<LegacyAnimationState>((set, get) => {
+  // Derive legacy state from timelineStore
+  const timeline = useTimelineStore.getState();
+
+  return {
+    // Legacy: frames array → derived from active layer's content frames
+    get frames() {
+      const tl = useTimelineStore.getState();
+      const layer = tl.layers[tl.activeLayerIndex ?? 0];
+      return layer?.contentFrames ?? [];
+    },
+    
+    // Legacy: currentFrameIndex → derived from timeline playhead position
+    get currentFrameIndex() {
+      return useTimelineStore.getState().playbackState.currentFrame;
+    },
+    
+    // Legacy: frameRate
+    get frameRate() {
+      return useTimelineStore.getState().fps;
+    },
+    
+    // Legacy action: addFrame → delegates to timelineStore.addContentFrame
+    addFrame: () => {
+      const tl = useTimelineStore.getState();
+      const activeLayerId = tl.layers[tl.activeLayerIndex ?? 0]?.id;
+      if (activeLayerId) {
+        tl.addContentFrame(activeLayerId);
+      }
+    },
+    
+    // ... map all ~25 legacy actions to timelineStore equivalents
+    
+    // Mark adapter usage for tracking migration progress
+    __isAdapter: true,
+  };
+});
+
+// Subscribe to timelineStore changes and trigger adapter re-renders
+useTimelineStore.subscribe(() => {
+  useAnimationStore.setState({}); // Force re-render of adapter consumers
+});
+```
+
+**Migration tracking:**
+
+| Priority | File Count | Category | Migration Strategy |
+|----------|-----------|----------|-------------------|
+| P0 | 5 | Core stores (canvasStore, toolStore, effectsStore, etc.) | Direct migration to timelineStore in Phase 1 |
+| P1 | 12 | Hooks (useFrameSync, useAnimationHistory, etc.) | Migrate in Phase 1-2 |
+| P2 | 15 | Components (AnimationTimeline, FrameThumbnail, etc.) | Migrate in Phase 3 when rebuilding UI |
+| P3 | 15 | Utility/export files (exportDataCollector, generators, etc.) | Migrate in Phase 5-6 |
+
+**Adapter removal timeline:**
+- Phase 1: Adapter created, P0 files migrated directly
+- Phase 2-3: P1 and P2 files migrated as they are modified
+- Phase 5: P3 files migrated during export rewrite
+- Phase 6: Adapter removed, `animationStore.ts` deleted, all imports use `timelineStore` directly
 
 ### 1.7 Undo/Redo Batching Strategy
 
@@ -1654,10 +2014,14 @@ function onEasingHandleDragEnd(keyframeId: KeyframeId) {
 
 ---
 
-## Phase 2: Layer Data Model
+## Phase 2: Layer Data Model (Core)
 
 **Duration:** 2-3 weeks  
-**Goal:** Implement full layer management with content frames
+**Goal:** Implement core layer management with content frames
+
+> **Scope Note:** Advanced features (Layer Groups, Apply-to-All-Layers drawing, Multi-layer Selection,
+> Merge Layers) have been moved to **Phase 7: Advanced Layer Features** to reduce MVP complexity.
+> This phase focuses on single-layer-at-a-time operations, which is sufficient for initial layer support.
 
 ### 2.1 Layer Management Implementation
 
@@ -1680,9 +2044,8 @@ addLayer: (name?: string) => {
     propertyTracks: [],
   };
   
-  // Check subscription tier limit
-  const layerLimit = getSubscriptionLayerLimit();
-  if (layerLimit !== -1 && get().layers.length >= layerLimit) {
+  // Check subscription tier limit (centralized check)
+  if (!canAddLayer()) {
     showUpgradePrompt('layer_limit');
     return null;
   }
@@ -1699,13 +2062,55 @@ addLayer: (name?: string) => {
 },
 ```
 
+**Centralized Layer Limit Check:**
+
+All layer creation paths must go through `canAddLayer()`. This includes:
+- `addLayer()` (manual)
+- `duplicateLayer()` (manual)
+- `pasteLayer()` (clipboard)
+- `importSession()` (file load - silently truncate excess layers)
+- MCP `add_layer` tool (return error response)
+- Generator `applyGenerator()` (show upgrade prompt)
+
+```typescript
+// src/utils/layerLimits.ts - NEW FILE
+
+import { useTimelineStore } from '../stores/timelineStore';
+
+/**
+ * Centralized layer limit check. All layer creation paths MUST call this.
+ */
+export function canAddLayer(): boolean {
+  const layerLimit = getSubscriptionLayerLimit();
+  const currentCount = useTimelineStore.getState().layers.length;
+  return layerLimit === -1 || currentCount < layerLimit;
+}
+
+/**
+ * Check if importing N layers would exceed the limit.
+ * Returns the maximum number of layers that can be imported.
+ */
+export function getImportableLayerCount(incomingLayers: number): number {
+  const layerLimit = getSubscriptionLayerLimit();
+  if (layerLimit === -1) return incomingLayers;
+  const currentCount = useTimelineStore.getState().layers.length;
+  return Math.max(0, layerLimit - currentCount);
+}
+```
+
 ### 2.2 Subscription Tier Integration
 
-**Modify:** `packages/premium/src/stores/subscriptionStore.ts`
+> **⚠️ Architecture Note:** There is no `subscriptionStore.ts` in this codebase.
+> The premium submodule uses Stripe hooks and React components directly (e.g., `useStripeSubscription`,
+> `PremiumGate`). Layer limits should be added to the existing tier configuration in the premium package's
+> hooks and context providers, NOT to a non-existent store.
+
+**Modify:** Premium package tier configuration (add `maxLayers` to the tier definition used by Stripe hooks)
 
 ```typescript
 // Add layer limit to tier configuration
-interface SubscriptionTier {
+// Location: packages/premium - update the tier definition interface
+interface TierConfig {
   // ...existing fields
   maxLayers: number;  // -1 = unlimited, 5 = free tier
 }
@@ -1718,7 +2123,8 @@ interface SubscriptionTier {
 
 ```typescript
 export function useLayerLimit() {
-  const tier = useSubscriptionStore((s) => s.tier);
+  // Uses the premium package's existing hooks (not a subscriptionStore)
+  const tier = usePremiumTier();  // From packages/premium
   const layerCount = useTimelineStore((s) => s.layers.length);
   
   const maxLayers = tier?.maxLayers ?? 5;  // Default to free tier
@@ -1864,7 +2270,7 @@ function applyRotation(
   x: number, 
   y: number, 
   degrees: number,
-  cellAspectRatio: number = 0.6  // Typical monospace ~0.6 (width/height)
+  cellAspectRatio: number = getCellAspectRatio()  // Dynamic from font metrics
 ): { rotatedX: number; rotatedY: number } {
   const radians = (degrees * Math.PI) / 180;
   const cos = Math.cos(radians);
@@ -1882,6 +2288,23 @@ function applyRotation(
   const rotatedX = Math.round(rotatedScaledX / cellAspectRatio);
   
   return { rotatedX, rotatedY: Math.round(rotatedY) };
+}
+
+/**
+ * Get cell aspect ratio from current font/typography settings.
+ * Falls back to 0.6 (typical monospace ratio) if metrics unavailable.
+ * 
+ * The aspect ratio is width/height of a single character cell.
+ * For IBM VGA 8x16: 8/16 = 0.5
+ * For SF Mono at default size: ~0.6
+ * For square fonts: 1.0
+ */
+function getCellAspectRatio(): number {
+  const typography = useTypographyStore?.getState?.();
+  if (typography?.cellWidth && typography?.cellHeight) {
+    return typography.cellWidth / typography.cellHeight;
+  }
+  return 0.6; // Safe default for most monospace fonts
 }
 
 /**
@@ -1940,74 +2363,31 @@ export function Header() {
 }
 ```
 
-### 2.7 Drawing Tool Layer Targeting
+### 2.7 Drawing Tool Active-Layer Routing
 
 **Modify:** `src/stores/toolStore.ts`
 
-Add layer targeting toggle for drawing tools:
+All drawing tools operate on the **active layer only** in this phase. The `applyToAllLayers` multi-layer drawing mode is deferred to Phase 7.
 
 ```typescript
-interface ToolState {
-  // ... existing fields
-  
-  // Layer targeting
-  applyToAllLayers: boolean;  // false = current layer only
-}
-```
-
-**Drawing Tool Layer Interaction Rules:**
-
-| Tool State | Target Layers | Behavior |
-|------------|---------------|----------|
-| `applyToAllLayers: false` | Active layer only | Default - draw only on active layer |
-| `applyToAllLayers: true` | All visible, unlocked layers | Draw affects all eligible layers at once |
-
-**Layer Eligibility Rules:**
-- **Locked layers**: Never affected, even with "apply to all"
-- **Invisible layers**: Never affected
-- **Active layer indicator**: Always shows which layer receives solo drawing
-
-**Tool-Specific Behaviors:**
-
-```typescript
-// Drawing tools (pencil, brush, line, etc.)
-function handleDraw(position: Point, toolState: ToolState) {
-  if (toolState.applyToAllLayers) {
-    // Apply to all visible, unlocked layers
-    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
-    for (const layer of eligibleLayers) {
-      applyDrawToLayer(layer.id, position);
-    }
-  } else {
-    // Apply to active layer only (if not locked)
-    const activeLayer = getActiveLayer();
-    if (activeLayer && !activeLayer.locked) {
-      applyDrawToLayer(activeLayer.id, position);
-    }
+// Drawing tools always target the active layer
+function handleDraw(position: Point) {
+  const activeLayer = getActiveLayer();
+  if (activeLayer && !activeLayer.locked) {
+    applyDrawToLayer(activeLayer.id, position);
   }
 }
 
-// Eraser tool
-function handleErase(position: Point, toolState: ToolState) {
-  if (toolState.applyToAllLayers) {
-    // Erase from all visible, unlocked layers
-    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
-    for (const layer of eligibleLayers) {
-      eraseFromLayer(layer.id, position);
-    }
-  } else {
-    // Erase from active layer only
-    const activeLayer = getActiveLayer();
-    if (activeLayer && !activeLayer.locked) {
-      eraseFromLayer(activeLayer.id, position);
-    }
+// Eraser operates on active layer only
+function handleErase(position: Point) {
+  const activeLayer = getActiveLayer();
+  if (activeLayer && !activeLayer.locked) {
+    eraseFromLayer(activeLayer.id, position);
   }
 }
 
-// Paint bucket / fill tool
-function handleFill(position: Point, toolState: ToolState) {
-  // Fill always operates on active layer only
-  // (filling all layers would be confusing behavior)
+// Fill operates on active layer only
+function handleFill(position: Point) {
   const activeLayer = getActiveLayer();
   if (activeLayer && !activeLayer.locked) {
     fillInLayer(activeLayer.id, position);
@@ -2015,396 +2395,53 @@ function handleFill(position: Point, toolState: ToolState) {
 }
 ```
 
-**Groups and "Apply to All Layers":**
-- `applyToAllLayers` applies to **all visible, unlocked layers** regardless of group membership
-- Group visibility affects child layer eligibility (if group is hidden, children are not eligible)
-- Group lock affects child layer eligibility (if group is locked, children are not eligible)
+**Locked layer behavior:**
+- Drawing on a locked layer shows a toast notification: "Layer is locked"
+- All drawing tools check `activeLayer.locked` before any mutation
 
-**Modify:** All drawing tool hooks to respect `applyToAllLayers`:
-
+**Modify:** All drawing tool hooks to route through active layer:
 - `src/hooks/useDrawingTool.ts`
 - `src/hooks/useCanvasDragAndDrop.ts`
 - `src/hooks/usePaintBucket.ts`
 - `src/hooks/useEraserTool.ts`
 
-### 2.8 Selection Tool Layer Targeting
-
-**Purpose:** Control whether selection operations affect only the active layer or all layers.
-
-**Add to:** `src/stores/toolStore.ts`
-
-```typescript
-interface ToolState {
-  // ... existing fields
-  
-  // Selection layer targeting
-  selectionApplyToAllLayers: boolean;  // false = current layer only
-}
-```
-
-**Selection Tool Options Panel:**
-
-```typescript
-// In ToolOptionsPanel.tsx when selection tool is active
-function SelectionToolOptions() {
-  const { selectionApplyToAllLayers, setSelectionApplyToAllLayers } = useToolStore();
-  
-  return (
-    <div className="flex items-center gap-2">
-      <Switch
-        checked={selectionApplyToAllLayers}
-        onCheckedChange={setSelectionApplyToAllLayers}
-      />
-      <label className="text-sm">
-        {selectionApplyToAllLayers ? 'All Layers' : 'Current Layer'}
-      </label>
-    </div>
-  );
-}
-```
-
-**Selection Behavior:**
-
-| Mode | Copy | Cut | Delete | Move | Transform |
-|------|------|-----|--------|------|-----------|
-| Current Layer | Active layer only | Active layer only | Active layer only | Active layer only | Active layer only |
-| All Layers | All visible, unlocked | All visible, unlocked | All visible, unlocked | All visible, unlocked | All visible, unlocked |
-
-```typescript
-// Selection operations
-function handleSelectionAction(action: 'copy' | 'cut' | 'delete' | 'move' | 'transform', selection: Selection) {
-  const { selectionApplyToAllLayers } = useToolStore.getState();
-  
-  if (selectionApplyToAllLayers) {
-    // Apply to all visible, unlocked layers
-    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
-    for (const layer of eligibleLayers) {
-      performSelectionAction(action, layer.id, selection);
-    }
-  } else {
-    // Apply to active layer only
-    const activeLayer = getActiveLayer();
-    if (activeLayer && !activeLayer.locked) {
-      performSelectionAction(action, activeLayer.id, selection);
-    }
-  }
-}
-
-// Paste always creates content on active layer
-function handlePaste(clipboardData: ClipboardData) {
-  const activeLayer = getActiveLayer();
-  if (activeLayer && !activeLayer.locked) {
-    pasteToLayer(activeLayer.id, clipboardData);
-  }
-}
-```
-
-### 2.9 Layer Groups
-
-**Purpose:** Allow grouping layers for organizational and transform purposes. Groups have their own transform properties that apply to all child layers.
-
-**New Types:**
-
-```typescript
-// Add to src/types/timeline.ts
-
-export type LayerGroupId = Brand<string, 'LayerGroupId'>;
-
-/**
- * A layer group contains multiple layers and has its own transform.
- * Group transforms are applied BEFORE individual layer transforms.
- * Only one level of nesting is supported (groups cannot contain groups).
- */
-export interface LayerGroup {
-  id: LayerGroupId;
-  name: string;
-  
-  // Child layer IDs (in z-order, first = bottom)
-  childLayerIds: LayerId[];
-  
-  // Group visibility/state
-  visible: boolean;
-  solo: boolean;
-  locked: boolean;
-  collapsed: boolean;  // Collapse in timeline UI
-  
-  // Group-level transform (applied before child transforms)
-  propertyTracks: PropertyTrack[];
-}
-
-// Update Layer interface
-export interface Layer {
-  // ... existing fields
-  parentGroupId?: LayerGroupId;  // If layer is in a group
-}
-```
-
-**Store Actions:**
-
-```typescript
-// Add to timelineStore.ts
-
-// Group management
-createGroup: (name?: string, layerIds?: LayerId[]) => LayerGroupId;
-ungroupLayers: (groupId: LayerGroupId) => void;
-addLayerToGroup: (layerId: LayerId, groupId: LayerGroupId) => void;
-removeLayerFromGroup: (layerId: LayerId) => void;
-
-// Group state
-setGroupCollapsed: (groupId: LayerGroupId, collapsed: boolean) => void;
-setGroupVisible: (groupId: LayerGroupId, visible: boolean) => void;
-setGroupSolo: (groupId: LayerGroupId, solo: boolean) => void;
-setGroupLocked: (groupId: LayerGroupId, locked: boolean) => void;
-```
-
-**Transform Application Order:**
-
-```typescript
-function getEffectiveTransform(layer: Layer, frame: number): TransformValues {
-  // Get layer's own transform
-  const layerTransform = getLayerTransform(layer, frame);
-  
-  // If layer is in a group, apply group transform first
-  if (layer.parentGroupId) {
-    const group = getGroup(layer.parentGroupId);
-    const groupTransform = getGroupTransform(group, frame);
-    
-    // Compose transforms: group first, then layer
-    return composeTransforms(groupTransform, layerTransform);
-  }
-  
-  return layerTransform;
-}
-
-function composeTransforms(parent: TransformValues, child: TransformValues): TransformValues {
-  return {
-    // Position: parent position + child position (rotated by parent rotation)
-    positionX: parent.positionX + rotatePoint(child.positionX, child.positionY, parent.rotation).x,
-    positionY: parent.positionY + rotatePoint(child.positionX, child.positionY, parent.rotation).y,
-    // Scale: multiply
-    scale: parent.scale * child.scale,
-    // Rotation: add
-    rotation: parent.rotation + child.rotation,
-    // Opacity: multiply (normalized)
-    opacity: (parent.opacity / 100) * child.opacity,
-    // Anchor: child's anchor (group anchor is for group rotation center)
-    anchorX: child.anchorX,
-    anchorY: child.anchorY,
-  };
-}
-```
-
-**Effects on Groups:**
-
-When an effect is set to "apply to current selection" and a group is selected:
-- The effect is applied to each layer in the group individually
-- Layers are NOT composited first (no flattening)
-- Each layer gets its own effect instance in the effect list
-
-```typescript
-function applyEffectToSelection(effectType: string) {
-  const selection = getSelection();
-  
-  if (selection.type === 'group') {
-    const group = getGroup(selection.groupId);
-    // Apply effect to each layer in group individually
-    for (const layerId of group.childLayerIds) {
-      addEffect(effectType, 'layer', layerId);
-    }
-  } else if (selection.type === 'layer') {
-    addEffect(effectType, 'layer', selection.layerId);
-  }
-}
-```
-
-**Timeline UI for Groups:**
-
-```typescript
-// Group header row (collapsible)
-export function GroupListItem({ group }) {
-  return (
-    <div className="border-b bg-muted/30">
-      <div className="flex items-center gap-2 p-2">
-        {/* Collapse toggle */}
-        <button onClick={() => setGroupCollapsed(group.id, !group.collapsed)}>
-          <ChevronRight className={cn("w-4 h-4", !group.collapsed && "rotate-90")} />
-        </button>
-        
-        {/* Group icon */}
-        <Folder className="w-4 h-4" />
-        
-        {/* Visibility/Solo/Lock */}
-        <LayerControls target={group} />
-        
-        {/* Group name */}
-        <EditableName value={group.name} onChange={(name) => renameGroup(group.id, name)} />
-      </div>
-      
-      {/* Child layers (when expanded) */}
-      {!group.collapsed && (
-        <div className="ml-4 border-l">
-          {group.childLayerIds.map((layerId) => (
-            <LayerListItem key={layerId} layerId={layerId} isInGroup />
-          ))}
-        </div>
-      )}
-      
-      {/* Group property tracks (when expanded) */}
-      {!group.collapsed && group.propertyTracks.length > 0 && (
-        <div className="ml-6">
-          {group.propertyTracks.map((track) => (
-            <PropertyTrackRow key={track.id} targetId={group.id} track={track} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-```
-
-### 2.10 Merge Layers
-
-**Purpose:** Combine multiple layers into one, flattening their content.
-
-**Commands (accessible from Animation panel hamburger menu):**
-
-1. **Merge Down**: Merge selected layer with the layer directly below it
-2. **Merge Visible**: Merge all visible layers into one layer
-
-```typescript
-// Add to timelineStore.ts
-
-/**
- * Merge the selected layer with the layer below it.
- * The result replaces both layers with a single merged layer.
- */
-mergeDown: (layerId: LayerId) => {
-  const layers = get().layers;
-  const layerIndex = layers.findIndex((l) => l.id === layerId);
-  
-  if (layerIndex <= 0) return; // Can't merge bottom layer down
-  
-  const topLayer = layers[layerIndex];
-  const bottomLayer = layers[layerIndex - 1];
-  
-  // Composite content frames at each frame
-  const mergedContentFrames = mergeLayerContent(topLayer, bottomLayer, get().config);
-  
-  // Create merged layer (inherits bottom layer's properties)
-  const mergedLayer: Layer = {
-    id: generateLayerId(),
-    name: `${bottomLayer.name} + ${topLayer.name}`,
-    visible: true,
-    solo: false,
-    locked: false,
-    opacity: 100,
-    blendMode: 'normal',
-    contentFrames: mergedContentFrames,
-    propertyTracks: [],  // Transforms are baked in
-  };
-  
-  // Record for undo
-  recordHistoryAction({
-    type: 'LAYER_MERGE',
-    removedLayers: [topLayer, bottomLayer],
-    newLayer: mergedLayer,
-    insertIndex: layerIndex - 1,
-  });
-  
-  // Update layers array
-  const newLayers = [
-    ...layers.slice(0, layerIndex - 1),
-    mergedLayer,
-    ...layers.slice(layerIndex + 1),
-  ];
-  
-  set({ layers: newLayers });
-},
-
-/**
- * Merge all visible layers into one layer.
- */
-mergeVisible: () => {
-  const layers = get().layers.filter((l) => l.visible);
-  if (layers.length < 2) return;
-  
-  // Composite all visible layers
-  const mergedContentFrames = mergeMultipleLayerContent(layers, get().config);
-  
-  const mergedLayer: Layer = {
-    id: generateLayerId(),
-    name: 'Merged Visible',
-    visible: true,
-    solo: false,
-    locked: false,
-    opacity: 100,
-    blendMode: 'normal',
-    contentFrames: mergedContentFrames,
-    propertyTracks: [],
-  };
-  
-  // Record for undo and update
-  // ... similar to mergeDown
-},
-```
-
-**Menu Integration:**
-
-```typescript
-// In AnimationPanelMenu.tsx (hamburger menu)
-<DropdownMenuItem 
-  onClick={() => mergeDown(activeLayerId)}
-  disabled={!canMergeDown}
->
-  Merge Down
-</DropdownMenuItem>
-<DropdownMenuItem 
-  onClick={() => mergeVisible()}
-  disabled={visibleLayerCount < 2}
->
-  Merge Visible
-</DropdownMenuItem>
-```
-
-### 2.11 Testing Checkpoint
+### 2.8 Testing Checkpoint
 
 - [ ] Can add layers (up to 5 on free tier)
 - [ ] Can rename, reorder, show/hide, solo, lock layers
 - [ ] Active layer indicator shows in header
-- [ ] Drawing tools target active layer
-- [ ] "Apply to all layers" drawing mode affects all visible, unlocked layers
-- [ ] Locked layers are never affected by drawing operations
-- [ ] Invisible layers are never affected by drawing operations
-- [ ] Eraser with "apply to all layers" works on all visible, unlocked layers
-- [ ] Selection tool has layer mode toggle in options panel
-- [ ] Selection "all layers" mode affects all visible, unlocked layers
-- [ ] Layer compositing renders correctly
+- [ ] Drawing tools target active layer only
+- [ ] Locked layers show toast and reject drawing
+- [ ] Invisible layers excluded from render
+- [ ] Layer compositing renders correctly (z-order)
 - [ ] Content frame gaps show blank canvas
 - [ ] Drawing at a content frame gap creates new 1-frame content frame
 - [ ] Undo/redo works for all layer operations
 - [ ] Solo mode isolates layer rendering
-- [ ] Hidden layers excluded from render
-- [ ] Can create layer groups
-- [ ] Can add/remove layers from groups
-- [ ] Groups can be collapsed in timeline
-- [ ] Group transforms apply to all child layers (group first, then layer)
-- [ ] Group visibility affects child layer visibility
-- [ ] Group lock affects child layer editability
-- [ ] Merge Down combines two layers correctly
-- [ ] Merge Visible combines all visible layers
+- [ ] Canvas store correctly syncs with active layer's content frame
 
 ---
 
 ## Phase 3: Timeline UI
 
-**Duration:** 3-4 weeks  
+**Duration:** 5-6 weeks  
 **Goal:** Build complete timeline interface with layers and property tracks
+
+> **⚠️ Duration Note:** Increased from original 3-4 week estimate. This phase introduces 11+ new
+> components including the timeline ruler, content frame blocks, keyframe diamonds, easing curve editor,
+> frame duration dialog, and frame view panel. Each requires drag-and-drop, keyboard shortcuts, and
+> accessibility support. 5-6 weeks accounts for the real UI complexity.
 
 ### 3.1 Resizable Bottom Panel
 
-**Modify:** `src/components/layout/MainLayout.tsx`
+> **⚠️ Architecture Note:** There is no `MainLayout.tsx` in this codebase.
+> The main editor layout lives in **`src/pages/EditorPage.tsx`** (214 lines), which uses absolute positioning
+> with `left`, `right`, `bottom` panels and a center canvas area. The bottom panel uses the CSS variable
+> `--bottom-panel-height` and a `CollapsiblePanel` component.
 
-Replace toggle button with drag handle:
+**Modify:** `src/pages/EditorPage.tsx`
+
+Replace the existing `CollapsiblePanel` toggle with a drag handle for smooth resizing:
 
 ```typescript
 // New component for resizable panel
@@ -3105,11 +3142,63 @@ function applyEasing(t: number, easing: EasingCurve): number {
 
 /**
  * Solve cubic bezier curve for y given x.
- * Uses Newton-Raphson method.
+ * Uses Newton-Raphson method with max 8 iterations.
+ * Falls back to bisection if Newton-Raphson fails to converge.
+ *
+ * Performance: ~0.002ms per call. For animations with 100+ keyframes,
+ * consider using presetEasingLUT for common presets.
  */
 function solveCubicBezier(x: number, x1: number, y1: number, x2: number, y2: number): number {
-  // ... numerical solver implementation
-  // Standard cubic bezier implementation
+  const MAX_ITERATIONS = 8;
+  const EPSILON = 1e-6;
+  
+  // Newton-Raphson to find t for given x
+  let t = x; // Initial guess
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const currentX = cubicBezier(t, x1, x2) - x;
+    if (Math.abs(currentX) < EPSILON) break;
+    const dx = cubicBezierDerivative(t, x1, x2);
+    if (Math.abs(dx) < EPSILON) break;
+    t -= currentX / dx;
+  }
+  
+  // Clamp t to [0, 1]
+  t = Math.max(0, Math.min(1, t));
+  
+  return cubicBezier(t, y1, y2);
+}
+
+function cubicBezier(t: number, p1: number, p2: number): number {
+  return 3 * (1 - t) * (1 - t) * t * p1 + 3 * (1 - t) * t * t * p2 + t * t * t;
+}
+
+function cubicBezierDerivative(t: number, p1: number, p2: number): number {
+  return 3 * (1 - t) * (1 - t) * p1 + 6 * (1 - t) * t * (p2 - p1) + 3 * t * t * (1 - p2);
+}
+
+/**
+ * Pre-computed lookup table for common easing presets.
+ * Avoids Newton-Raphson on high-frequency calls.
+ * Each LUT has 256 samples for smooth interpolation.
+ */
+const EASING_LUT_SIZE = 256;
+const easingLUTCache = new Map<string, Float32Array>();
+
+function getEasingLUT(easing: EasingCurve): Float32Array {
+  if (easing.type !== 'custom') {
+    const cached = easingLUTCache.get(easing.type);
+    if (cached) return cached;
+    
+    const [ex1, ey1, ex2, ey2] = EASING_PRESETS[easing.type];
+    const lut = new Float32Array(EASING_LUT_SIZE);
+    for (let i = 0; i < EASING_LUT_SIZE; i++) {
+      lut[i] = solveCubicBezier(i / (EASING_LUT_SIZE - 1), ex1, ey1, ex2, ey2);
+    }
+    easingLUTCache.set(easing.type, lut);
+    return lut;
+  }
+  // Custom curves always use Newton-Raphson (not cached)
+  return null as any;
 }
 ```
 
@@ -3591,8 +3680,46 @@ export const useOptimizedLayerPlayback = () => {
 
 1. **Frame Pre-computation**: All layers composited once at playback start
 2. **Memory Trade-off**: Uses more memory (one composited Map per frame) but zero per-frame computation
-3. **Large Animation Handling**: For animations > 1000 frames, compute on-demand with LRU cache
+3. **Large Animation Handling**: For animations exceeding `MAX_PRECOMPUTE_FRAMES`, switch to on-demand compositing with LRU cache
 4. **Keyframe Change Detection**: If user edits during paused playback, invalidate cache
+
+**Memory Configuration:**
+
+```typescript
+// src/config/playbackConfig.ts
+
+/** Maximum frames to pre-compute at playback start.
+ *  Above this threshold, switch to on-demand compositing with LRU cache.
+ *  Estimated memory per frame: ~2KB for 80x24 canvas, ~20KB for 200x100 canvas.
+ */
+export const MAX_PRECOMPUTE_FRAMES = 500;
+
+/** LRU cache size for on-demand compositing (large animations). */
+export const LRU_CACHE_SIZE = 100;
+
+/** Estimated memory budget for pre-computed frames (in bytes). */
+export const PRECOMPUTE_MEMORY_BUDGET = 50 * 1024 * 1024; // 50 MB
+```
+
+**Updated start() with threshold:**
+
+```typescript
+start: (layers, durationFrames, canvasWidth, canvasHeight, initialFrame = 0) => {
+  if (durationFrames <= MAX_PRECOMPUTE_FRAMES) {
+    // Pre-compute all frames (fast playback, higher memory)
+    const compositedFrames = [];
+    for (let f = 0; f < durationFrames; f++) {
+      compositedFrames.push(compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight));
+    }
+    playbackState = { ...playbackState, isActive: true, compositedFrames, mode: 'precomputed' };
+  } else {
+    // On-demand with LRU cache (lower memory, slight per-frame overhead)
+    const lruCache = new LRUCache<number, Map<string, Cell>>(LRU_CACHE_SIZE);
+    playbackState = { ...playbackState, isActive: true, lruCache, layers, mode: 'on-demand' };
+  }
+  emit();
+},
+```
 
 ### 4.9 Onion Skinning Layer Support
 
@@ -4313,7 +4440,6 @@ applyGenerator: async () => {
     solo: false,
     locked: false,
     opacity: 100,
-    blendMode: 'normal',
     contentFrames,
     propertyTracks: [],
   };
@@ -4415,7 +4541,135 @@ export function EffectPanel({ effectId }) {
 }
 ```
 
-### 6.4 MCP Protocol v2.0.0
+### 6.4a useFrameSynchronization Rewrite
+
+> **⚠️ Critical Migration:** The existing `useFrameSynchronization.ts` (252 lines) is a fragile bidirectional
+> sync hook with debouncing, loop guards, and JSON diffing. Rather than trying to modify it for the layer
+> system, it should be **completely rewritten** from scratch.
+
+**Delete:** `src/hooks/useFrameSynchronization.ts` (252 lines)  
+**Create:** `src/hooks/useLayerCanvasSync.ts`
+
+The new sync hook follows a **unidirectional** data flow:
+
+```
+timelineStore (source of truth)
+    ↓
+useLayerCanvasSync (derives active frame data)
+    ↓
+canvasStore (working canvas for drawing tools)
+    ↓
+on drawing mutation → write back to timelineStore active content frame
+```
+
+```typescript
+/**
+ * Replaces useFrameSynchronization.ts with a clean unidirectional sync.
+ * 
+ * OLD: Bidirectional sync with debounce, loop guards, JSON diff
+ * NEW: Unidirectional: timelineStore → canvasStore → write-back on mutation
+ */
+export function useLayerCanvasSync() {
+  const activeLayerId = useTimelineStore((s) => s.activeLayerId);
+  const playheadFrame = useTimelineStore((s) => s.playbackState.currentFrame);
+  const getContentFrame = useTimelineStore((s) => s.getContentFrameAt);
+  
+  // When active layer or playhead changes, load content into canvas
+  useEffect(() => {
+    if (!activeLayerId) return;
+    
+    const contentFrame = getContentFrame(activeLayerId, playheadFrame);
+    if (contentFrame) {
+      // Load content frame data into canvasStore for editing
+      useCanvasStore.getState().loadFromData(contentFrame.data);
+    } else {
+      // No content at this frame — show blank canvas
+      useCanvasStore.getState().clear();
+    }
+  }, [activeLayerId, playheadFrame, getContentFrame]);
+  
+  // Subscribe to canvas mutations and write back to timelineStore
+  useEffect(() => {
+    const unsubscribe = useCanvasStore.subscribe(
+      (state) => state.cells,
+      (cells) => {
+        if (!activeLayerId) return;
+        // Write canvas changes back to the active content frame
+        useTimelineStore.getState().updateContentFrameData(activeLayerId, playheadFrame, cells);
+      },
+      { equalityFn: Object.is } // Only fire on reference change
+    );
+    return unsubscribe;
+  }, [activeLayerId, playheadFrame]);
+}
+```
+
+**Key improvements over the old sync:**
+- No bidirectional sync loops (unidirectional only)
+- No debouncing (immediate write-back via Zustand subscribe)
+- No JSON diffing (reference equality check via `Object.is`)
+- No loop guards needed (data flows one direction)
+- Trivially testable (mock stores, assert writes)
+
+### 6.4b timeEffectsStore Migration
+
+> **⚠️ Missing from original plan:** The `timeEffectsStore.ts` manages wiggle, wave warp, and frame
+> duration manipulation effects. These operate on per-frame data and must be updated to work with
+> the layer-based content frame model.
+
+**Modify:** `src/stores/timeEffectsStore.ts`
+
+```typescript
+// Current: timeEffectsStore operates on animationStore.frames[]
+// New: timeEffectsStore must operate on per-layer content frames
+
+// Key changes:
+// 1. Wiggle effect: applies to active layer's content frames (or all layers if global scope)
+// 2. Wave warp: applies to active layer's content frames
+// 3. Frame duration manipulation: operates on timelineStore.config.fps and content frame timing
+
+// Migration approach:
+// - Replace all animationStore.frames[] references with timelineStore layer content
+// - Add layer targeting (scope: 'layer' | 'global')
+// - Reuse existing effect math, just change data source
+```
+
+### 6.4c generatorsStore Migration Detail
+
+> **⚠️ Additional detail:** The `generatorsStore.ts` (808 lines) has 5 generator types deeply coupled
+> to the frame model via `importFramesOverwrite` and `importFramesAppend`. Section 6.3 covers the
+> general approach, but here are the specific migration steps per generator.
+
+**Generator-specific migration:**
+
+| Generator | Current Frame Access | New Layer Access | Notes |
+|-----------|---------------------|-----------------|-------|
+| RadioWaves | `importFramesOverwrite(frames)` | `addLayerWithContentFrames(name, frames)` | Each generate creates a new layer |
+| TurbulentNoise | `importFramesOverwrite(frames)` | `addLayerWithContentFrames(name, frames)` | Memory-intensive — may need layer-level budgeting |
+| ParticlePhysics | `importFramesAppend(frames)` | `addLayerWithContentFrames(name, frames)` | Change from append to new layer |
+| RainDrops | `importFramesOverwrite(frames)` | `addLayerWithContentFrames(name, frames)` | Simplest migration |
+| DigitalRain | `importFramesOverwrite(frames)` | `addLayerWithContentFrames(name, frames)` | Simplest migration |
+
+### 6.4d MCP ProjectStateManager Migration
+
+> **⚠️ Additional detail:** The MCP server's `ProjectStateManager` class (~900 lines) in
+> `ascii-motion-mcp/src/state.ts` maintains an independent representation of the project state.
+> It must be updated to understand the v2 layer-based data model.
+
+**Modify:** `ascii-motion-mcp/src/state.ts`
+
+```typescript
+// Current: ProjectStateManager tracks frames[], canvas cells
+// New: Must track layers[], content frames, property tracks, keyframes
+
+// Key changes:
+// 1. Internal state representation → add layers array
+// 2. Zod schemas → add layer validation
+// 3. WebSocket sync → handle layer-specific events
+// 4. Tool handlers → route through layer targeting
+```
+
+### 6.5 MCP Protocol v2.0.0
 
 **Modify:** `ascii-motion-mcp/src/types.ts`
 
@@ -4546,7 +4800,7 @@ export const layerTools = {
 };
 ```
 
-### 6.5 MCP Resources Update
+### 6.6 MCP Resources Update
 
 **Modify:** `ascii-motion-mcp/src/resources/guide.ts`
 
@@ -4623,7 +4877,7 @@ Keyframes support cubic bezier easing:
 };
 ```
 
-### 6.6 Version Bump
+### 6.7 Version Bump
 
 **Modify:** `ascii-motion-mcp/package.json`
 
@@ -4635,7 +4889,7 @@ Keyframes support cubic bezier easing:
 }
 ```
 
-### 6.7 Testing Checkpoint
+### 6.8 Testing Checkpoint
 
 - [ ] Layer effects apply in correct order
 - [ ] Global effects apply after layer compositing
@@ -4655,6 +4909,203 @@ Keyframes support cubic bezier easing:
 
 ---
 
+## Phase 7: Advanced Layer Features
+
+**Duration:** 2-3 weeks  
+**Goal:** Add advanced multi-layer features that were deferred from Phase 2 to reduce MVP scope
+
+> **Prerequisite:** Phases 1-6 must be complete and stable before starting Phase 7.
+> These features add complexity on top of the core layer system. They should only be built
+> once the foundation is proven reliable.
+
+### 7.1 Apply-to-All-Layers Drawing Mode
+
+**Modify:** `src/stores/toolStore.ts`
+
+Add layer targeting toggle for drawing tools:
+
+```typescript
+interface ToolState {
+  // ... existing fields
+  applyToAllLayers: boolean;  // false = current layer only (default)
+}
+```
+
+**Drawing Tool Layer Interaction Rules:**
+
+| Tool State | Target Layers | Behavior |
+|------------|---------------|----------|
+| `applyToAllLayers: false` | Active layer only | Default — draw only on active layer |
+| `applyToAllLayers: true` | All visible, unlocked layers | Draw affects all eligible layers at once |
+
+**Layer Eligibility Rules:**
+- **Locked layers**: Never affected, even with "apply to all"
+- **Invisible layers**: Never affected
+- **Active layer indicator**: Always shows which layer receives solo drawing
+
+```typescript
+// Drawing tools with multi-layer support
+function handleDraw(position: Point, toolState: ToolState) {
+  if (toolState.applyToAllLayers) {
+    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
+    for (const layer of eligibleLayers) {
+      applyDrawToLayer(layer.id, position);
+    }
+  } else {
+    const activeLayer = getActiveLayer();
+    if (activeLayer && !activeLayer.locked) {
+      applyDrawToLayer(activeLayer.id, position);
+    }
+  }
+}
+```
+
+**Modify:** All drawing tool hooks:
+- `src/hooks/useDrawingTool.ts`
+- `src/hooks/useCanvasDragAndDrop.ts`
+- `src/hooks/usePaintBucket.ts` (always single-layer — fill all layers would be confusing)
+- `src/hooks/useEraserTool.ts`
+
+### 7.2 Multi-Layer Selection Operations
+
+**Modify:** `src/stores/toolStore.ts`
+
+```typescript
+interface ToolState {
+  // ... existing fields
+  selectionApplyToAllLayers: boolean;  // false = current layer only
+}
+```
+
+**Selection Behavior:**
+
+| Mode | Copy | Cut | Delete | Move | Transform |
+|------|------|-----|--------|------|-----------|
+| Current Layer | Active layer only | Active layer only | Active layer only | Active layer only | Active layer only |
+| All Layers | All visible, unlocked | All visible, unlocked | All visible, unlocked | All visible, unlocked | All visible, unlocked |
+
+```typescript
+function handleSelectionAction(action: 'copy' | 'cut' | 'delete' | 'move' | 'transform', selection: Selection) {
+  const { selectionApplyToAllLayers } = useToolStore.getState();
+  
+  if (selectionApplyToAllLayers) {
+    const eligibleLayers = layers.filter(l => l.visible && !l.locked);
+    for (const layer of eligibleLayers) {
+      performSelectionAction(action, layer.id, selection);
+    }
+  } else {
+    const activeLayer = getActiveLayer();
+    if (activeLayer && !activeLayer.locked) {
+      performSelectionAction(action, activeLayer.id, selection);
+    }
+  }
+}
+
+// Paste always creates content on active layer
+function handlePaste(clipboardData: ClipboardData) {
+  const activeLayer = getActiveLayer();
+  if (activeLayer && !activeLayer.locked) {
+    pasteToLayer(activeLayer.id, clipboardData);
+  }
+}
+```
+
+### 7.3 Layer Groups
+
+**Purpose:** Allow grouping layers for organizational and transform purposes. Groups have their own transform properties that apply to all child layers.
+
+> **Note:** Layer Groups add significant complexity (group transforms compose with layer transforms,
+> group visibility/lock cascade to children, group serialization/deserialization). This feature is
+> intentionally deferred until the core layer system is proven stable.
+
+**Types (already defined in Phase 1 types):** `LayerGroup`, `LayerGroupId`
+
+**Store Actions to add to `timelineStore.ts`:**
+
+```typescript
+createGroup: (name?: string, layerIds?: LayerId[]) => LayerGroupId;
+ungroupLayers: (groupId: LayerGroupId) => void;
+addLayerToGroup: (layerId: LayerId, groupId: LayerGroupId) => void;
+removeLayerFromGroup: (layerId: LayerId) => void;
+setGroupCollapsed: (groupId: LayerGroupId, collapsed: boolean) => void;
+setGroupVisible: (groupId: LayerGroupId, visible: boolean) => void;
+setGroupSolo: (groupId: LayerGroupId, solo: boolean) => void;
+setGroupLocked: (groupId: LayerGroupId, locked: boolean) => void;
+```
+
+**Transform Composition:**
+
+```typescript
+function getEffectiveTransform(layer: Layer, frame: number): TransformValues {
+  const layerTransform = getLayerTransform(layer, frame);
+  if (layer.parentGroupId) {
+    const group = getGroup(layer.parentGroupId);
+    const groupTransform = getGroupTransform(group, frame);
+    return composeTransforms(groupTransform, layerTransform);
+  }
+  return layerTransform;
+}
+```
+
+**New Components:**
+- `src/components/features/GroupListItem.tsx` — Collapsible group header in timeline
+- `src/utils/transformComposition.ts` — Group + layer transform composition
+
+### 7.4 Merge Layers
+
+**Purpose:** Combine multiple layers into one, flattening their content.
+
+**Commands (accessible from Animation panel hamburger menu):**
+
+1. **Merge Down**: Merge selected layer with the layer directly below it
+2. **Merge Visible**: Merge all visible layers into one layer
+
+```typescript
+mergeDown: (layerId: LayerId) => {
+  const layers = get().layers;
+  const layerIndex = layers.findIndex((l) => l.id === layerId);
+  if (layerIndex <= 0) return;
+  
+  const topLayer = layers[layerIndex];
+  const bottomLayer = layers[layerIndex - 1];
+  const mergedContentFrames = mergeLayerContent(topLayer, bottomLayer, get().config);
+  
+  const mergedLayer: Layer = {
+    id: generateLayerId(),
+    name: `${bottomLayer.name} + ${topLayer.name}`,
+    visible: true, solo: false, locked: false, opacity: 100,
+    blendMode: 'normal',
+    contentFrames: mergedContentFrames,
+    propertyTracks: [],  // Transforms are baked in
+  };
+  
+  recordHistoryAction({ type: 'LAYER_MERGE', removedLayers: [topLayer, bottomLayer], newLayer: mergedLayer, insertIndex: layerIndex - 1 });
+  
+  const newLayers = [...layers.slice(0, layerIndex - 1), mergedLayer, ...layers.slice(layerIndex + 1)];
+  set({ layers: newLayers });
+},
+```
+
+### 7.5 Testing Checkpoint
+
+- [ ] "Apply to all layers" drawing mode affects all visible, unlocked layers
+- [ ] Eraser with "apply to all layers" works on all visible, unlocked layers
+- [ ] Selection tool has layer mode toggle in options panel
+- [ ] Selection "all layers" mode affects all visible, unlocked layers
+- [ ] Can create layer groups
+- [ ] Can add/remove layers from groups
+- [ ] Groups can be collapsed in timeline
+- [ ] Group transforms apply to all child layers (group first, then layer)
+- [ ] Group visibility affects child layer visibility
+- [ ] Group lock affects child layer editability
+- [ ] Merge Down combines two layers correctly
+- [ ] Merge Visible combines all visible layers
+- [ ] All group/merge operations are undoable
+- [ ] Groups serialize/deserialize correctly in session files
+- [ ] MCP tools handle groups correctly
+
+---
+
 ## File Change Matrix
 
 ### Main Repository (Ascii-Motion)
@@ -4664,7 +5115,9 @@ Keyframes support cubic bezier easing:
 | `src/types/timeline.ts` | 1 | NEW | All timeline type definitions |
 | `src/types/easing.ts` | 1 | NEW | Easing curve utilities |
 | `src/stores/timelineStore.ts` | 1 | NEW | Timeline state management |
-| `src/stores/historyStore.ts` | 1 | MODIFY | Add layer action types |
+| `src/stores/toolStore.ts` (undo/redo) | 1 | MODIFY | Add layer history action types (undo/redo logic lives here, not in a separate historyStore) |
+| `src/hooks/useTimelineHistory.ts` | 1 | NEW | Replaces `useAnimationHistory.ts` — wraps all layer/timeline mutations with undo/redo recording |
+| `src/stores/animationStoreAdapter.ts` | 1 | NEW | Compatibility adapter providing backward-compatible `useAnimationStore` API over `timelineStore` |
 | `src/utils/sessionMigration.ts` | 1 | NEW | v1→v2 migration |
 | `src/stores/canvasStore.ts` | 2 | MODIFY | Active layer sync |
 | `src/utils/layerCompositing.ts` | 2 | NEW | Layer rendering |
@@ -4672,7 +5125,7 @@ Keyframes support cubic bezier easing:
 | `src/hooks/useLayerLimit.ts` | 2 | NEW | Subscription tier check |
 | `src/components/features/Header.tsx` | 2 | MODIFY | Layer indicator |
 | `src/stores/toolStore.ts` | 2 | MODIFY | Layer targeting toggle |
-| `src/components/layout/MainLayout.tsx` | 3 | MODIFY | Resizable panel |
+| `src/pages/EditorPage.tsx` | 3 | MODIFY | Resizable panel (replaces CollapsiblePanel toggle with drag handle) |
 | `src/components/features/TimelineTabs.tsx` | 3 | NEW | View tabs |
 | `src/components/features/LayerList.tsx` | 3 | NEW | Layer panel |
 | `src/components/features/LayerListItem.tsx` | 3 | NEW | Layer row |
@@ -4693,20 +5146,26 @@ Keyframes support cubic bezier easing:
 | `src/hooks/useOptimizedLayerPlayback.ts` | 4 | NEW | Layer-aware playback loop |
 | `src/components/features/FrameDurationDialog.tsx` | 3 | NEW | Precise duration editing dialog |
 | `src/components/features/FrameViewPanel.tsx` | 3 | NEW | Flattened frame view |
-| `src/components/features/GroupListItem.tsx` | 2 | NEW | Group UI in timeline |
-| `src/utils/transformComposition.ts` | 2 | NEW | Group + layer transform composition |
+| `src/components/features/GroupListItem.tsx` | 7 | NEW | Group UI in timeline (Phase 7: Advanced) |
+| `src/utils/transformComposition.ts` | 7 | NEW | Group + layer transform composition (Phase 7: Advanced) |
 | `src/utils/exportDataCollector.ts` | 5 | MODIFY | Layer data collection |
 | `src/utils/videoExporter.ts` | 5 | MODIFY | Layer compositing |
 | `src/utils/exportRenderer.ts` | 5 | MODIFY | Layer compositing |
 | `src/utils/sessionExporter.ts` | 5 | MODIFY | v2 format |
 | `src/utils/sessionImporter.ts` | 5 | MODIFY | v1/v2 loading |
 | `src/stores/effectsStore.ts` | 6 | MODIFY | Layer effects |
+| `src/stores/timeEffectsStore.ts` | 6 | MODIFY | Wiggle/wave warp → layer content frames |
+| `src/stores/generatorsStore.ts` | 6 | MODIFY | Generators create layers instead of overwriting frames |
+| `src/hooks/useLayerCanvasSync.ts` | 6 | NEW | Replaces useFrameSynchronization.ts (unidirectional sync) |
+| `src/hooks/useFrameSynchronization.ts` | 6 | DELETE | Replaced by useLayerCanvasSync.ts |
+| `src/hooks/useAnimationHistory.ts` | 1 | MIGRATE | Becomes useTimelineHistory.ts |
+| `src/stores/animationStore.ts` | 6 | DELETE | Replaced by timelineStore + adapter (adapter removed after Phase 5) |
 
 ### Premium Submodule
 
 | File | Phase | Change Type | Description |
 |------|-------|-------------|-------------|
-| `src/stores/subscriptionStore.ts` | 2 | MODIFY | Max layers per tier |
+| Premium tier config (hooks/context) | 2 | MODIFY | Max layers per tier (no subscriptionStore exists; uses Stripe hooks) |
 | `src/services/projectService.ts` | 5 | MODIFY | v2 format handling |
 | `src/utils/previewGenerator.ts` | 5 | MODIFY | Composited preview |
 
@@ -4852,13 +5311,6 @@ Keyframes support cubic bezier easing:
 - [ ] Reorder layers
 - [ ] Draw on different layers
 - [ ] Verify compositing renders correctly
-- [ ] Test "apply to all layers" drawing mode
-- [ ] Test selection tool layer modes
-- [ ] Create layer group
-- [ ] Add/remove layers from groups
-- [ ] Verify group transforms apply to children
-- [ ] Test Merge Down command
-- [ ] Test Merge Visible command
 
 #### Phase 3
 - [ ] Resize bottom panel via drag
@@ -4902,6 +5354,15 @@ Keyframes support cubic bezier easing:
 - [ ] MCP add_layer works
 - [ ] MCP add_keyframe works
 - [ ] MCP get_layers returns data
+
+#### Phase 7
+- [ ] Test "apply to all layers" drawing mode
+- [ ] Test selection tool layer modes
+- [ ] Create layer group
+- [ ] Add/remove layers from groups
+- [ ] Verify group transforms apply to children
+- [ ] Test Merge Down command
+- [ ] Test Merge Visible command
 
 ---
 
@@ -4960,6 +5421,157 @@ function getLayerCells(layer: Layer, frame: number): Map<string, Cell> {
 2. **Layer Limits**: 5 layers for free tier
 3. **Shared Content Frames**: If same content appears in multiple places, reference instead of duplicate
 
+### Error Recovery
+
+**Challenge**: Layer compositing, playback, or data corruption could cause runtime errors.
+
+**Mitigations**:
+
+1. **Compositing Error Boundary**: Wrap `compositeLayersAtFrame` in try/catch. On failure, log the error and render only the layers that succeeded, skipping the problematic layer.
+
+2. **Playback Error Recovery**: If a frame fails to render during playback, skip it and continue. Show a warning toast but don't stop playback entirely.
+
+3. **Session Import Validation**: Validate incoming session data against expected types before loading. If layers have corrupted content frames (missing data, invalid coordinates), attempt repair:
+   - Missing `data` field: Initialize to empty Map
+   - Negative `startFrame`: Clamp to 0
+   - `durationFrames` < 1: Set to 1
+   - Overlapping content frames: Keep first, shift subsequent
+
+4. **Corrupted Layer Isolation**: If a layer fails to render consistently, automatically hide it and show a notification suggesting the user delete and re-create it.
+
+### Dynamic Memory Budgeting
+
+> **⚠️ Added based on codebase review:** The existing `playbackOnlyStore.ts` (153 lines) pre-caches
+> all frame snapshots in memory during playback. With layers, memory usage grows as
+> `layers × frames × canvasSize`. A static budget will either waste memory on small projects
+> or OOM on large ones.
+
+**Approach:** Query available memory at startup and set dynamic cache limits.
+
+```typescript
+// Dynamic memory budget based on canvas size and layer count
+function calculateMemoryBudget(): MemoryBudget {
+  const canvasWidth = useCanvasStore.getState().width;
+  const canvasHeight = useCanvasStore.getState().height;
+  const layerCount = useTimelineStore.getState().layers.length;
+  
+  // Estimate bytes per frame: each cell ≈ 50 bytes (char + fg + bg + metadata)
+  const bytesPerFrame = canvasWidth * canvasHeight * 50;
+  const bytesPerComposited = bytesPerFrame; // Composited frame is same size
+  
+  // Target: stay under 200MB for frame caches
+  const TARGET_CACHE_MB = 200;
+  const targetBytes = TARGET_CACHE_MB * 1024 * 1024;
+  
+  // Layer caches: one cached frame per layer
+  const layerCacheBytes = layerCount * bytesPerFrame;
+  
+  // Remaining budget for composited frame cache
+  const remainingBytes = targetBytes - layerCacheBytes;
+  const maxCachedFrames = Math.max(10, Math.floor(remainingBytes / bytesPerComposited));
+  
+  return {
+    maxCachedFrames,
+    layerCacheEnabled: true,
+    useLRUEviction: maxCachedFrames < useTimelineStore.getState().config.totalFrames,
+  };
+}
+
+// LRU cache for composited frames during playback
+class FrameLRUCache {
+  private cache = new Map<number, Map<string, Cell>>();
+  private accessOrder: number[] = [];
+  private maxSize: number;
+  
+  constructor(maxSize: number) {
+    this.maxSize = maxSize;
+  }
+  
+  get(frame: number): Map<string, Cell> | undefined {
+    const result = this.cache.get(frame);
+    if (result) {
+      // Move to end of access order
+      this.accessOrder = this.accessOrder.filter(f => f !== frame);
+      this.accessOrder.push(frame);
+    }
+    return result;
+  }
+  
+  set(frame: number, data: Map<string, Cell>) {
+    if (this.cache.size >= this.maxSize) {
+      // Evict least recently used
+      const evictFrame = this.accessOrder.shift()!;
+      this.cache.delete(evictFrame);
+    }
+    this.cache.set(frame, data);
+    this.accessOrder.push(frame);
+  }
+}
+```
+
+**Budget recalculation triggers:**
+- Layer added or removed
+- Canvas resized
+- Project loaded
+
+```typescript
+// Safe compositing wrapper
+function safeCompositeLayersAtFrame(
+  layers: Layer[], frame: number, width: number, height: number
+): Map<string, Cell> {
+  const result = new Map<string, Cell>();
+  for (const layer of layers) {
+    try {
+      const layerCells = compositeLayerAtFrame(layer, frame, width, height);
+      for (const [key, cell] of layerCells) {
+        result.set(key, cell);
+      }
+    } catch (error) {
+      console.error(`Layer "${layer.name}" failed to composite at frame ${frame}:`, error);
+      // Continue with remaining layers
+    }
+  }
+  return result;
+}
+```
+
+### Progressive Loading
+
+**Challenge**: Large projects (1000+ frames, many layers) could block the UI during import.
+
+**Mitigations**:
+
+1. **Async Import**: Use `requestIdleCallback` or chunk processing to avoid blocking the main thread during session import.
+
+2. **Progress Indicator**: Show a progress bar during large session loads:
+   - Phase 1: Parsing JSON (fast)
+   - Phase 2: Deserializing layers and content frames (may be slow with many frames)
+   - Phase 3: Rendering first frame
+
+3. **Lazy Thumbnail Generation**: Don't generate content frame thumbnails on import. Generate them on-demand when they scroll into view in the timeline.
+
+```typescript
+async function importSessionAsync(data: SessionDataV2, onProgress: (pct: number) => void) {
+  onProgress(0.1); // JSON parsed
+  
+  // Deserialize layers in chunks
+  const layers: Layer[] = [];
+  for (let i = 0; i < data.layers.length; i++) {
+    layers.push(deserializeLayer(data.layers[i]));
+    onProgress(0.1 + (i / data.layers.length) * 0.7);
+    await yieldToMain(); // Yield to keep UI responsive
+  }
+  
+  onProgress(0.8);
+  // Load into stores...
+  onProgress(1.0);
+}
+
+function yieldToMain(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+```
+
 ---
 
 ## Backward Compatibility
@@ -4999,12 +5611,30 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Performance degradation with many layers | Medium | High | Aggressive caching, layer limits |
-| Breaking existing projects | Low | Critical | Thorough migration testing, v1 format preserved |
-| UI complexity overwhelming users | Medium | Medium | Frame view as simpler alternative |
-| MCP protocol breaking changes | Low | Medium | Version bump, clear migration docs |
+| Performance degradation with many layers | Medium | High | Aggressive caching, layer limits, LRU eviction, dynamic memory budgeting |
+| Breaking existing projects | Low | Critical | Thorough migration testing, v1 format preserved, automatic v1→v2 migration on load |
+| UI complexity overwhelming users | Medium | Medium | Frame view as simpler alternative, progressive disclosure |
+| MCP protocol breaking changes | Low | Medium | Version bump, clear migration docs, MCP ProjectStateManager v2 |
 | Cloud storage size increase | Medium | Low | Compression, tier limits |
-| Undo/redo state explosion | Medium | Medium | Batch related actions, limit history depth |
+| Undo/redo state explosion | Medium | Medium | Batch related actions, limit history depth, drag session batching |
+| Memory exhaustion from frame pre-computation | Medium | High | Dynamic memory budgeting, LRU fallback, configurable thresholds |
+| Data loss from debounced canvas sync | Low | High | `beforeunload` guard, periodic sync, unidirectional sync design |
+| Transform composition math errors | Medium | Medium | Comprehensive unit tests, reference comparison to known-good values |
+| Content frame overlap corruption | Low | High | Validation on all mutation paths |
+| **animationStore adapter complexity** | **Medium** | **High** | **Incremental migration (P0→P3), adapter removed after Phase 5, clear migration tracking** |
+| **47-file coupling to animationStore** | **High** | **High** | **Compatibility adapter provides drop-in replacement; migrate files in priority order** |
+| **55-file coupling to canvasStore** | **Medium** | **Medium** | **canvasStore API unchanged; internal data source changes to layer content** |
+| **useAnimationHistory migration** | **Medium** | **High** | **New useTimelineHistory replicates all 25 action types; old hook kept as thin wrapper during transition** |
+| **useFrameSynchronization rewrite** | **Medium** | **High** | **Full rewrite to unidirectional flow eliminates fragility; comprehensive tests before/after** |
+| **timeEffectsStore not updated** | **Low** | **Medium** | **Explicit migration plan added in Phase 6.4b; effect math reused, only data source changes** |
+| **Scope creep in Phase 2** | **Medium** | **Medium** | **Advanced features (groups, multi-layer draw, merge) deferred to Phase 7** |
+| **Feature branch divergence from main** | **Medium** | **Medium** | **Weekly sync of main into feature branch; hotfix protocol enforced** |
+| **Production deployment risk** | **Low** | **Critical** | **Feature branch never merges to main until all phases complete; preview deploys only** |
+
+**Overall Success Probability:**
+- As originally written: ~55-60%
+- With adjustments in this v2.0.0 plan: ~80-85%
+- Primary risk factors: coupling complexity (47+55 file dependencies), undo/redo migration, frame sync rewrite
 
 ---
 
@@ -5014,7 +5644,7 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
    - **Decision**: No blend modes. Always "top wins" layering based on z-order in the timeline layer list.
    - **Rationale**: ASCII characters cannot blend - only one character can occupy a cell.
 
-3. **Minimum Layer Count**:
+2. **Minimum Layer Count**:
    - **Decision**: A project must always have at least one layer.
    - **Behavior**: When deleting the last remaining layer, automatically create a new empty layer.
    - **Rationale**: Canvas always needs an active layer to receive drawing input. This matches behavior in Photoshop, After Effects, etc.
@@ -5026,13 +5656,40 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
    - Groups can be collapsed in the timeline UI
    - Groups cannot contain other groups (single nesting level)
 
-3. **Audio Track**: 
+4. **Audio Track**: 
    - **Decision**: No audio support in this refactor.
    - May be considered for a future version.
 
-4. **Keyboard Shortcuts**: 
-   - **Decision**: Keyboard shortcuts for layer operations will be added during the polish phase.
+5. **Keyboard Shortcuts**: 
+   - **Decision**: Keyboard shortcuts for layer operations will be defined here and implemented during Phase 3 (Timeline UI).
    - Will follow existing shortcut patterns in the application.
+   
+   **Planned Shortcuts:**
+   
+   | Action | Shortcut | Notes |
+   |--------|----------|-------|
+   | New Layer | `Ctrl/Cmd + Shift + N` | Creates empty layer above active |
+   | Delete Layer | `Backspace/Delete` (with layer focused) | Confirms if layer has content |
+   | Duplicate Layer | `Ctrl/Cmd + J` | Photoshop convention |
+   | Merge Down | `Ctrl/Cmd + E` | Photoshop convention |
+   | Select Layer Above | `Alt + ]` | Standard layer navigation |
+   | Select Layer Below | `Alt + [` | Standard layer navigation |
+   | Toggle Layer Visibility | `Ctrl/Cmd + Shift + H` | When layer panel focused |
+   | Lock/Unlock Layer | `Ctrl/Cmd + /` | Toggle |
+   | Group Selected Layers | `Ctrl/Cmd + G` | Standard grouping |
+   | Ungroup | `Ctrl/Cmd + Shift + G` | Standard ungrouping |
+   | Add Keyframe | `K` | At current frame on active property |
+   | Play/Pause | `Space` | Already exists, unchanged |
+   | Next Frame | `Right Arrow` | Already exists, unchanged |
+   | Previous Frame | `Left Arrow` | Already exists, unchanged |
+
+6. **Accessibility**:
+   - **Decision**: Timeline and layer UI must support keyboard navigation.
+   - Layer list items are focusable and operable via keyboard.
+   - Timeline keyframes are focusable with arrow key navigation.
+   - Screen reader announcements for layer add/remove/reorder.
+   - All toggle states (visible, solo, locked) have `aria-pressed` attributes.
+   - Focus management: When deleting a layer, focus moves to adjacent layer.
 
 ---
 
@@ -5091,3 +5748,5 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 1.0.0 | 2026-02-01 | Copilot | Initial plan |
 | 1.1.0 | 2026-02-02 | Copilot | Added: State synchronization architecture, Frame View specification, content frame gap behavior (blank), drawing/selection tool layer interaction rules, undo/redo batching strategy, layer playback store architecture, onion skinning layer toggle, timeline auto-expand behavior, frame duration dialog, frame rate conversion, new project default state (1 layer, 1 frame, 12 FPS), layer group serialization, comprehensive unit/integration/edge case/performance tests. Fixed: rotation from 90° to 1° throughout. |
 | 1.2.0 | 2026-02-02 | Copilot | Fixed: Removed duplicate section 2.8 (Selection Tool Layer Targeting). Fixed Phase 4 section numbering (4.10→4.7). Added `parentGroupId` to `SessionLayerV2` interface. Added `layerGroups` to timeline store initial state. Added layer group management actions to store interface. Added `isDirty` to canvas store interface. Added `animationStore` deprecation plan. Added minimum layer count decision (always ≥1 layer). Clarified 12 FPS default for NEW projects only. Added purpose text to Effect Scope Toggle (6.4). |
+| 1.3.0 | 2026-02-05 | Copilot | Risk & performance hardening pass. Added: memory thresholds and LRU fallback to playback store (MAX_PRECOMPUTE_FRAMES=500, LRU_CACHE_SIZE=100), `beforeunload`/periodic/visibility sync guards to prevent data loss, full Newton-Raphson bezier solver with iteration limits and LUT caching for common presets, content frame overlap validation on `addContentFrame`/`updateContentFrameTiming`, centralized layer limit enforcement via `src/utils/layerLimits.ts` with all 6 creation paths enumerated, dynamic cell aspect ratio from font metrics replacing hardcoded 0.6, transform composition unit test table (8 cases). Added new sections: Error Recovery (safe compositing wrapper, playback skip, import data repair), Progressive Loading (async chunked import with progress callback), Accessibility (keyboard navigation, ARIA attributes, focus management). Expanded keyboard shortcuts from placeholder to 14 concrete bindings. Fixed Resolved Design Decisions numbering. Added 4 new risks to Risks & Mitigations table. |
+| 2.0.0 | 2026-02-06 | Copilot | **Major revision based on codebase audit.** Fixed 4 factual errors: `historyStore.ts` → `toolStore.ts` (undo/redo lives there), `MainLayout.tsx` → `EditorPage.tsx`, `subscriptionStore.ts` → premium Stripe hooks, and missing `useAnimationHistory.ts` (461 lines). Added: `animationStore` compatibility adapter (§1.6b) for 47-file migration, `useTimelineHistory` hook migration (§1.6a), `useFrameSynchronization` full rewrite to unidirectional `useLayerCanvasSync` (§6.4a), `timeEffectsStore` migration plan (§6.4b), generator migration detail (§6.4c), MCP `ProjectStateManager` migration (§6.4d), dynamic memory budgeting with LRU cache. Restructured: Phase 2 → "Layer Data Model (Core)" with advanced features deferred; new Phase 7: Advanced Layer Features (Layer Groups, Apply-to-All-Layers, Multi-layer Selection, Merge Layers). Updated Phase 3 estimate from 3-4 weeks → 5-6 weeks. Massively expanded Branching & Deployment Safety Strategy with: phase sub-branches, Vercel configuration safety, cross-repository coordination table, rollback plan, pre-merge checklist, hotfix protocol. Updated File Change Matrix with 7 new entries. Added 9 new risks to Risks & Mitigations table. Updated estimated duration to 16-22 weeks. Success probability: 55-60% → 80-85% with adjustments. |
