@@ -20,6 +20,7 @@ import type { Cell, Frame, FrameId } from '../types';
 import type { LayerId, ContentFrame, ContentFrameId } from '../types/timeline';
 import { generateContentFrameId } from '../types/timeline';
 import { DEFAULT_FRAME_DURATION } from '../constants';
+import { getContentFrameAtTime } from '../utils/layerCompositing';
 
 // ─────────────────────────────────────────────
 // Internal helpers
@@ -527,7 +528,8 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
     const layer = getActiveLayer();
     const tl = useTimelineStore.getState();
     if (!layer) return;
-    const cf = layer.contentFrames[frameIndex];
+    // frameIndex is a timeline frame — map to content frame via startFrame/duration
+    const cf = getContentFrameAtTime(layer, frameIndex);
     if (!cf) return;
     tl.updateContentFrameData(layer.id, cf.id, data);
   },
@@ -535,7 +537,8 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
   getFrameData: (frameIndex: number): Map<string, Cell> | undefined => {
     const layer = getActiveLayer();
     if (!layer) return undefined;
-    const cf = layer.contentFrames[frameIndex];
+    // frameIndex is a timeline frame — map to content frame via startFrame/duration
+    const cf = getContentFrameAtTime(layer, frameIndex);
     return cf ? new Map(cf.data) : undefined;
   },
 
@@ -544,19 +547,19 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
   // ─────────────────────────────────────────
 
   play: () => {
-    // Playback in the new model is handled differently.
-    // This is a bridge — actual playback engine will be updated in Phase 4.
     const tl = useTimelineStore.getState();
+    tl.setPlaying(true);
     tl.goToFrame(tl.view.currentFrame); // ensure position
-    // TODO: integrate with new playback engine
   },
 
   pause: () => {
-    // TODO: integrate with new playback engine
+    useTimelineStore.getState().setPlaying(false);
   },
 
   stop: () => {
-    useTimelineStore.getState().goToFrame(0);
+    const tl = useTimelineStore.getState();
+    tl.setPlaying(false);
+    tl.goToFrame(0);
   },
 
   togglePlayback: () => {

@@ -104,6 +104,19 @@ export interface TimelineState {
     data: Map<string, Cell>
   ) => void;
 
+  /** Split a content frame at the given frame position into two frames */
+  splitContentFrame: (
+    layerId: LayerId,
+    frameId: ContentFrameId,
+    atFrame: number,
+  ) => ContentFrameId | null;
+
+  /** Duplicate a content frame, placing the copy immediately after the original */
+  duplicateContentFrame: (
+    layerId: LayerId,
+    frameId: ContentFrameId,
+  ) => ContentFrameId | null;
+
   getContentFrameAt: (layerId: LayerId, frame: number) => ContentFrame | null;
 
   // ============================================
@@ -135,6 +148,11 @@ export interface TimelineState {
     trackId: PropertyTrackId,
     keyframeId: KeyframeId,
     newFrame: number,
+  ) => void;
+  setKeyframeLooping: (
+    layerId: LayerId,
+    trackId: PropertyTrackId,
+    looping: boolean,
   ) => void;
 
   // ============================================
@@ -200,7 +218,7 @@ const INITIAL_VIEW: TimelineViewState = {
   selectedKeyframeIds: new Set(),
   zoom: 1,
   scrollX: 0,
-  panelHeight: 200,
+  panelHeight: 380,
   editingKeyframeId: null,
   expandedLayerIds: new Set(),
 };
@@ -526,6 +544,87 @@ export const useTimelineStore = create<TimelineState>()(
       }));
     },
 
+    splitContentFrame: (layerId, frameId, atFrame) => {
+      const { layers } = get();
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return null;
+
+      const cf = layer.contentFrames.find((c) => c.id === frameId);
+      if (!cf) return null;
+
+      // atFrame must be strictly inside the frame (not at start or end)
+      if (atFrame <= cf.startFrame || atFrame >= cf.startFrame + cf.durationFrames) {
+        return null;
+      }
+
+      const leftDuration = atFrame - cf.startFrame;
+      const rightDuration = cf.durationFrames - leftDuration;
+
+      const newFrameId = generateContentFrameId();
+      const newFrame: ContentFrame = {
+        id: newFrameId,
+        name: `${cf.name} (split)`,
+        startFrame: atFrame,
+        durationFrames: rightDuration,
+        data: new Map(cf.data), // Clone data
+      };
+
+      // Shrink original + insert new frame
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          contentFrames: l.contentFrames.map((c) =>
+            c.id === frameId
+              ? { ...c, durationFrames: leftDuration }
+              : c,
+          ).concat(newFrame),
+        })),
+      }));
+
+      return newFrameId;
+    },
+
+    duplicateContentFrame: (layerId, frameId) => {
+      const { layers } = get();
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return null;
+
+      const cf = layer.contentFrames.find((c) => c.id === frameId);
+      if (!cf) return null;
+
+      // Place the duplicate immediately after the original
+      const afterEnd = cf.startFrame + cf.durationFrames;
+
+      // Check no overlap at that position
+      const newFrameId = generateContentFrameId();
+      const newFrame: ContentFrame = {
+        id: newFrameId,
+        name: `${cf.name} (copy)`,
+        startFrame: afterEnd,
+        durationFrames: cf.durationFrames,
+        data: new Map(cf.data),
+      };
+
+      for (const existing of layer.contentFrames) {
+        if (contentFramesOverlap(newFrame, existing)) {
+          console.warn('Cannot duplicate: would overlap with another content frame.');
+          return null;
+        }
+      }
+
+      // Auto-expand timeline if needed
+      get().ensureTimelineContains(afterEnd + cf.durationFrames - 1);
+
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          contentFrames: [...l.contentFrames, newFrame],
+        })),
+      }));
+
+      return newFrameId;
+    },
+
     getContentFrameAt: (layerId, frame) => {
       const layer = get().layers.find((l) => l.id === layerId);
       if (!layer) return null;
@@ -642,6 +741,17 @@ export const useTimelineStore = create<TimelineState>()(
     moveKeyframe: (layerId, trackId, keyframeId, newFrame) => {
       get().ensureTimelineContains(newFrame);
       get().updateKeyframe(layerId, trackId, keyframeId, { frame: newFrame });
+    },
+
+    setKeyframeLooping: (layerId, trackId, looping) => {
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          propertyTracks: l.propertyTracks.map((pt) =>
+            pt.id === trackId ? { ...pt, loopKeyframes: looping } : pt,
+          ),
+        })),
+      }));
     },
 
     // ============================================

@@ -10,7 +10,7 @@
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §3.2
  */
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { AnimationTimeline } from './AnimationTimeline';
 import { LayerList } from './timeline/LayerList';
@@ -26,6 +26,39 @@ export const TimelinePanel: React.FC = () => {
   const activeView = useTimelineStore((s) => s.view.activeView);
   const setActiveView = useTimelineStore((s) => s.setActiveView);
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
+
+  // Sync vertical scroll between layer list and track area
+  const layerListScrollRef = useRef<HTMLDivElement>(null);
+  const trackAreaScrollRef = useRef<HTMLDivElement>(null);
+  const isSyncingScroll = useRef(false);
+
+  useEffect(() => {
+    const layerEl = layerListScrollRef.current;
+    const trackEl = trackAreaScrollRef.current;
+    if (!layerEl || !trackEl) return;
+
+    const syncFromLayers = () => {
+      if (isSyncingScroll.current) return;
+      isSyncingScroll.current = true;
+      trackEl.scrollTop = layerEl.scrollTop;
+      requestAnimationFrame(() => { isSyncingScroll.current = false; });
+    };
+
+    const syncFromTracks = () => {
+      if (isSyncingScroll.current) return;
+      isSyncingScroll.current = true;
+      layerEl.scrollTop = trackEl.scrollTop;
+      requestAnimationFrame(() => { isSyncingScroll.current = false; });
+    };
+
+    layerEl.addEventListener('scroll', syncFromLayers);
+    trackEl.addEventListener('scroll', syncFromTracks);
+
+    return () => {
+      layerEl.removeEventListener('scroll', syncFromLayers);
+      trackEl.removeEventListener('scroll', syncFromTracks);
+    };
+  }, []);
 
   return (
     <Tabs
@@ -62,12 +95,12 @@ export const TimelinePanel: React.FC = () => {
           {/* Main timeline area */}
           <div className="flex-1 flex overflow-hidden min-h-0">
             {/* Left: Layer list */}
-            <LayerList />
+            <LayerList scrollRef={layerListScrollRef} />
 
             {/* Center: Timeline ruler + content frame blocks + keyframe tracks */}
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
               <TimelineRuler />
-              <TimelineTrackArea />
+              <TimelineTrackArea scrollRef={trackAreaScrollRef} />
             </div>
 
             {/* Right: Keyframe editor (when a keyframe is selected) */}

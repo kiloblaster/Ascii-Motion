@@ -11,14 +11,20 @@
 
 import React, { useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
+import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
 import { cn } from '@/lib/utils';
 
 /** Pixels per frame at zoom=1 */
 const BASE_PX_PER_FRAME = 12;
 
-export const TimelineTrackArea: React.FC = () => {
+interface TimelineTrackAreaProps {
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
+}
+
+export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef }) => {
   const layers = useTimelineStore((s) => s.layers);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
@@ -29,8 +35,18 @@ export const TimelineTrackArea: React.FC = () => {
   const setZoom = useTimelineStore((s) => s.setZoom);
   const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const expandedLayerIds = useTimelineStore((s) => s.view.expandedLayerIds);
+  const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
+  const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
+  const { addKeyframe } = useTimelineHistory();
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  const internalRef = useRef<HTMLDivElement>(null);
+  // Merge scrollRef (from parent for sync) with internal ref (for wheel zoom)
+  const setRefs = useCallback((node: HTMLDivElement | null) => {
+    internalRef.current = node;
+    if (scrollRef && 'current' in scrollRef) {
+      (scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    }
+  }, [scrollRef]);
   const pxPerFrame = BASE_PX_PER_FRAME * zoom;
   const totalWidth = durationFrames * pxPerFrame;
 
@@ -47,7 +63,7 @@ export const TimelineTrackArea: React.FC = () => {
 
   // Zoom with scroll wheel (Ctrl/Cmd + scroll)
   useEffect(() => {
-    const el = containerRef.current;
+    const el = internalRef.current;
     if (!el) return;
 
     const handleWheel = (e: WheelEvent) => {
@@ -64,7 +80,7 @@ export const TimelineTrackArea: React.FC = () => {
 
   return (
     <div
-      ref={containerRef}
+      ref={setRefs}
       className="flex-1 overflow-x-auto overflow-y-auto"
       onScroll={handleScroll}
     >
@@ -91,25 +107,44 @@ export const TimelineTrackArea: React.FC = () => {
             </div>
 
             {/* Property track rows (only when layer is expanded) */}
-            {expandedLayerIds.has(layer.id) && layer.propertyTracks.map((track) => (
-              <div
-                key={track.id}
-                className="relative border-b border-border/30 min-h-[24px] bg-muted/10"
-              >
-                {/* Keyframe diamonds */}
-                {track.keyframes.map((kf) => (
-                  <KeyframeDiamond
-                    key={kf.id}
-                    layerId={layer.id}
-                    trackId={track.id}
-                    keyframe={kf}
-                    pxPerFrame={pxPerFrame}
-                    scrollX={scrollX}
-                    isSelected={selectedKeyframeIds.has(kf.id)}
-                  />
-                ))}
-              </div>
-            ))}
+            {expandedLayerIds.has(layer.id) && layer.propertyTracks.map((track) => {
+              const definition = PROPERTY_DEFINITIONS[track.propertyPath];
+              const defaultValue = (definition?.defaultValue as number) ?? 0;
+
+              const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const frame = Math.round(clickX / pxPerFrame);
+                if (frame >= 0) {
+                  const kfId = addKeyframe(layer.id, track.id, frame, defaultValue);
+                  if (kfId) {
+                    selectKeyframes([kfId]);
+                    setEditingKeyframe(kfId);
+                  }
+                }
+              };
+
+              return (
+                <div
+                  key={track.id}
+                  className="relative border-b border-border/30 min-h-[24px] bg-muted/10 cursor-crosshair"
+                  onDoubleClick={handleTrackClick}
+                >
+                  {/* Keyframe diamonds */}
+                  {track.keyframes.map((kf) => (
+                    <KeyframeDiamond
+                      key={kf.id}
+                      layerId={layer.id}
+                      trackId={track.id}
+                      keyframe={kf}
+                      pxPerFrame={pxPerFrame}
+                      scrollX={scrollX}
+                      isSelected={selectedKeyframeIds.has(kf.id)}
+                    />
+                  ))}
+                </div>
+              );
+            })}
 
             {/* Spacer row matching the "+ Add Property" button row */}
             {expandedLayerIds.has(layer.id) && (

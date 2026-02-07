@@ -9,7 +9,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, Lock, Unlock, ChevronRight, Trash2, Plus, X } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, ChevronRight, Trash2, Plus, X, Diamond } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import {
@@ -47,12 +47,15 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
   const setLayerLocked = useTimelineStore((s) => s.setLayerLocked);
   const renameLayer = useTimelineStore((s) => s.renameLayer);
 
-  const { removeLayer, duplicateLayer } = useTimelineHistory();
+  const { removeLayer, duplicateLayer, addKeyframe, removeKeyframe } = useTimelineHistory();
   const layers = useTimelineStore((s) => s.layers);
   const isExpanded = useTimelineStore((s) => s.view.expandedLayerIds.has(layer.id));
   const toggleLayerExpanded = useTimelineStore((s) => s.toggleLayerExpanded);
   const addPropertyTrack = useTimelineStore((s) => s.addPropertyTrack);
   const removePropertyTrack = useTimelineStore((s) => s.removePropertyTrack);
+  const currentFrame = useTimelineStore((s) => s.view.currentFrame);
+  const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
+  const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(layer.name);
@@ -241,13 +244,14 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
           </Tooltip>
         )}
       </div>
-    </TooltipProvider>
 
       {/* Expanded: property track labels + Add Property menu */}
       {isExpanded && (
         <div className="ml-5 border-t border-border/30">
           {layer.propertyTracks.map((track) => {
             const def = PROPERTY_DEFINITIONS[track.propertyPath];
+            const defaultValue = (def?.defaultValue as number) ?? 0;
+            const existingKf = track.keyframes.find((kf) => kf.frame === currentFrame);
             return (
               <div
                 key={track.id}
@@ -256,8 +260,37 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
                 <span className="flex-1 truncate">
                   {def?.displayName ?? track.propertyPath.split('.').pop()}
                 </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="p-0.5 hover:bg-muted rounded"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (existingKf) {
+                          removeKeyframe(layer.id, track.id, existingKf.id);
+                          setEditingKeyframe(null);
+                        } else {
+                          const kfId = addKeyframe(layer.id, track.id, currentFrame, defaultValue);
+                          if (kfId) {
+                            selectKeyframes([kfId]);
+                            setEditingKeyframe(kfId);
+                          }
+                        }
+                      }}
+                    >
+                      {existingKf ? (
+                        <Diamond className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                      ) : (
+                        <Diamond className="w-3 h-3 text-yellow-500 hover:text-yellow-400" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {existingKf ? 'Remove keyframe at current frame' : 'Add keyframe at current frame'}
+                  </TooltipContent>
+                </Tooltip>
                 <button
-                  className="p-0.5 hover:bg-muted rounded opacity-0 group-hover/track:opacity-100"
+                  className="p-0.5 hover:bg-muted rounded"
                   onClick={(e) => {
                     e.stopPropagation();
                     removePropertyTrack(layer.id, track.id);
@@ -302,6 +335,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
           })()}
         </div>
       )}
+    </TooltipProvider>
     </div>
   );
 };

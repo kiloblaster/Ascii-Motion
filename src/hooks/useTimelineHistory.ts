@@ -253,6 +253,90 @@ export function useTimelineHistory() {
     return frameId;
   }, [addContentFrameStore, pushToHistory]);
 
+  /**
+   * Split a content frame at the playhead into two frames.
+   * Records both the timing change and the new frame as history.
+   */
+  const splitContentFrame = useCallback((
+    layerId: LayerId,
+    frameId: ContentFrameId,
+    atFrame: number,
+  ) => {
+    const layer = getLayer(layerId);
+    const cf = layer?.contentFrames.find((c) => c.id === frameId);
+    if (!cf) return null;
+
+    const oldTiming = { startFrame: cf.startFrame, durationFrames: cf.durationFrames };
+    const newTimingForOriginal = { startFrame: cf.startFrame, durationFrames: atFrame - cf.startFrame };
+
+    const splitStore = useTimelineStore.getState().splitContentFrame;
+    const newFrameId = splitStore(layerId, frameId, atFrame);
+    if (!newFrameId) return null;
+
+    // Record timing change for the original (shrunk) frame
+    const timingAction: ContentFrameTimingHistoryAction = {
+      type: 'content_frame_timing',
+      timestamp: Date.now(),
+      description: `Split content frame`,
+      data: {
+        layerId,
+        frameId,
+        oldTiming,
+        newTiming: newTimingForOriginal,
+      },
+    };
+    pushToHistory(timingAction);
+
+    // Record the new (right) frame addition
+    const updatedLayer = useTimelineStore.getState().getLayer(layerId);
+    const newFrame = updatedLayer?.contentFrames.find((c) => c.id === newFrameId);
+    if (newFrame) {
+      const addAction: ContentFrameAddHistoryAction = {
+        type: 'content_frame_add',
+        timestamp: Date.now(),
+        description: `Add split content frame`,
+        data: {
+          layerId,
+          frameId: newFrameId,
+          frameData: structuredClone(newFrame),
+        },
+      };
+      pushToHistory(addAction);
+    }
+
+    return newFrameId;
+  }, [getLayer, pushToHistory]);
+
+  /**
+   * Duplicate a content frame, placing the copy immediately after the original.
+   */
+  const duplicateContentFrame = useCallback((
+    layerId: LayerId,
+    frameId: ContentFrameId,
+  ) => {
+    const dupStore = useTimelineStore.getState().duplicateContentFrame;
+    const newFrameId = dupStore(layerId, frameId);
+    if (!newFrameId) return null;
+
+    const layer = useTimelineStore.getState().getLayer(layerId);
+    const newFrame = layer?.contentFrames.find((c) => c.id === newFrameId);
+    if (newFrame) {
+      const historyAction: ContentFrameAddHistoryAction = {
+        type: 'content_frame_add',
+        timestamp: Date.now(),
+        description: `Duplicate content frame`,
+        data: {
+          layerId,
+          frameId: newFrameId,
+          frameData: structuredClone(newFrame),
+        },
+      };
+      pushToHistory(historyAction);
+    }
+
+    return newFrameId;
+  }, [pushToHistory]);
+
   const removeContentFrame = useCallback((layerId: LayerId, frameId: ContentFrameId) => {
     const layer = getLayer(layerId);
     const frame = layer?.contentFrames.find((cf) => cf.id === frameId);
@@ -512,6 +596,8 @@ export function useTimelineHistory() {
     // Content frame operations (with history)
     addContentFrame,
     removeContentFrame,
+    splitContentFrame,
+    duplicateContentFrame,
     updateContentFrameTiming,
     updateContentFrameData,
 

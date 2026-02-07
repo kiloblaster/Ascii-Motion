@@ -66,7 +66,7 @@ export const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
     <div
       ref={side === 'bottom' ? panelRef : undefined}
       className={getPanelClasses()}
-      style={side === 'bottom' && isOpen ? { height: 'var(--bottom-panel-height, 200px)' } : undefined}
+      style={side === 'bottom' && isOpen ? { height: 'var(--bottom-panel-height, 380px)' } : undefined}
     >
       <div 
         id={`panel-${side}`}

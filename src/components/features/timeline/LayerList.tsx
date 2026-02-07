@@ -13,7 +13,11 @@ import { useTimelineStore } from '../../../stores/timelineStore';
 import { LayerListItem } from './LayerListItem';
 import type { LayerId } from '../../../types/timeline';
 
-export const LayerList: React.FC = () => {
+interface LayerListProps {
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
+}
+
+export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   const layers = useTimelineStore((s) => s.layers);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const setActiveLayer = useTimelineStore((s) => s.setActiveLayer);
@@ -59,7 +63,10 @@ export const LayerList: React.FC = () => {
   }, []);
 
   return (
-    <div className="w-52 flex-shrink-0 border-r border-border/50 overflow-y-auto bg-muted/20">
+    <div
+      ref={scrollRef}
+      className="w-52 flex-shrink-0 border-r border-border/50 overflow-y-auto bg-muted/20"
+    >
       {/* Spacer to align with TimelineRuler (h-6 = 24px) */}
       <div className="h-6 flex-shrink-0 border-b border-border/50 bg-muted/30" />
       {displayLayers.map((layer, displayIndex) => (

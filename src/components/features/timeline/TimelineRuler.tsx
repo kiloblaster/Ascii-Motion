@@ -5,7 +5,7 @@
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §3.7
  */
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { cn } from '@/lib/utils';
 
@@ -23,17 +23,47 @@ export const TimelineRuler: React.FC = () => {
   const rulerRef = useRef<HTMLDivElement>(null);
   const pxPerFrame = BASE_PX_PER_FRAME * zoom;
   const totalWidth = durationFrames * pxPerFrame;
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (!rulerRef.current) return;
+  /** Convert a clientX position to a clamped frame index */
+  const clientXToFrame = useCallback(
+    (clientX: number) => {
+      if (!rulerRef.current) return 0;
       const rect = rulerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left + scrollX;
+      const x = clientX - rect.left + scrollX;
       const frame = Math.floor(x / pxPerFrame);
-      goToFrame(Math.max(0, Math.min(durationFrames - 1, frame)));
+      return Math.max(0, Math.min(durationFrames - 1, frame));
     },
-    [pxPerFrame, scrollX, durationFrames, goToFrame],
+    [pxPerFrame, scrollX, durationFrames],
   );
+
+  /** Click or mousedown starts navigation + drag‑to‑scrub */
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0) return; // left button only
+      e.preventDefault();
+      const frame = clientXToFrame(e.clientX);
+      goToFrame(frame);
+      setIsDragging(true);
+    },
+    [clientXToFrame, goToFrame],
+  );
+
+  // Global mousemove / mouseup for drag-to-scrub
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const frame = clientXToFrame(e.clientX);
+      goToFrame(frame);
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, clientXToFrame, goToFrame]);
 
   // Determine tick interval based on zoom
   const tickInterval = getTickInterval(zoom, frameRate);
@@ -70,8 +100,8 @@ export const TimelineRuler: React.FC = () => {
   return (
     <div
       ref={rulerRef}
-      className="relative h-6 flex-shrink-0 bg-muted/30 border-b border-border/50 cursor-pointer overflow-hidden"
-      onClick={handleClick}
+      className="relative h-6 flex-shrink-0 bg-muted/30 border-b border-border/50 cursor-pointer overflow-hidden select-none"
+      onMouseDown={handleMouseDown}
     >
       {/* Ticks */}
       {ticks}

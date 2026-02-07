@@ -78,7 +78,7 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
         'hover:scale-125 transition-transform',
         isSelected ? 'bg-yellow-400 ring-1 ring-yellow-300' : 'bg-yellow-600/80',
       )}
-      style={{ left: left - 6, top: 5 }}
+      style={{ left: left - 5, top: 5 }}
       onClick={handleClick}
       onMouseDown={handleDragStart}
       title={`Frame ${keyframe.frame}: ${keyframe.value}`}

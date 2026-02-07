@@ -253,45 +253,8 @@ export const AnimationTimeline: React.FC = () => {
     }
   }, [isPlaybackActive, stopOptimizedPlayback]);
 
-  // Handle keyboard shortcuts for playback (moved from useAnimationPlayback to support optimized playback)
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Don't handle if user is typing in an input/textarea
-      const target = event.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
-        return;
-      }
-
-      // Block spacebar if text tool actively typing
-  const { activeTool, textToolState } = useToolStore.getState();
-      const isTypingInTextTool = activeTool === 'text' && textToolState.isTyping;
-
-      switch (event.key) {
-        case ' ': // Spacebar for play/pause (primary modern value)
-        case 'Space': // Some browsers/environments (legacy) provide 'Space'
-          // Ensure we don't hijack typing in text tool
-          if (isTypingInTextTool) return;
-          // Also guard against focused inputs (already filtered above) & allow default when modifier pressed
-          if (event.metaKey || event.ctrlKey || event.altKey) return;
-          event.preventDefault(); // Prevent page scroll
-          if (isPlaybackActive) {
-            handlePausePlayback();
-          } else {
-            handleStartPlayback();
-          }
-          break;
-        case 'Escape': // Escape to stop
-          event.preventDefault();
-          break;
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isPlaybackActive, handleStartPlayback, handlePausePlayback]);
+  // Space key playback toggle is now handled globally in useKeyboardShortcuts
+  // so it works in both Frames and Timeline (layers) tabs.
 
   // Handle drag start
   const handleDragStart = useCallback((event: React.DragEvent, index: number) => {

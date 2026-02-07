@@ -58,12 +58,12 @@ export const KeyframeEditorPanel: React.FC = () => {
   const handleValueChange = (value: string) => {
     const num = parseFloat(value);
     if (!isNaN(num)) {
-      updateKeyframe(layerId, trackId, keyframe.id, num, keyframe.easing);
+      updateKeyframe(layerId, trackId, keyframe.id, { value: num });
     }
   };
 
   const handleEasingChange = (easing: EasingCurve) => {
-    updateKeyframe(layerId, trackId, keyframe.id, keyframe.value, easing);
+    updateKeyframe(layerId, trackId, keyframe.id, { easing });
   };
 
   const handleDelete = () => {

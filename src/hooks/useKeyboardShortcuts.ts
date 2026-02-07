@@ -8,6 +8,8 @@ import { getToolForHotkey } from '../constants/hotkeys';
 import { useZoomControls } from './useZoomControls';
 import { useFrameNavigation } from './useFrameNavigation';
 import { useAnimationHistory } from './useAnimationHistory';
+import { useOptimizedPlayback } from './useOptimizedPlayback';
+import { usePlaybackOnlySnapshot } from './usePlaybackOnlySnapshot';
 import { usePaletteStore } from '../stores/paletteStore';
 import { useCharacterPaletteStore } from '../stores/characterPaletteStore';
 import { useFlipUtilities } from './useFlipUtilities';
@@ -704,6 +706,11 @@ export const useKeyboardShortcuts = () => {
   // Frame navigation and management hooks
   const { navigateNext, navigatePrevious, navigateFirst, navigateLast, canNavigate } = useFrameNavigation();
   const { addFrame, removeFrame, duplicateFrame, duplicateFrameRange, deleteFrameRange } = useAnimationHistory();
+
+  // Playback hooks (so Space key works in both Frames and Timeline tabs)
+  const { startOptimizedPlayback, stopOptimizedPlayback } = useOptimizedPlayback();
+  const playbackSnapshot = usePlaybackOnlySnapshot();
+  const isPlaybackActive = playbackSnapshot.isActive;
   
   // Flip utilities for Shift+H and Shift+V
   const { flipHorizontal, flipVertical } = useFlipUtilities();
@@ -1052,10 +1059,14 @@ export const useKeyboardShortcuts = () => {
       return; // Let the text tool handle all other keys
     }
 
-    // Spacebar playback toggle - let it pass through to AnimationTimeline component
-    // Don't preventDefault here, let the timeline handler deal with it
+    // Spacebar playback toggle — handled here so it works in both Frames and Timeline tabs
     if (!isModifierPressed && (event.key === ' ' || event.key === 'Space')) {
-      // Just return without preventing default - let the event bubble to AnimationTimeline
+      event.preventDefault(); // Prevent page scroll
+      if (isPlaybackActive) {
+        stopOptimizedPlayback({ preserveFrameIndex: true });
+      } else {
+        startOptimizedPlayback();
+      }
       return;
     }
 
@@ -1489,7 +1500,10 @@ export const useKeyboardShortcuts = () => {
     showSaveProjectDialog,
     showSaveAsDialog,
     showOpenProjectDialog,
-    blockBrowserShortcut
+    blockBrowserShortcut,
+    isPlaybackActive,
+    startOptimizedPlayback,
+    stopOptimizedPlayback
   ]);
 
   const handleShortcutKeyPress = useCallback((event: KeyboardEvent) => {
