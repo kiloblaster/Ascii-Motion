@@ -333,6 +333,7 @@ export interface TimelineViewState {
   activeLayerId: LayerId | null;
   selectedLayerIds: Set<LayerId>;
   selectedKeyframeIds: Set<KeyframeId>;
+  selectedContentFrameIds: Set<ContentFrameId>;
 
   // UI state
   zoom: number;            // Timeline zoom level
@@ -344,6 +345,21 @@ export interface TimelineViewState {
 
   // Layer expand/collapse state
   expandedLayerIds: Set<LayerId>;
+
+  // Transient drag preview for content frame reordering
+  contentFrameDragPreview: {
+    /** Layer the frame is being dragged FROM */
+    sourceLayerId: LayerId;
+    /** Layer the frame would drop INTO */
+    targetLayerId: LayerId;
+    frameId: ContentFrameId;
+    /** Pixel left of the ghost block (absolute within track) */
+    ghostLeftPx: number;
+    /** Width of the dragged frame in px */
+    ghostWidthPx: number;
+    /** Frame position of the slot boundary (for the indicator line) */
+    slotFrame: number;
+  } | null;
 }
 
 /**

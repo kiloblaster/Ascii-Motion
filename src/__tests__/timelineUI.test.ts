@@ -247,8 +247,8 @@ describe('timeline store view state (Phase 3)', () => {
   });
 
   describe('zoom', () => {
-    it('defaults to 1', () => {
-      expect(useTimelineStore.getState().view.zoom).toBe(1);
+    it('defaults to 3', () => {
+      expect(useTimelineStore.getState().view.zoom).toBe(3);
     });
 
     it('setZoom changes zoom level', () => {
@@ -279,8 +279,8 @@ describe('timeline store view state (Phase 3)', () => {
   });
 
   describe('panelHeight', () => {
-    it('defaults to 380', () => {
-      expect(useTimelineStore.getState().view.panelHeight).toBe(380);
+    it('defaults to 264', () => {
+      expect(useTimelineStore.getState().view.panelHeight).toBe(264);
     });
 
     it('setPanelHeight changes height', () => {

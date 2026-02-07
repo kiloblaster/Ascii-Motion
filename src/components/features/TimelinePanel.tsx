@@ -20,12 +20,15 @@ import { TimelineToolbar } from './timeline/TimelineToolbar';
 import { TimecodeDisplay } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Layers, Grid3X3 } from 'lucide-react';
+import { Slider } from '../ui/slider';
+import { Layers, Grid3X3, ZoomIn } from 'lucide-react';
 
 export const TimelinePanel: React.FC = () => {
   const activeView = useTimelineStore((s) => s.view.activeView);
   const setActiveView = useTimelineStore((s) => s.setActiveView);
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
+  const zoom = useTimelineStore((s) => s.view.zoom);
+  const setZoom = useTimelineStore((s) => s.setZoom);
 
   // Sync vertical scroll between layer list and track area
   const layerListScrollRef = useRef<HTMLDivElement>(null);
@@ -101,6 +104,25 @@ export const TimelinePanel: React.FC = () => {
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
               <TimelineRuler />
               <TimelineTrackArea scrollRef={trackAreaScrollRef} />
+              {/* Footer matching LayerList footer height — with zoom slider */}
+              <div
+                className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 flex items-center justify-end gap-2 h-[34px]"
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <ZoomIn className="w-3 h-3 text-muted-foreground" />
+                <Slider
+                  value={zoom}
+                  onValueChange={(v) => setZoom(v)}
+                  min={0.5}
+                  max={8}
+                  step={0.25}
+                  className="w-28"
+                />
+                <span className="text-[10px] text-muted-foreground tabular-nums w-8 text-right">
+                  {zoom.toFixed(1)}x
+                </span>
+              </div>
             </div>
 
             {/* Right: Keyframe editor (when a keyframe is selected) */}

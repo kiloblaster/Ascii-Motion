@@ -36,6 +36,8 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const expandedLayerIds = useTimelineStore((s) => s.view.expandedLayerIds);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
+  const clearContentFrameSelection = useTimelineStore((s) => s.clearContentFrameSelection);
+  const contentFrameDragPreview = useTimelineStore((s) => s.view.contentFrameDragPreview);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const { addKeyframe } = useTimelineHistory();
 
@@ -78,15 +80,26 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
     return () => el.removeEventListener('wheel', handleWheel);
   }, [zoom, setZoom]);
 
+  // Clear content frame selection when clicking empty track space
+  const handleTrackAreaMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      // Only clear if the click target is the track area itself or a layer row,
+      // not a content frame block (which calls stopPropagation)
+      clearContentFrameSelection();
+    },
+    [clearContentFrameSelection],
+  );
+
   return (
     <div
       ref={setRefs}
       className="flex-1 overflow-x-auto overflow-y-auto"
       onScroll={handleScroll}
+      onMouseDown={handleTrackAreaMouseDown}
     >
       <div className="relative" style={{ width: totalWidth, minWidth: '100%' }}>
         {displayLayers.map((layer) => (
-          <div key={layer.id}>
+          <div key={layer.id} data-layer-id={layer.id}>
             {/* Layer content frame row */}
             <div
               className={cn(
@@ -104,6 +117,28 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                   scrollX={scrollX}
                 />
               ))}
+
+              {/* Ghost + drop indicator — only on the target layer */}
+              {contentFrameDragPreview && contentFrameDragPreview.targetLayerId === layer.id && (
+                <>
+                  {/* Drop indicator line */}
+                  <div
+                    className="absolute top-0 bottom-0 w-[2px] bg-purple-500 pointer-events-none z-20"
+                    style={{ left: contentFrameDragPreview.slotFrame * pxPerFrame - 1 }}
+                  >
+                    <div className="absolute -top-1 -left-[4px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-purple-500" />
+                    <div className="absolute -bottom-1 -left-[4px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[6px] border-b-purple-500" />
+                  </div>
+                  {/* Ghost */}
+                  <div
+                    className="absolute top-1 h-[24px] rounded border border-purple-500/60 bg-purple-500/20 pointer-events-none z-30"
+                    style={{
+                      left: contentFrameDragPreview.ghostLeftPx,
+                      width: contentFrameDragPreview.ghostWidthPx,
+                    }}
+                  />
+                </>
+              )}
             </div>
 
             {/* Property track rows (only when layer is expanded) */}

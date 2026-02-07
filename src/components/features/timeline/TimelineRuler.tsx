@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 
 /** Pixels per frame at zoom=1 */
 const BASE_PX_PER_FRAME = 12;
+/** Minimum timeline length in frames */
+const MIN_DURATION = 1;
 
 export const TimelineRuler: React.FC = () => {
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
@@ -19,11 +21,13 @@ export const TimelineRuler: React.FC = () => {
   const zoom = useTimelineStore((s) => s.view.zoom);
   const scrollX = useTimelineStore((s) => s.view.scrollX);
   const goToFrame = useTimelineStore((s) => s.goToFrame);
+  const setDuration = useTimelineStore((s) => s.setDuration);
 
   const rulerRef = useRef<HTMLDivElement>(null);
   const pxPerFrame = BASE_PX_PER_FRAME * zoom;
   const totalWidth = durationFrames * pxPerFrame;
   const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingEnd, setIsDraggingEnd] = useState(false);
 
   /** Convert a clientX position to a clamped frame index */
   const clientXToFrame = useCallback(
@@ -49,6 +53,43 @@ export const TimelineRuler: React.FC = () => {
     [clientXToFrame, goToFrame],
   );
 
+  // ── End-bracket (duration) drag ──
+
+  /** Convert clientX to an unclamped frame (min = MIN_DURATION) */
+  const clientXToUnclamped = useCallback(
+    (clientX: number) => {
+      if (!rulerRef.current) return durationFrames;
+      const rect = rulerRef.current.getBoundingClientRect();
+      const x = clientX - rect.left + scrollX;
+      return Math.max(MIN_DURATION, Math.round(x / pxPerFrame));
+    },
+    [pxPerFrame, scrollX, durationFrames],
+  );
+
+  const handleEndBracketDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation(); // don't trigger ruler seek
+      setIsDraggingEnd(true);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!isDraggingEnd) return;
+    const handleMove = (e: MouseEvent) => {
+      const newDuration = clientXToUnclamped(e.clientX);
+      setDuration(newDuration);
+    };
+    const handleUp = () => setIsDraggingEnd(false);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [isDraggingEnd, clientXToUnclamped, setDuration]);
+
   // Global mousemove / mouseup for drag-to-scrub
   useEffect(() => {
     if (!isDragging) return;
@@ -65,12 +106,12 @@ export const TimelineRuler: React.FC = () => {
     };
   }, [isDragging, clientXToFrame, goToFrame]);
 
-  // Determine tick interval based on zoom
-  const tickInterval = getTickInterval(zoom, frameRate);
+  // Determine tick interval — always show every frame
+  const majorInterval = Math.max(1, frameRate);
 
   const ticks: React.ReactNode[] = [];
-  for (let i = 0; i < durationFrames; i += tickInterval.minor) {
-    const isMajor = i % tickInterval.major === 0;
+  for (let i = 0; i < durationFrames; i++) {
+    const isMajor = i % majorInterval === 0;
     const left = i * pxPerFrame - scrollX;
 
     // Skip ticks outside visible area (with margin)
@@ -84,12 +125,12 @@ export const TimelineRuler: React.FC = () => {
       >
         <div
           className={cn(
-            'border-l border-border/50',
-            isMajor ? 'h-3' : 'h-1.5',
+            'border-l',
+            isMajor ? 'h-4 border-foreground/40' : 'h-2 border-foreground/20',
           )}
         />
         {isMajor && (
-          <span className="absolute top-3 -translate-x-1/2 text-[9px] text-muted-foreground tabular-nums whitespace-nowrap">
+          <span className="absolute top-3.5 -translate-x-1/2 text-[9px] text-muted-foreground tabular-nums whitespace-nowrap">
             {formatFrameLabel(i, frameRate)}
           </span>
         )}
@@ -112,6 +153,25 @@ export const TimelineRuler: React.FC = () => {
         style={{ left: currentFrame * pxPerFrame - scrollX }}
       >
         <div className="absolute -top-0.5 -left-[3px] w-2 h-2 bg-red-500 rounded-full" />
+      </div>
+
+      {/* End-of-timeline bracket — draggable to resize duration */}
+      <div
+        className={cn(
+          'absolute top-0 bottom-0 z-20 cursor-col-resize group',
+          isDraggingEnd && 'cursor-col-resize',
+        )}
+        style={{ left: durationFrames * pxPerFrame - scrollX - 3, width: 7 }}
+        onMouseDown={handleEndBracketDown}
+      >
+        {/* Purple bracket line */}
+        <div className="absolute left-[3px] top-0 bottom-0 w-[2px] bg-purple-500" />
+        {/* Top cap */}
+        <div className="absolute left-0 top-0 w-[7px] h-[3px] bg-purple-500 rounded-t-sm" />
+        {/* Bottom cap */}
+        <div className="absolute left-0 bottom-0 w-[7px] h-[3px] bg-purple-500 rounded-b-sm" />
+        {/* Hover glow */}
+        <div className="absolute left-[2px] top-0 bottom-0 w-[3px] bg-purple-400/0 group-hover:bg-purple-400/30 transition-colors" />
       </div>
     </div>
   );

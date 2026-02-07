@@ -1,8 +1,10 @@
 import React, { useEffect, useCallback, useRef } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { getContentFrameAtTime } from '../utils/layerCompositing';
 import type { Cell } from '../types';
 
 /**
@@ -30,22 +32,104 @@ export const useFrameSynchronization = (
   const { cells, setCanvasData, width, height } = useCanvasStore();
   const { 
     currentFrameIndex, 
-    setFrameData, 
-    getFrameData, 
+    setFrameData: legacySetFrameData, 
+    getFrameData: legacyGetFrameData, 
     getCurrentFrame,
     isPlaying,
     isDraggingFrame,
     isDeletingFrame,
     isImportingSession
   } = useAnimationStore();
+
+  // Timeline store state for layer-aware sync
+  const layers = useTimelineStore((s) => s.layers);
+  const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
+  const tlCurrentFrame = useTimelineStore((s) => s.view.currentFrame);
+  const isLayerMode = layers.length > 0;
+
+  // In layer mode, use the timeline store's currentFrame (the source of truth).
+  // The original animationStore.currentFrameIndex is a separate Zustand store
+  // that is NOT updated by timeline navigation, so it stays stuck at 0.
+  const effectiveFrameIndex = isLayerMode ? tlCurrentFrame : currentFrameIndex;
+
+  // Layer-aware save: write canvas cells into the correct content frame
+  const setFrameData = useCallback((frameIndex: number, data: Map<string, Cell>) => {
+    if (isLayerMode) {
+      const tl = useTimelineStore.getState();
+      const layer = tl.layers.find((l) => l.id === (activeLayerId ?? tl.view.activeLayerId));
+      if (!layer) return;
+      const cf = getContentFrameAtTime(layer, frameIndex);
+      if (!cf) return;
+      tl.updateContentFrameData(layer.id, cf.id, data);
+    } else {
+      legacySetFrameData(frameIndex, data);
+    }
+  }, [isLayerMode, activeLayerId, legacySetFrameData]);
+
+  // Layer-aware load: read from the correct content frame
+  const getFrameData = useCallback((frameIndex: number): Map<string, Cell> | undefined => {
+    if (isLayerMode) {
+      const tl = useTimelineStore.getState();
+      const layer = tl.layers.find((l) => l.id === (activeLayerId ?? tl.view.activeLayerId));
+      if (!layer) return undefined;
+      const cf = getContentFrameAtTime(layer, frameIndex);
+      return cf ? new Map(cf.data) : undefined;
+    } else {
+      return legacyGetFrameData(frameIndex);
+    }
+  }, [isLayerMode, activeLayerId, legacyGetFrameData]);
   
   // Get processing history state to prevent saves during undo/redo
   const { isProcessingHistory } = useToolStore();
   
-  const lastFrameIndexRef = useRef<number>(currentFrameIndex);
+  const lastFrameIndexRef = useRef<number>(effectiveFrameIndex);
   const lastCellsRef = useRef<Map<string, Cell>>(new Map());
   const isLoadingFrameRef = useRef<boolean>(false);
   const frameWasEmptyOnLoadRef = useRef<boolean>(false);
+  const lastActiveLayerIdRef = useRef<string | null>(activeLayerId);
+
+  // ── Layer-switch sync ──
+  // When the active layer changes, flush canvas to the old layer's content frame
+  // and load the new layer's content frame into canvasStore.
+  useEffect(() => {
+    if (!isLayerMode) return;
+    const prevLayerId = lastActiveLayerIdRef.current;
+    if (activeLayerId === prevLayerId) return;
+
+    const tl = useTimelineStore.getState();
+    const frame = tl.view.currentFrame;
+
+    // Flush current canvas to the OLD layer's content frame
+    if (prevLayerId && !isPlaying && !isLoadingFrameRef.current) {
+      const oldLayer = tl.layers.find((l) => l.id === prevLayerId);
+      if (oldLayer) {
+        const oldCf = getContentFrameAtTime(oldLayer, frame);
+        if (oldCf) {
+          tl.updateContentFrameData(oldLayer.id, oldCf.id, new Map(cells));
+        }
+      }
+    }
+
+    // Load the NEW layer's content frame into canvasStore
+    isLoadingFrameRef.current = true;
+    const newLayer = tl.layers.find((l) => l.id === activeLayerId);
+    if (newLayer) {
+      const newCf = getContentFrameAtTime(newLayer, frame);
+      if (newCf && newCf.data.size > 0) {
+        setCanvasData(new Map(newCf.data));
+        lastCellsRef.current = new Map(newCf.data);
+      } else {
+        setCanvasData(new Map());
+        lastCellsRef.current = new Map();
+      }
+    } else {
+      setCanvasData(new Map());
+      lastCellsRef.current = new Map();
+    }
+    setTimeout(() => { isLoadingFrameRef.current = false; }, 0);
+
+    lastActiveLayerIdRef.current = activeLayerId;
+  }, [activeLayerId, isLayerMode, isPlaying, cells, setCanvasData]);
 
   // Auto-save current canvas to current frame whenever canvas changes
   const saveCurrentCanvasToFrame = useCallback(() => {
@@ -56,10 +140,10 @@ export const useFrameSynchronization = (
       if (isLoadingFrameRef.current || isPlaying || isDraggingFrame || isDeletingFrame || isImportingSession || isProcessingHistory) return;
       
       const currentCells = new Map(cells);
-      setFrameData(currentFrameIndex, currentCells);
+      setFrameData(effectiveFrameIndex, currentCells);
       lastCellsRef.current = currentCells;
     }, 50);
-  }, [cells, currentFrameIndex, setFrameData, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory]);
+  }, [cells, effectiveFrameIndex, setFrameData, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory]);
 
   // Load frame data into canvas when frame changes
   const loadFrameToCanvas = useCallback((frameIndex: number) => {
@@ -90,7 +174,7 @@ export const useFrameSynchronization = (
   useEffect(() => {
     const previousFrameIndex = lastFrameIndexRef.current;
     
-    if (currentFrameIndex !== previousFrameIndex) {
+    if (effectiveFrameIndex !== previousFrameIndex) {
         // CRITICAL: Use the last known cells state, not current cells which may have already been updated
       let currentCellsToSave = new Map(lastCellsRef.current);
       
@@ -204,11 +288,11 @@ export const useFrameSynchronization = (
       }
       
       // Load the new frame's data
-      loadFrameToCanvas(currentFrameIndex);
+      loadFrameToCanvas(effectiveFrameIndex);
       
-      lastFrameIndexRef.current = currentFrameIndex;
+      lastFrameIndexRef.current = effectiveFrameIndex;
     }
-  }, [currentFrameIndex, cells, setFrameData, getFrameData, loadFrameToCanvas, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory, moveStateParam, setMoveStateParam, width, height, setCanvasData]);
+  }, [effectiveFrameIndex, cells, setFrameData, getFrameData, loadFrameToCanvas, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory, moveStateParam, setMoveStateParam, width, height, setCanvasData]);
 
   // Auto-save canvas changes to current frame (debounced)
   useEffect(() => {
@@ -234,14 +318,16 @@ export const useFrameSynchronization = (
   // Initialize first frame with current canvas data if empty (only on app startup)
   // CRITICAL: This useEffect was previously contaminating ALL empty frames when switching
   // See docs/FRAME_SYNCHRONIZATION_DEBUGGING_GUIDE.md for detailed analysis and prevention patterns
+  // NOTE: Only applies in legacy (non-layer) mode — layer mode manages data through content frames
   useEffect(() => {
+    if (isLayerMode) return; // Layers handle their own data
     const currentFrame = getCurrentFrame();
     // Only initialize if we're on frame 0 AND it's empty AND canvas has content
     // This prevents contaminating empty frames when switching between frames
-    if (currentFrameIndex === 0 && currentFrame && currentFrame.data.size === 0 && cells.size > 0 && !isLoadingFrameRef.current) {
-      setFrameData(currentFrameIndex, new Map(cells));
+    if (effectiveFrameIndex === 0 && currentFrame && currentFrame.data.size === 0 && cells.size > 0 && !isLoadingFrameRef.current) {
+      setFrameData(effectiveFrameIndex, new Map(cells));
     }
-  }, [getCurrentFrame, cells, currentFrameIndex, setFrameData]);
+  }, [getCurrentFrame, cells, effectiveFrameIndex, setFrameData, isLayerMode]);
 
   return {
     saveCurrentCanvasToFrame,

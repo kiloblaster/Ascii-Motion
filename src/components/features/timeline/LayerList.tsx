@@ -10,7 +10,12 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
+import { useLayerLimit } from '../../../hooks/useLayerLimit';
 import { LayerListItem } from './LayerListItem';
+import { Button } from '../../ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
+import { Plus } from 'lucide-react';
 import type { LayerId } from '../../../types/timeline';
 
 interface LayerListProps {
@@ -22,6 +27,8 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const setActiveLayer = useTimelineStore((s) => s.setActiveLayer);
   const reorderLayers = useTimelineStore((s) => s.reorderLayers);
+  const { canAddLayer } = useLayerLimit();
+  const { addLayer } = useTimelineHistory();
 
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragSourceIndex = useRef<number | null>(null);
@@ -63,12 +70,13 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   }, []);
 
   return (
-    <div
-      ref={scrollRef}
-      className="w-52 flex-shrink-0 border-r border-border/50 overflow-y-auto bg-muted/20"
-    >
+    <div className="w-52 flex-shrink-0 border-r border-border/50 flex flex-col bg-muted/20">
       {/* Spacer to align with TimelineRuler (h-6 = 24px) */}
       <div className="h-6 flex-shrink-0 border-b border-border/50 bg-muted/30" />
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+      >
       {displayLayers.map((layer, displayIndex) => (
         <LayerListItem
           key={layer.id}
@@ -87,6 +95,29 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
           No layers yet
         </div>
       )}
+      </div>
+      {/* Pinned footer: Add Layer */}
+      <TooltipProvider>
+      <div className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 h-[34px] flex items-center">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full h-6 gap-1 text-xs"
+              onClick={() => canAddLayer && addLayer()}
+              disabled={!canAddLayer}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Layer
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {canAddLayer ? 'Add a new layer' : 'Layer limit reached — upgrade for more'}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+      </TooltipProvider>
     </div>
   );
 };

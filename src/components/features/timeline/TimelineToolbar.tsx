@@ -12,7 +12,6 @@
 import React, { useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
-import { useLayerLimit } from '../../../hooks/useLayerLimit';
 import { useFrameNavigation } from '../../../hooks/useFrameNavigation';
 import { useOptimizedPlayback } from '../../../hooks/useOptimizedPlayback';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
@@ -21,10 +20,10 @@ import { getContentFrameAtTime } from '../../../utils/layerCompositing';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import {
-  Plus,
   FilePlus2,
   Copy,
   Scissors,
+  Trash2,
   Play,
   Pause,
   SkipBack,
@@ -41,9 +40,7 @@ export const TimelineToolbar: React.FC = () => {
   const looping = useTimelineStore((s) => s.view.looping);
   const setLooping = useTimelineStore((s) => s.setLooping);
   const goToFrame = useTimelineStore((s) => s.goToFrame);
-  const { canAddLayer } = useLayerLimit();
   const {
-    addLayer,
     addContentFrame,
     removeContentFrame,
     duplicateContentFrame,
@@ -70,15 +67,17 @@ export const TimelineToolbar: React.FC = () => {
     ? getContentFrameAtTime(activeLayer, currentFrame)
     : null;
 
+  // Selected content frames
+  const selectedContentFrameIds = useTimelineStore((s) => s.view.selectedContentFrameIds);
+  const hasSelection = selectedContentFrameIds.size > 0;
+
   // Can we split? Only if playhead is strictly inside (not at first frame of) a content frame
   const canSplit = contentFrameAtPlayhead
     ? currentFrame > contentFrameAtPlayhead.startFrame
     : false;
 
   const handleAddLayer = () => {
-    if (canAddLayer) {
-      addLayer();
-    }
+    // Moved to LayerList footer
   };
 
   /** Add a new empty 1-frame content frame at the playhead.
@@ -101,8 +100,11 @@ export const TimelineToolbar: React.FC = () => {
     const rightDuration = (cf.startFrame + cf.durationFrames) - rightStart;
 
     if (cf.durationFrames === 1) {
-      // Frame is already 1 frame long — just replace its data with empty
-      updateContentFrameData(activeLayer.id, cf.id, new Map());
+      // Frame is already 1 frame long — add a new blank frame after it
+      // (ensureTimelineContains inside addContentFrame will extend the timeline if needed)
+      const afterEnd = cf.startFrame + 1;
+      addContentFrame(activeLayer.id, afterEnd, 1);
+      useTimelineStore.getState().goToFrame(afterEnd);
       return;
     }
 
@@ -129,17 +131,70 @@ export const TimelineToolbar: React.FC = () => {
   }, [activeLayer, isPlaybackActive, currentFrame, contentFrameAtPlayhead,
       addContentFrame, updateContentFrameTiming, updateContentFrameData, removeContentFrame]);
 
-  /** Duplicate the content frame block at the playhead. */
+  /** Duplicate selected content frame blocks (or the one at playhead).
+   *  Places duplicates after the last selected frame.
+   *  Pushes any later frames to make room. */
   const handleDuplicateFrame = useCallback(() => {
-    if (!activeLayer || !contentFrameAtPlayhead || isPlaybackActive) return;
-    duplicateContentFrame(activeLayer.id, contentFrameAtPlayhead.id);
-  }, [activeLayer, contentFrameAtPlayhead, isPlaybackActive, duplicateContentFrame]);
+    if (!activeLayer || isPlaybackActive) return;
+
+    // Gather the frames to duplicate: either selected ones or the one at playhead
+    const framesToDup = hasSelection
+      ? activeLayer.contentFrames
+          .filter((cf) => selectedContentFrameIds.has(cf.id))
+          .sort((a, b) => a.startFrame - b.startFrame)
+      : contentFrameAtPlayhead
+        ? [contentFrameAtPlayhead]
+        : [];
+
+    if (framesToDup.length === 0) return;
+
+    // Total duration of the block to duplicate
+    const totalDupDuration = framesToDup.reduce((sum, cf) => sum + cf.durationFrames, 0);
+    const lastEnd = Math.max(...framesToDup.map((cf) => cf.startFrame + cf.durationFrames));
+    const insertAt = lastEnd;
+
+    // Push all content frames on this layer that start at or after insertAt
+    // by totalDupDuration frames to make room
+    const framesToPush = activeLayer.contentFrames
+      .filter((cf) => cf.startFrame >= insertAt && !selectedContentFrameIds.has(cf.id))
+      .sort((a, b) => b.startFrame - a.startFrame); // push from right to left to avoid overlaps
+
+    for (const cf of framesToPush) {
+      updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame + totalDupDuration, cf.durationFrames);
+    }
+
+    // Insert duplicates sequentially after the selection
+    let offset = 0;
+    for (const cf of framesToDup) {
+      addContentFrame(activeLayer.id, insertAt + offset, cf.durationFrames, new Map(cf.data));
+      offset += cf.durationFrames;
+    }
+  }, [activeLayer, isPlaybackActive, hasSelection, selectedContentFrameIds, contentFrameAtPlayhead,
+      addContentFrame, updateContentFrameTiming]);
 
   /** Split the content frame block at the playhead into two. */
   const handleSplitFrame = useCallback(() => {
     if (!activeLayer || !contentFrameAtPlayhead || !canSplit || isPlaybackActive) return;
     splitContentFrame(activeLayer.id, contentFrameAtPlayhead.id, currentFrame);
   }, [activeLayer, contentFrameAtPlayhead, canSplit, isPlaybackActive, currentFrame, splitContentFrame]);
+
+  /** Delete selected content frame blocks (or the one at playhead). */
+  const handleDeleteFrame = useCallback(() => {
+    if (!activeLayer || isPlaybackActive) return;
+
+    if (hasSelection) {
+      // Delete all selected frames
+      const selectedOnLayer = activeLayer.contentFrames.filter((cf) =>
+        selectedContentFrameIds.has(cf.id),
+      );
+      for (const cf of selectedOnLayer) {
+        removeContentFrame(activeLayer.id, cf.id);
+      }
+      useTimelineStore.getState().clearContentFrameSelection();
+    } else if (contentFrameAtPlayhead) {
+      removeContentFrame(activeLayer.id, contentFrameAtPlayhead.id);
+    }
+  }, [activeLayer, isPlaybackActive, hasSelection, selectedContentFrameIds, contentFrameAtPlayhead, removeContentFrame]);
 
   const handleTogglePlayback = useCallback(() => {
     if (isPlaybackActive) {
@@ -152,25 +207,8 @@ export const TimelineToolbar: React.FC = () => {
   return (
     <TooltipProvider>
     <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-muted/30">
-      {/* Add layer */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1.5"
-            onClick={handleAddLayer}
-            disabled={!canAddLayer}
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          {canAddLayer ? 'Add layer' : 'Layer limit reached — upgrade for more'}
-        </TooltipContent>
-      </Tooltip>
-
-      {/* Content frame block operations */}
+      {/* Left group: frame block operations */}
+      <div className="flex items-center gap-0.5">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -193,7 +231,7 @@ export const TimelineToolbar: React.FC = () => {
             size="sm"
             className="h-6 px-1"
             onClick={handleDuplicateFrame}
-            disabled={isPlaybackActive || !contentFrameAtPlayhead}
+            disabled={isPlaybackActive || (!hasSelection && !contentFrameAtPlayhead)}
           >
             <Copy className="w-3.5 h-3.5" />
           </Button>
@@ -216,7 +254,24 @@ export const TimelineToolbar: React.FC = () => {
         <TooltipContent side="top">Split frame block at playhead</TooltipContent>
       </Tooltip>
 
-      <div className="w-px h-4 bg-border mx-1" />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1 text-destructive hover:text-destructive"
+            onClick={handleDeleteFrame}
+            disabled={isPlaybackActive || (!hasSelection && !contentFrameAtPlayhead)}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Delete frame block</TooltipContent>
+      </Tooltip>
+      </div>
+
+      {/* Center group: playback controls */}
+      <div className="flex-1 flex items-center justify-center gap-0.5">
 
       {/* First frame */}
       <Tooltip>
@@ -304,9 +359,9 @@ export const TimelineToolbar: React.FC = () => {
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant={looping ? 'secondary' : 'ghost'}
+            variant="ghost"
             size="sm"
-            className="h-6 px-1"
+            className={looping ? 'h-6 px-1 text-purple-500 hover:text-purple-400' : 'h-6 px-1'}
             onClick={() => setLooping(!looping)}
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -317,8 +372,10 @@ export const TimelineToolbar: React.FC = () => {
         </TooltipContent>
       </Tooltip>
 
-      {/* Frame info */}
-      <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+      </div>
+
+      {/* Right group: frame info */}
+      <span className="text-xs text-muted-foreground tabular-nums">
         {currentFrame + 1} / {durationFrames} · {frameRate} fps
       </span>
     </div>

@@ -184,6 +184,10 @@ export interface TimelineState {
   setPanelHeight: (height: number) => void;
 
   selectKeyframes: (keyframeIds: KeyframeId[]) => void;
+  selectContentFrames: (frameIds: ContentFrameId[]) => void;
+  toggleContentFrameSelected: (frameId: ContentFrameId) => void;
+  clearContentFrameSelection: () => void;
+  setContentFrameDragPreview: (preview: TimelineViewState['contentFrameDragPreview']) => void;
   setEditingKeyframe: (keyframeId: KeyframeId | null) => void;
   toggleLayerExpanded: (layerId: LayerId) => void;
 
@@ -216,11 +220,13 @@ const INITIAL_VIEW: TimelineViewState = {
   activeLayerId: null,
   selectedLayerIds: new Set(),
   selectedKeyframeIds: new Set(),
-  zoom: 1,
+  selectedContentFrameIds: new Set(),
+  zoom: 3,
   scrollX: 0,
-  panelHeight: 380,
+  panelHeight: 264,
   editingKeyframeId: null,
   expandedLayerIds: new Set(),
+  contentFrameDragPreview: null,
 };
 
 // ============================================
@@ -904,6 +910,36 @@ export const useTimelineStore = create<TimelineState>()(
     selectKeyframes: (keyframeIds) => {
       set((state) => ({
         view: { ...state.view, selectedKeyframeIds: new Set(keyframeIds) },
+      }));
+    },
+
+    selectContentFrames: (frameIds) => {
+      set((state) => ({
+        view: { ...state.view, selectedContentFrameIds: new Set(frameIds) },
+      }));
+    },
+
+    toggleContentFrameSelected: (frameId) => {
+      set((state) => {
+        const next = new Set(state.view.selectedContentFrameIds);
+        if (next.has(frameId)) {
+          next.delete(frameId);
+        } else {
+          next.add(frameId);
+        }
+        return { view: { ...state.view, selectedContentFrameIds: next } };
+      });
+    },
+
+    clearContentFrameSelection: () => {
+      set((state) => ({
+        view: { ...state.view, selectedContentFrameIds: new Set() },
+      }));
+    },
+
+    setContentFrameDragPreview: (preview) => {
+      set((state) => ({
+        view: { ...state.view, contentFrameDragPreview: preview },
       }));
     },
 
