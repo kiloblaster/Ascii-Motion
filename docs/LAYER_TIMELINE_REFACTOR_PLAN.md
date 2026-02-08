@@ -3,7 +3,7 @@
 > **Version:** 2.0.0  
 > **Created:** February 1, 2026  
 > **Last Updated:** February 5, 2026  
-> **Status:** In Progress — Phase 4 Keyframe System (transform-aware tools complete)  
+> **Status:** In Progress — Phase 4 Keyframe System (static properties + layer properties panel complete)  
 > **Target Completion:** TBD  
 > **Estimated Duration:** 16-22 weeks
 
@@ -3583,6 +3583,12 @@ A right-side panel in the timeline area that shows all transform property values
 - [ ] Layer playback maintains 60fps with pre-computed frames
 - [ ] Onion skinning "current layer" mode shows only active layer ghosts
 - [ ] Onion skinning "all layers" mode shows composited ghosts
+- [ ] Layer Transform Tool: bounding box renders around content
+- [ ] Layer Transform Tool: move, scale, rotate, anchor interactions work
+- [ ] Layer Transform Tool: auto-keyframe on tracked properties
+- [ ] Layer Transform Tool: undo batching (one undo per drag)
+- [ ] Layer Transform Tool: locked/empty/no-layer edge cases handled
+- [ ] Layer Transform Tool: Shift+drag constrains to axis
 
 ### 4.8 Layer Playback Store Architecture (Performance Optimization)
 
@@ -3943,6 +3949,225 @@ function renderOnionSkins(
   }
 }
 ```
+
+### 4.10 Layer Transform Tool
+
+**Purpose:** Provide a visual, on-canvas manipulation tool for layer transforms (position, scale, rotation, anchor point) that mirrors the numeric controls in `LayerPropertiesPanel`. When selected, an interactive bounding box appears around the active layer's content with handles for direct manipulation, similar to Adobe's Free Transform tool.
+
+**New Tool ID:** `'layertransform'`
+**Hotkey:** `V` (standard Adobe convention for move/transform)
+**Icon:** Lucide `Move` icon
+**Location:** Utility section of `ToolPalette`
+
+#### 4.10.1 Interaction Zones & Behaviors
+
+| Zone | Cursor | Drag Action | Properties Affected |
+|------|--------|-------------|-------------------|
+| Inside bounding box (body) | `move` | Translates layer position | `transform.position.x`, `transform.position.y` |
+| Corner handles (4 corners) | `nwse-resize` / `nesw-resize` | Scales uniformly from anchor point | `transform.scale` |
+| Outside bounding box | Custom rotation cursor (SVG data URI, fallback `crosshair`) | Rotates around anchor point | `transform.rotation` |
+| Anchor point crosshair | `crosshair` | Repositions anchor with Pan Behind (position auto-compensates to keep layer visually stationary) | `transform.anchorPoint.x`, `transform.anchorPoint.y`, `transform.position.x`, `transform.position.y` |
+| Shift + body drag | `move` | Constrains movement to dominant axis (x-only or y-only) | `transform.position.x` OR `transform.position.y` |
+
+**Scale Behavior:** Anchor-point pivot. The anchor point stays fixed on screen while content scales around it. `newScale = startScale × (currentDist / startDist)`, where distances are measured from anchor point to mouse position. Clamped to `PROPERTY_DEFINITIONS['transform.scale'].min` (0.1) and `.max` (10).
+
+**Rotation Behavior:** `deltaAngle = atan2(mouseY - anchorY, mouseX - anchorX) - atan2(startMouseY - anchorY, startMouseX - anchorX)` in degrees. `newRotation = startRotation + deltaAngle`.
+
+**Anchor Point Behavior (Pan Behind):** Dragging the anchor auto-compensates position so the layer's visual position on screen doesn't shift. When anchor moves by `(Δax, Δay)`, position is adjusted by the same amount: `newPosX = startPosX + Δax`, `newPosY = startPosY + Δay`. This keeps the layer content stationary while only the anchor (rotation/scale center) moves.
+
+**Move with Shift Constraint:** On the first mouseMove after mouseDown, determine which axis has the larger initial delta. Lock movement to that axis for the remainder of the drag. If Shift is released mid-drag, constraint is removed.
+
+#### 4.10.2 Bounding Box Calculation
+
+The bounding box is derived from the active layer's content frame data, forward-transformed into screen space:
+
+```typescript
+interface TransformBoundingBox {
+  corners: { x: number; y: number }[];   // 4 corners in screen-space cell coords
+  localBounds: { minX: number; minY: number; maxX: number; maxY: number };
+  transform: TransformValues;
+}
+
+function getLayerBoundingBox(
+  layer: Layer, frame: number, canvasWidth: number, canvasHeight: number
+): TransformBoundingBox | null {
+  const contentFrame = getContentFrameAtTime(layer, frame);
+  if (!contentFrame || contentFrame.data.size === 0) return null;
+  
+  const transform = getTransformAtFrame(layer, frame);
+  
+  // Find local-space extent of content
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const key of contentFrame.data.keys()) {
+    const [x, y] = key.split(',').map(Number);
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  maxX += 1; maxY += 1;  // Include full cell extent
+  
+  // Forward-transform all 4 corners to screen space
+  const corners = [
+    forwardTransformPoint(minX, minY, transform),
+    forwardTransformPoint(maxX, minY, transform),
+    forwardTransformPoint(maxX, maxY, transform),
+    forwardTransformPoint(minX, maxY, transform),
+  ];
+  
+  return { corners, localBounds: { minX, minY, maxX, maxY }, transform };
+}
+```
+
+When rotation is non-zero, the bounding box is a rotated quad (not axis-aligned). The overlay renders the transformed polygon.
+
+**Empty content frame:** No bounding box shown. Only the anchor point crosshair is visible. Scale and move are disabled; anchor drag and rotation still work.
+
+#### 4.10.3 Property Write Path
+
+All property mutations go through `useKeyframeableProperty.setValue()`:
+- If a `PropertyTrack` exists → auto-creates/updates keyframe at current frame
+- If no track exists → writes to `layer.staticProperties` via `setStaticProperty()`
+- Identical behavior to the `LayerPropertiesPanel` value inputs
+
+For undo batching during drag operations: capture start values on mouseDown, write directly to the store during mouseMove (skip history), push a single batched history action on mouseUp.
+
+#### 4.10.4 Anchor Point Overlay Integration
+
+- When `activeTool === 'layertransform'`, the existing `AnchorPointOverlay` is **hidden** (via prop)
+- The `LayerTransformOverlay` takes over rendering of the anchor crosshair, motion path dots, AND the bounding box + handles — all in one component
+- The anchor crosshair becomes **interactive** (draggable) — this is the key difference from the read-only `AnchorPointOverlay`
+
+#### 4.10.5 Hit Testing Priority
+
+MouseDown hit-testing order (highest priority first):
+1. **Anchor point** — Within 1.5 cells of anchor crosshair → mode `'anchor'`
+2. **Corner handles** — Within 1 cell of any bounding box corner → mode `'scale'`, record `cornerIndex`
+3. **Inside bounding box** — Point-in-polygon test on the transformed quad → mode `'move'`
+4. **Outside bounding box** — Everything else → mode `'rotate'`
+
+#### 4.10.6 Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| No active layer | No overlay, tool does nothing |
+| Active layer is locked | Grey/disabled bounding box visible, all interactions blocked with toast "Layer is locked" |
+| Active layer is invisible | Bounding box still shown (transforms affect layer data regardless of visibility) |
+| Empty content frame (no cells) | No bounding box. Only anchor crosshair visible. Only anchor drag and rotation work. |
+| Scale at min/max | Clamped to 0.1–10 per `PROPERTY_DEFINITIONS` |
+| During playback | Tool interactions disabled (like drawing tools) |
+| No layers exist (legacy mode) | Tool disabled/greyed in palette |
+| Frame navigation while tool active | Bounding box updates to reflect new transform values at new frame |
+| Tool switch during drag | In-progress drag committed immediately |
+
+#### 4.10.7 Cursor Management
+
+The hook exposes `currentCursorZone` state. The cursor is applied via `getToolCursor()` in `useToolBehavior.ts`, which reads the zone from the hook/store:
+
+| Zone | CSS Cursor Value |
+|------|-----------------|
+| None / default | `cursor-default` |
+| Move (inside box) | `cursor-move` |
+| Scale NW/SE corner | `nwse-resize` |
+| Scale NE/SW corner | `nesw-resize` |
+| Rotate (outside box) | `cursor: url(data:image/svg+xml,...) 12 12, crosshair` (inline SVG rotation arrow) |
+| Anchor point | `cursor-crosshair` |
+
+#### 4.10.8 File Changes
+
+| File | Change Type | Description |
+|------|-------------|-------------|
+| `src/types/index.ts` | MODIFY | Add `'layertransform'` to `Tool` union |
+| `src/constants/hotkeys.ts` | MODIFY | Add `{ tool: 'layertransform', key: 'v', displayName: 'V' }` |
+| `src/components/features/ToolPalette.tsx` | MODIFY | Add to `UTILITY_TOOLS` with Lucide `Move` icon |
+| `src/hooks/useToolBehavior.ts` | MODIFY | Add cases for display name, cursor, component names |
+| `src/hooks/useLayerTransformTool.ts` | NEW | Core interaction logic — hit testing, drag state machine, value computation, undo batching |
+| `src/components/features/LayerTransformOverlay.tsx` | NEW | Visual overlay — bounding box, corner handles, anchor crosshair, motion path |
+| `src/components/tools/LayerTransformTool.tsx` | NEW | Tool component (behavior activation + status bar) |
+| `src/hooks/useCanvasMouseHandlers.ts` | MODIFY | Add `case 'layertransform'` in mouseDown/mouseMove/mouseUp switches |
+| `src/components/features/ToolManager.tsx` | MODIFY | Add `case 'layertransform'` rendering |
+| `src/components/features/ToolStatusManager.tsx` | MODIFY | Add `case 'layertransform'` status |
+| `src/components/features/CanvasOverlay.tsx` | MODIFY | Add `<LayerTransformOverlay />`, hide `<AnchorPointOverlay />` when transform tool active |
+| `src/components/features/AnchorPointOverlay.tsx` | MODIFY | Accept `hidden` prop, return null when transform tool active |
+
+#### 4.10.9 New Hook: `useLayerTransformTool.ts`
+
+**Drag State:**
+```typescript
+type TransformDragMode = 'none' | 'move' | 'scale' | 'rotate' | 'anchor';
+
+interface TransformDragState {
+  mode: TransformDragMode;
+  startMouseCell: { x: number; y: number };      // Cell coords at drag start
+  startValues: {                                   // Snapshot for undo batching
+    positionX: number; positionY: number;
+    scale: number; rotation: number;
+    anchorPointX: number; anchorPointY: number;
+  };
+  shiftConstraintAxis: 'x' | 'y' | null;          // Set on first move when Shift held
+  cornerIndex?: number;                            // Which corner (0-3) for scale
+}
+```
+
+**Value computation per mode:**
+
+| Mode | Formula |
+|------|---------|
+| Move | `posX = start.posX + (currentCell.x - startCell.x)`, same for Y. With Shift: lock to dominant axis. |
+| Scale | `newScale = start.scale × (distFromAnchor(current) / distFromAnchor(start))`. Clamped to [0.1, 10]. |
+| Rotate | `newRotation = start.rotation + angleDelta(anchor→current, anchor→start)` in degrees. |
+| Anchor (Pan Behind) | `newAnchorX = start.anchorX + delta`, `newPosX = start.posX + delta` (compensate). Same for Y. |
+
+**Returns:**
+```typescript
+{
+  boundingBox: TransformBoundingBox | null;
+  dragState: TransformDragState | null;
+  currentCursorZone: TransformDragMode;
+  handleMouseDown: (cellX, cellY, event) => void;
+  handleMouseMove: (cellX, cellY, event) => void;
+  handleMouseUp: () => void;
+  isDisabled: boolean;  // true when locked, during playback, or no layers
+}
+```
+
+#### 4.10.10 New Component: `LayerTransformOverlay.tsx`
+
+Renders as a React overlay `<div>` over the canvas (sibling to `AnchorPointOverlay`), `pointer-events-none` (mouse events handled via `useCanvasMouseHandlers` routing).
+
+**Renders:**
+1. **Bounding box quad** — 4 SVG/CSS lines connecting forward-transformed corners, dashed blue lines
+2. **Corner handles** — 8×8px filled squares at each corner with contrasting border
+3. **Anchor point crosshair** — Reuses visual style from `AnchorPointOverlay` (yellow crosshair + center dot)
+4. **Motion path dots** — Same as current `AnchorPointOverlay` (one dot per frame showing anchor+position trajectory)
+5. **Disabled appearance** — When layer is locked, box renders in grey with reduced opacity
+
+**Coordinate conversion:**
+```typescript
+const toPixelX = (cellX: number) => cellX * cellWidth * zoom + panOffset.x;
+const toPixelY = (cellY: number) => cellY * cellHeight * zoom + panOffset.y;
+```
+
+#### 4.10.11 Testing Checkpoint
+
+- [ ] Bounding box renders around active layer content in screen space
+- [ ] Bounding box updates when transforms change (position, scale, rotation)
+- [ ] Bounding box correctly rotates with rotation transform (non-axis-aligned quad)
+- [ ] Move: drag inside box changes position.x and position.y
+- [ ] Move with Shift: constrains to dominant axis (pure horizontal or vertical)
+- [ ] Scale: drag corner changes scale uniformly around anchor point
+- [ ] Scale respects min/max (0.1–10)
+- [ ] Rotate: drag outside box changes rotation in degrees
+- [ ] Anchor drag: repositions anchor point with Pan Behind (layer stays visually stationary)
+- [ ] Auto-keyframe: changes to tracked properties auto-create keyframes at current frame
+- [ ] Static properties: changes to untracked properties write to staticProperties
+- [ ] Undo batching: each drag operation (mouseDown→mouseUp) is a single undo step
+- [ ] Locked layer: shows grey disabled bounding box, interactions blocked with toast
+- [ ] Empty content frame: no bounding box, only anchor point visible
+- [ ] Cursors: change correctly for each zone (move, scale, rotate, anchor, default)
+- [ ] Hotkey 'V': activates transform tool
+- [ ] Tool appears in utility section of tool palette with Move icon
+- [ ] No layers: tool greyed out in palette
+- [ ] Frame navigation: bounding box updates when playhead moves
+- [ ] Tool switch during drag: committed cleanly
 
 ---
 
@@ -5260,6 +5485,17 @@ mergeDown: (layerId: LayerId) => {
 | `src/components/features/CanvasOverlay.tsx` | 4 | MODIFY | Add anchor overlay |
 | `src/stores/layerPlaybackStore.ts` | 4 | NEW | Non-React playback store for layers |
 | `src/hooks/useOptimizedLayerPlayback.ts` | 4 | NEW | Layer-aware playback loop |
+| `src/hooks/useLayerTransformTool.ts` | 4 | NEW | Layer transform tool — hit testing, drag state machine, value computation, undo batching |
+| `src/components/features/LayerTransformOverlay.tsx` | 4 | NEW | Transform tool overlay — bounding box, corner handles, anchor crosshair, motion path |
+| `src/components/tools/LayerTransformTool.tsx` | 4 | NEW | Tool component + status for the layer transform tool |
+| `src/types/index.ts` | 4 | MODIFY | Add `'layertransform'` to Tool union |
+| `src/constants/hotkeys.ts` | 4 | MODIFY | Add 'V' hotkey for layer transform tool |
+| `src/components/features/ToolPalette.tsx` | 4 | MODIFY | Add layer transform to utility section |
+| `src/hooks/useToolBehavior.ts` | 4 | MODIFY | Add layer transform tool metadata |
+| `src/hooks/useCanvasMouseHandlers.ts` | 4 | MODIFY | Add `case 'layertransform'` routing |
+| `src/components/features/ToolManager.tsx` | 4 | MODIFY | Add layer transform tool component rendering |
+| `src/components/features/ToolStatusManager.tsx` | 4 | MODIFY | Add layer transform tool status rendering |
+| `src/components/features/AnchorPointOverlay.tsx` | 4 | MODIFY | Add hidden prop when transform tool active |
 | `src/components/features/FrameDurationDialog.tsx` | 3 | NEW | Precise duration editing dialog |
 | `src/components/features/FrameViewPanel.tsx` | 3 | NEW | Flattened frame view |
 | `src/components/features/GroupListItem.tsx` | 7 | NEW | Group UI in timeline (Phase 7: Advanced) |
@@ -5973,6 +6209,7 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | Inverse transform for selection tools | `src/stores/toolStore.ts`, `src/hooks/useCanvasState.ts`, `src/hooks/usePasteMode.ts` | ✅ DONE | Copy reads, move commit writes, paste commit, magic wand BFS all use inverse transform. |
 | Selection constraint with transforms | `src/utils/selectionConstraint.ts` | ✅ DONE | `localToScreen()` in all constraint functions so drawing in local space respects screen-space selection masks. |
 | Gradient preview forward transform | `src/components/features/CanvasOverlay.tsx` | ✅ DONE | `transformCellMapToScreen()` for preview display since gradient data is computed in local space. |
+| §4.10 Layer Transform Tool | `src/hooks/useLayerTransformTool.ts`, `src/components/features/LayerTransformOverlay.tsx`, `src/components/tools/LayerTransformTool.tsx` | ⬜ NOT STARTED | Visual on-canvas transform manipulation (move, scale, rotate, anchor drag). Pan Behind anchor. Undo batching. Hotkey 'V'. |
 
 ### Phase 2: Layer Data Model (Core)
 
@@ -6086,3 +6323,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 2.2.0 | 2026-02-06 | Copilot | **Phase 3: Timeline UI complete.** 12 new components, 92 new tests. Total: 297/297. TypeScript clean. |
 | 2.3.0 | 2026-02-06 | Copilot | **Post-Phase 3: Playback & Timeline Polish.** Dual-mode playback (timeline compositing + legacy). Fixed adapter `play()`/`pause()`/`stop()`. Dual-mode `useFrameNavigation`. Space key in both tabs. Drag-to-scrub ruler. Pause preserves frame. Canvas data isolation per layer (layer-aware `useFrameSynchronization` with `effectiveFrameIndex` + layer-switch flush/load). Content frame CRUD: add/duplicate/split/delete in toolbar with `splitContentFrame()`/`duplicateContentFrame()` in store + history. Every-frame ruler ticks. Purple draggable end bracket. 3-column toolbar layout. Loop purple. Add Layer pinned footer. Content frame selection (`selectedContentFrameIds`). Drag-to-reorder with slot-snap, ghost preview, cross-layer drag, per-layer rendering. Zoom slider. Default zoom 3x, panel 264px. 297/297 tests. TypeScript clean. |
 | 2.4.0 | 2026-02-07 | Copilot | **Phase 4: Keyframe System (partial).** Built `useKeyframeableProperty` hook (reactive property→keyframe binding). Built `AnchorPointOverlay` (crosshair + motion path, integrated in CanvasOverlay). Upgraded `useOnionSkinRenderer` for layer-aware compositing. **Transform-aware coordinate system** (major architectural addition): Created `src/utils/layerTransformUtils.ts` with `screenToLocal()`, `localToScreen()`, `transformCellMapToLocal()`, `transformCellMapToScreen()`, `inverseTransformPoint()`. Added `inverseTransformPoint()` to `layerCompositing.ts`. Fixed ALL 9 drawing tools: pencil, eraser, fill, rectangle, ellipse, gradient, bezier, text, ASCII type/box — each applies inverse transform before canvas writes. Fixed brush smoothing gap-fill coordinate mismatch. Fixed all 3 selection tool copy/move/paste operations. Fixed magic wand flood fill BFS. Fixed selection constraint checks (`localToScreen()` in `selectionConstraint.ts`). Fixed gradient preview rendering (`transformCellMapToScreen()`). Added Coordinate Space Architecture section to plan. 297/297 tests. TypeScript clean. |
+| 2.5.0 | 2026-02-08 | Copilot | **Phase 4 continued + Timeline UI polish.** Content frame selection: Cmd/Ctrl+click toggle, Shift+click range select, multi-select group drag (same-layer + cross-layer), ghost with frame dividers showing gaps. Add-frame edge case: last frame of block adds after instead of carving. Ghost snaps to frame positions. Multi-frame cross-layer drag. **Timeline UI overhaul**: Onion skin controls moved to toolbar row (compact inline layout, no container box), timecode next to playback controls, frame counter in footer. Dropdown border color fixed (`border-border/50`). **Keyframe editor compacted**: Frame+Value inline, easing as dropdown menu, custom curve only when selected, narrower panel (w-48). **LayerPropertiesPanel** (§4.6a): New right-side panel showing all 6 transform properties with keyframe diamond toggles and editable inputs. Commit-on-blur/Enter, arrow key increment. Opens on layer click, closes with X. **Static properties system**: Added `staticProperties: Record<string, number>` to Layer type. `getPropertyValueAtFrame()` checks static values before global defaults. `setStaticProperty()` store action. `useKeyframeableProperty.setValue()` auto-writes static when untracked. Default anchor point = canvas center on new layers. **Opacity removed**: Removed `transform.opacity` from PropertyPath, PROPERTY_DEFINITIONS, compositing, getTransformAtFrame, tests. Fixed `propertyTracks.length` guards that blocked static property transforms. **Reset Transforms button** in properties panel. Anchor point overlay shows when properties panel is open. Removed TabsContent focus ring. 297/297 tests. TypeScript clean. |
