@@ -11,10 +11,13 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useCanvasStore } from '../../../stores/canvasStore';
 import { useKeyframeableProperty } from '../../../hooks/useKeyframeableProperty';
+import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
+import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
-import { Diamond, X } from 'lucide-react';
+import { Diamond, X, RotateCcw } from 'lucide-react';
 import type { PropertyPath, LayerId } from '../../../types/timeline';
 
 /** All transform properties to show in the panel */
@@ -184,6 +187,55 @@ export const LayerPropertiesPanel: React.FC = () => {
             propertyPath={path}
           />
         ))}
+      </div>
+
+      {/* Reset transforms */}
+      <div className="px-2 pb-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-6 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+          onClick={() => {
+            if (!activeLayerId) return;
+            const tl = useTimelineStore.getState();
+            const layer = tl.layers.find((l) => l.id === activeLayerId);
+            if (!layer) return;
+
+            const { width, height } = useCanvasStore.getState();
+            const currentFrame = tl.view.currentFrame;
+
+            // Default values (anchor = canvas center, others = identity)
+            const defaults: Record<string, number> = {
+              'transform.position.x': 0,
+              'transform.position.y': 0,
+              'transform.scale': 1,
+              'transform.rotation': 0,
+              'transform.anchorPoint.x': Math.floor(width / 2),
+              'transform.anchorPoint.y': Math.floor(height / 2),
+            };
+
+            for (const path of TRANSFORM_PROPERTIES) {
+              const track = layer.propertyTracks.find((t) => t.propertyPath === path);
+              const defaultVal = defaults[path] ?? (PROPERTY_DEFINITIONS[path]?.defaultValue as number) ?? 0;
+
+              if (track && track.keyframes.length > 0) {
+                // Has keyframes — add a keyframe at playhead with default value
+                const existingKf = track.keyframes.find((kf) => kf.frame === currentFrame);
+                if (existingKf) {
+                  tl.updateKeyframe(activeLayerId, track.id, existingKf.id, { value: defaultVal });
+                } else {
+                  tl.addKeyframe(activeLayerId, track.id, currentFrame, defaultVal);
+                }
+              } else {
+                // Static property — set to default
+                tl.setStaticProperty(activeLayerId, path, defaultVal);
+              }
+            }
+          }}
+        >
+          <RotateCcw className="w-3 h-3" />
+          Reset Transforms
+        </Button>
       </div>
     </div>
   );

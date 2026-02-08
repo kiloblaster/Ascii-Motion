@@ -11,6 +11,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { Cell } from '../types';
+import { useCanvasStore } from './canvasStore';
 import type {
   Layer,
   LayerId,
@@ -276,6 +277,11 @@ export const useTimelineStore = create<TimelineState>()(
       const id = generateLayerId();
       const layerName = name ?? `Layer ${layers.length + 1}`;
 
+      // Default anchor point to canvas center
+      const { width, height } = useCanvasStore.getState();
+      const anchorX = Math.floor(width / 2);
+      const anchorY = Math.floor(height / 2);
+
       const newLayer: Layer = {
         id,
         name: layerName,
@@ -291,7 +297,10 @@ export const useTimelineStore = create<TimelineState>()(
           data: new Map(),
         }],
         propertyTracks: [],
-        staticProperties: {},
+        staticProperties: {
+          'transform.anchorPoint.x': anchorX,
+          'transform.anchorPoint.y': anchorY,
+        },
       };
 
       // Insert above active layer (or at top if none active)

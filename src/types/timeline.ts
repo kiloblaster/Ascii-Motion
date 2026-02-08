@@ -526,7 +526,7 @@ export interface SessionEffectV2 {
 /**
  * Create a default layer for new projects.
  */
-export function createDefaultLayer(id?: LayerId, name?: string): Layer {
+export function createDefaultLayer(id?: LayerId, name?: string, canvasWidth = 80, canvasHeight = 24): Layer {
   const layerId = id ?? ('layer-1' as LayerId);
   return {
     id: layerId,
@@ -543,7 +543,10 @@ export function createDefaultLayer(id?: LayerId, name?: string): Layer {
       data: new Map(),
     }],
     propertyTracks: [],
-    staticProperties: {},
+    staticProperties: {
+      'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
+      'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
+    },
   };
 }
 
