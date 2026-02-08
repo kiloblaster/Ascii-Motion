@@ -185,6 +185,7 @@ export interface TimelineState {
 
   selectKeyframes: (keyframeIds: KeyframeId[]) => void;
   selectContentFrames: (frameIds: ContentFrameId[]) => void;
+  addContentFramesToSelection: (frameIds: ContentFrameId[]) => void;
   toggleContentFrameSelected: (frameId: ContentFrameId) => void;
   clearContentFrameSelection: () => void;
   setContentFrameDragPreview: (preview: TimelineViewState['contentFrameDragPreview']) => void;
@@ -917,6 +918,14 @@ export const useTimelineStore = create<TimelineState>()(
       set((state) => ({
         view: { ...state.view, selectedContentFrameIds: new Set(frameIds) },
       }));
+    },
+
+    addContentFramesToSelection: (frameIds) => {
+      set((state) => {
+        const next = new Set(state.view.selectedContentFrameIds);
+        for (const id of frameIds) next.add(id);
+        return { view: { ...state.view, selectedContentFrameIds: next } };
+      });
     },
 
     toggleContentFrameSelected: (frameId) => {

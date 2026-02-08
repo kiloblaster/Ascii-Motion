@@ -108,6 +108,15 @@ export const TimelineToolbar: React.FC = () => {
       return;
     }
 
+    // If playhead is on the last frame of the block, add after instead of carving
+    const isLastFrame = currentFrame === cf.startFrame + cf.durationFrames - 1;
+    if (isLastFrame) {
+      const afterEnd = cf.startFrame + cf.durationFrames;
+      addContentFrame(activeLayer.id, afterEnd, 1);
+      useTimelineStore.getState().goToFrame(afterEnd);
+      return;
+    }
+
     // Shrink original to the left remnant (or remove if no left portion)
     if (leftDuration > 0) {
       updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, leftDuration);

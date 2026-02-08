@@ -36,6 +36,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const selectedIds = useTimelineStore((s) => s.view.selectedContentFrameIds);
   const selectContentFrames = useTimelineStore((s) => s.selectContentFrames);
+  const addContentFramesToSelection = useTimelineStore((s) => s.addContentFramesToSelection);
   const toggleContentFrameSelected = useTimelineStore((s) => s.toggleContentFrameSelected);
   const setActiveLayer = useTimelineStore((s) => s.setActiveLayer);
   const setContentFrameDragPreview = useTimelineStore((s) => s.setContentFrameDragPreview);
@@ -115,17 +116,35 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
         if (!didDrag && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
         didDrag = true;
 
+        // Check if we're dragging a multi-selection group
+        const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+        const isGroupDrag = selectedIds.has(contentFrame.id) && selectedIds.size > 1;
+
         const tgtLayerId = getTargetLayerId(me.clientY);
         const others = getOtherFrames(tgtLayerId);
         const mouseLeftFrame = origStart + dx / pxPerFrame;
         const { slotFrame } = getDropTarget(mouseLeftFrame, others);
+
+        // For group drag, show ghost spanning from first to last selected frame (including gaps)
+        let ghostWidth = duration * pxPerFrame;
+        if (isGroupDrag) {
+          const layer = useTimelineStore.getState().layers.find((l) => l.id === layerId);
+          if (layer) {
+            const selectedFrames = layer.contentFrames
+              .filter((cf) => selectedIds.has(cf.id))
+              .sort((a, b) => a.startFrame - b.startFrame);
+            const firstStart = selectedFrames[0].startFrame;
+            const lastEnd = selectedFrames[selectedFrames.length - 1].startFrame + selectedFrames[selectedFrames.length - 1].durationFrames;
+            ghostWidth = (lastEnd - firstStart) * pxPerFrame;
+          }
+        }
 
         setContentFrameDragPreview({
           sourceLayerId: layerId,
           targetLayerId: tgtLayerId,
           frameId: contentFrame.id,
           ghostLeftPx: Math.max(0, slotFrame * pxPerFrame),
-          ghostWidthPx: duration * pxPerFrame,
+          ghostWidthPx: ghostWidth,
           slotFrame,
         });
       };
@@ -140,9 +159,33 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
         if (!didDrag) {
           if (layerId !== activeLayerId) setActiveLayer(layerId);
           goToFrame(contentFrame.startFrame);
-          if (me.shiftKey) {
+
+          if (me.metaKey || me.ctrlKey) {
+            // Cmd/Ctrl+click: toggle individual frame in/out of selection
             toggleContentFrameSelected(contentFrame.id);
+          } else if (me.shiftKey) {
+            // Shift+click: range select all frames between last-selected and this one
+            const tl = useTimelineStore.getState();
+            const layer = tl.layers.find((l) => l.id === layerId);
+            if (layer) {
+              const currentSelection = tl.view.selectedContentFrameIds;
+              const sorted = [...layer.contentFrames].sort((a, b) => a.startFrame - b.startFrame);
+
+              if (currentSelection.size === 0) {
+                selectContentFrames([contentFrame.id]);
+              } else {
+                // Find the anchor: earliest or latest selected frame
+                const selectedFrames = sorted.filter((cf) => currentSelection.has(cf.id));
+                const anchorIdx = sorted.indexOf(selectedFrames[0]);
+                const clickedIdx = sorted.findIndex((cf) => cf.id === contentFrame.id);
+                const lo = Math.min(anchorIdx, clickedIdx);
+                const hi = Math.max(anchorIdx, clickedIdx);
+                const rangeIds = sorted.slice(lo, hi + 1).map((cf) => cf.id);
+                addContentFramesToSelection(rangeIds);
+              }
+            }
           } else {
+            // Plain click: select only this frame
             selectContentFrames([contentFrame.id]);
           }
           return;
@@ -151,20 +194,116 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
         if (!preview) return;
 
         const tgtLayerId = preview.targetLayerId;
-        const others = getOtherFrames(tgtLayerId);
         const dx = me.clientX - startX;
         const mouseLeftFrame = origStart + dx / pxPerFrame;
-        const { targetStart } = getDropTarget(mouseLeftFrame, others);
 
-        if (tgtLayerId === layerId && targetStart === origStart) return;
-
+        // Check if this is a group drag (multiple selected frames)
+        const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+        const isGroupDrag = selectedIds.has(contentFrame.id) && selectedIds.size > 1;
         const tl = useTimelineStore.getState();
+        const currentLayer = tl.layers.find((l) => l.id === layerId);
+        if (!currentLayer) return;
 
-        if (tgtLayerId !== layerId) {
-          // Cross-layer move
-          tl.removeContentFrame(layerId, contentFrame.id);
-          tl.addContentFrame(tgtLayerId, targetStart, duration, new Map(contentFrame.data));
+        if (isGroupDrag && tgtLayerId === layerId) {
+          // ── Multi-select group move (same layer) ──
+          // Compute delta from the dragged frame's original position
+          const others = getOtherFrames(tgtLayerId);
+          const { targetStart } = getDropTarget(mouseLeftFrame, others);
+          const delta = targetStart - origStart;
+          if (delta === 0) return;
 
+          // Get all selected frames sorted by position
+          const selectedFrames = currentLayer.contentFrames
+            .filter((cf) => selectedIds.has(cf.id))
+            .sort((a, b) => a.startFrame - b.startFrame);
+
+          // Build simulation: move all selected frames by delta, keep others in place
+          const selectedIdSet = new Set(selectedFrames.map((cf) => cf.id));
+          const sim = currentLayer.contentFrames.map((cf) =>
+            selectedIdSet.has(cf.id)
+              ? { ...cf, startFrame: Math.max(0, cf.startFrame + delta) }
+              : { ...cf },
+          );
+
+          // Sort with selected frames winning ties (so they push non-selected)
+          sim.sort((a, b) => {
+            if (a.startFrame !== b.startFrame) return a.startFrame - b.startFrame;
+            if (selectedIdSet.has(a.id) && !selectedIdSet.has(b.id)) return -1;
+            if (!selectedIdSet.has(a.id) && selectedIdSet.has(b.id)) return 1;
+            return 0;
+          });
+
+          // Resolve overlaps
+          for (let i = 1; i < sim.length; i++) {
+            const prevEnd = sim[i - 1].startFrame + sim[i - 1].durationFrames;
+            if (sim[i].startFrame < prevEnd) {
+              sim[i] = { ...sim[i], startFrame: prevEnd };
+            }
+          }
+
+          // Park all selected frames at safe temp positions
+          const simMaxEnd = Math.max(...sim.map((cf) => cf.startFrame + cf.durationFrames));
+          let tempOffset = 0;
+          for (const sf of selectedFrames) {
+            updateContentFrameTiming(layerId, sf.id, simMaxEnd + tempOffset, sf.durationFrames);
+            tempOffset += sf.durationFrames;
+          }
+
+          // Move non-selected frames to their planned positions (right-to-left)
+          const nonSelected = sim
+            .filter((cf) => !selectedIdSet.has(cf.id))
+            .sort((a, b) => b.startFrame - a.startFrame);
+          for (const planned of nonSelected) {
+            const current = useTimelineStore.getState().layers
+              .find((l) => l.id === layerId)?.contentFrames.find((cf) => cf.id === planned.id);
+            if (current && current.startFrame !== planned.startFrame) {
+              updateContentFrameTiming(layerId, planned.id, planned.startFrame, planned.durationFrames);
+            }
+          }
+
+          // Place selected frames at their final positions
+          for (const planned of sim.filter((cf) => selectedIdSet.has(cf.id))) {
+            updateContentFrameTiming(layerId, planned.id, planned.startFrame, planned.durationFrames);
+          }
+
+          // Trim timeline
+          const allLayers = useTimelineStore.getState().layers;
+          const globalMaxEnd = Math.max(1, ...allLayers.flatMap((l) => l.contentFrames.map((cf) => cf.startFrame + cf.durationFrames)));
+          const currentDuration = useTimelineStore.getState().config.durationFrames;
+          if (globalMaxEnd < currentDuration) {
+            useTimelineStore.getState().setDuration(globalMaxEnd);
+          }
+        } else if (tgtLayerId !== layerId) {
+          // ── Cross-layer move ──
+          const others = getOtherFrames(tgtLayerId);
+          const { targetStart } = getDropTarget(mouseLeftFrame, others);
+
+          if (isGroupDrag) {
+            // Multi-select cross-layer move: move all selected frames
+            const selectedFrames = currentLayer.contentFrames
+              .filter((cf) => selectedIds.has(cf.id))
+              .sort((a, b) => a.startFrame - b.startFrame);
+
+            const firstStart = selectedFrames[0].startFrame;
+
+            // Remove all selected frames from source layer, then add to target
+            // Process in reverse to avoid index shifts
+            for (const sf of [...selectedFrames].reverse()) {
+              tl.removeContentFrame(layerId, sf.id);
+            }
+
+            // Add each frame to target layer, preserving relative positions
+            for (const sf of selectedFrames) {
+              const relativeOffset = sf.startFrame - firstStart;
+              tl.addContentFrame(tgtLayerId, targetStart + relativeOffset, sf.durationFrames, new Map(sf.data));
+            }
+          } else {
+            // Single frame cross-layer move
+            tl.removeContentFrame(layerId, contentFrame.id);
+            tl.addContentFrame(tgtLayerId, targetStart, duration, new Map(contentFrame.data));
+          }
+
+          // Resolve overlaps on target layer
           const updatedTarget = useTimelineStore.getState().layers.find((l) => l.id === tgtLayerId);
           if (updatedTarget) {
             const sorted = [...updatedTarget.contentFrames].sort((a, b) => a.startFrame - b.startFrame);
@@ -178,9 +317,10 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           }
           setActiveLayer(tgtLayerId);
         } else {
-          // Same-layer reorder
-          const currentLayer = tl.layers.find((l) => l.id === layerId);
-          if (!currentLayer) return;
+          // ── Same-layer reorder (single frame) ──
+          const others = getOtherFrames(tgtLayerId);
+          const { targetStart } = getDropTarget(mouseLeftFrame, others);
+          if (targetStart === origStart) return;
 
           const draggedId = contentFrame.id;
           const sim = currentLayer.contentFrames.map((cf) =>
@@ -226,7 +366,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     },
-    [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, activeLayerId, setActiveLayer, goToFrame, selectContentFrames, toggleContentFrameSelected, setContentFrameDragPreview],
+    [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, activeLayerId, setActiveLayer, goToFrame, selectContentFrames, addContentFramesToSelection, toggleContentFrameSelected, setContentFrameDragPreview],
   );
 
   // ── Resize handlers ──

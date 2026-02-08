@@ -129,14 +129,55 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                     <div className="absolute -top-1 -left-[4px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-purple-500" />
                     <div className="absolute -bottom-1 -left-[4px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-b-[6px] border-b-purple-500" />
                   </div>
-                  {/* Ghost */}
+                  {/* Ghost with individual frame dividers */}
                   <div
-                    className="absolute top-1 h-[24px] rounded border border-purple-500/60 bg-purple-500/20 pointer-events-none z-30"
+                    className="absolute top-1 h-[24px] rounded border border-purple-500/60 bg-purple-500/20 pointer-events-none z-30 overflow-hidden"
                     style={{
                       left: contentFrameDragPreview.ghostLeftPx,
                       width: contentFrameDragPreview.ghostWidthPx,
                     }}
-                  />
+                  >
+                    {/* Render dividing lines for each selected frame within the ghost */}
+                    {(() => {
+                      const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+                      if (selectedIds.size <= 1) return null;
+                      const sourceLayer = layers.find((l) => l.id === contentFrameDragPreview.sourceLayerId);
+                      if (!sourceLayer) return null;
+                      const selectedFrames = sourceLayer.contentFrames
+                        .filter((cf) => selectedIds.has(cf.id))
+                        .sort((a, b) => a.startFrame - b.startFrame);
+                      if (selectedFrames.length <= 1) return null;
+                      const firstStart = selectedFrames[0].startFrame;
+                      // Render a divider at each frame boundary (start and end of each frame relative to group start)
+                      const dividers: React.ReactNode[] = [];
+                      for (let i = 0; i < selectedFrames.length; i++) {
+                        const cf = selectedFrames[i];
+                        const frameStartPx = (cf.startFrame - firstStart) * pxPerFrame;
+                        const frameEndPx = (cf.startFrame + cf.durationFrames - firstStart) * pxPerFrame;
+                        // Left edge divider (skip first frame's left edge — that's the ghost border)
+                        if (i > 0) {
+                          dividers.push(
+                            <div
+                              key={`start-${i}`}
+                              className="absolute top-0 bottom-0 w-[1px] bg-purple-500/50"
+                              style={{ left: frameStartPx }}
+                            />
+                          );
+                        }
+                        // Right edge divider (skip last frame's right edge — that's the ghost border)
+                        if (i < selectedFrames.length - 1) {
+                          dividers.push(
+                            <div
+                              key={`end-${i}`}
+                              className="absolute top-0 bottom-0 w-[1px] bg-purple-500/50"
+                              style={{ left: frameEndPx }}
+                            />
+                          );
+                        }
+                      }
+                      return dividers;
+                    })()}
+                  </div>
                 </>
               )}
             </div>
