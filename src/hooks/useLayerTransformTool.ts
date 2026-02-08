@@ -25,7 +25,7 @@ import {
   getTransformAtFrame,
   applyRotation,
 } from '../utils/layerCompositing';
-import { PROPERTY_DEFINITIONS } from '../types/timeline';
+import { PROPERTY_DEFINITIONS, type PropertyPath } from '../types/timeline';
 import { useKeyframeableProperty } from './useKeyframeableProperty';
 import { useToolStore } from '../stores/toolStore';
 import { toast } from 'sonner';
@@ -162,7 +162,7 @@ export function useLayerTransformTool() {
     [cellWidth, cellHeight],
   );
 
-  // Keyframeable property bindings — these handle auto-keyframe vs static writes
+  // Keyframeable property bindings — used for reading values and on mouseUp
   const posX = useKeyframeableProperty(activeLayerId, 'transform.position.x');
   const posY = useKeyframeableProperty(activeLayerId, 'transform.position.y');
   const scale = useKeyframeableProperty(activeLayerId, 'transform.scale');
@@ -172,6 +172,32 @@ export function useLayerTransformTool() {
 
   const isDisabled = !activeLayer || isPlaying || isPlaybackMode;
   const isLocked = activeLayer?.locked ?? false;
+
+  /**
+   * Write a property value directly to the store WITHOUT recording history.
+   * Used during drag for live preview. History is recorded on mouseUp as a batch.
+   */
+  const setPropertyDirect = useCallback((propertyPath: PropertyPath, newValue: number) => {
+    if (!activeLayerId) return;
+    const tl = useTimelineStore.getState();
+    const layer = tl.layers.find((l) => l.id === activeLayerId);
+    if (!layer) return;
+
+    const track = layer.propertyTracks.find((t) => t.propertyPath === propertyPath);
+    if (track) {
+      // Has property track — update or create keyframe directly (no history)
+      const currentFrame = tl.view.currentFrame;
+      const existingKf = track.keyframes.find((kf) => kf.frame === currentFrame);
+      if (existingKf) {
+        tl.updateKeyframe(activeLayerId, track.id, existingKf.id, { value: newValue });
+      } else {
+        tl.addKeyframe(activeLayerId, track.id, currentFrame, newValue);
+      }
+    } else {
+      // No track — set static property directly (no history)
+      tl.setStaticProperty(activeLayerId, propertyPath, newValue);
+    }
+  }, [activeLayerId]);
 
   // ============================================
   // Bounding Box Calculation
@@ -352,8 +378,8 @@ export function useLayerTransformTool() {
             );
           }
 
-          posX.setValue(Math.round(startValues.positionX + deltaX));
-          posY.setValue(Math.round(startValues.positionY + deltaY));
+          setPropertyDirect('transform.position.x', Math.round(startValues.positionX + deltaX));
+          setPropertyDirect('transform.position.y', Math.round(startValues.positionY + deltaY));
           break;
         }
 
@@ -370,7 +396,7 @@ export function useLayerTransformTool() {
               SCALE_MIN,
               Math.min(SCALE_MAX, Math.round(rawScale * 10) / 10),
             );
-            scale.setValue(clampedScale);
+            setPropertyDirect('transform.scale', clampedScale);
           }
           break;
         }
@@ -383,7 +409,7 @@ export function useLayerTransformTool() {
           const currentAngle = angleDeg(anchorScreenPos, { x: cellX, y: cellY });
           const deltaAngle = currentAngle - startAngle;
           const newRotation = Math.round(startValues.rotation + deltaAngle);
-          rotation.setValue(newRotation);
+          setPropertyDirect('transform.rotation', newRotation);
           break;
         }
 
@@ -396,8 +422,8 @@ export function useLayerTransformTool() {
           const deltaY = cellY - startMouseCell.y;
           const newAnchorX = Math.round(startValues.anchorPointX + deltaX);
           const newAnchorY = Math.round(startValues.anchorPointY + deltaY);
-          anchorX.setValue(newAnchorX);
-          anchorY.setValue(newAnchorY);
+          setPropertyDirect('transform.anchorPoint.x', newAnchorX);
+          setPropertyDirect('transform.anchorPoint.y', newAnchorY);
           break;
         }
       }
@@ -409,26 +435,47 @@ export function useLayerTransformTool() {
       hitTest,
       shiftKeyDown,
       anchorScreenPos,
-      posX,
-      posY,
-      scale,
-      rotation,
-      anchorX,
-      anchorY,
+      setPropertyDirect,
     ],
   );
 
   const handleMouseUp = useCallback(() => {
-    if (!dragState) return;
+    if (!dragState || !activeLayerId) {
+      setDragState(null);
+      return;
+    }
 
-    // The useKeyframeableProperty.setValue() calls already pushed to history
-    // via useTimelineHistory. For drag batching, we accept individual undo entries
-    // for now — the user sees immediate undo working. Full batching is §1.7 (deferred).
+    const startVals = startSnapshotRef.current;
+    if (didWriteRef.current && startVals) {
+      // Record batched history entries for each property that actually changed.
+      // We use the history-wrapped setters which will push to the undo stack,
+      // but first revert to the start values via direct store write, then
+      // re-apply via the history path so the action captures old→new correctly.
+      const propertyMap: Array<{ path: PropertyPath; startVal: number; currentGetter: { value: number } }> = [
+        { path: 'transform.position.x', startVal: startVals.positionX, currentGetter: posX },
+        { path: 'transform.position.y', startVal: startVals.positionY, currentGetter: posY },
+        { path: 'transform.scale', startVal: startVals.scale, currentGetter: scale },
+        { path: 'transform.rotation', startVal: startVals.rotation, currentGetter: rotation },
+        { path: 'transform.anchorPoint.x', startVal: startVals.anchorPointX, currentGetter: anchorX },
+        { path: 'transform.anchorPoint.y', startVal: startVals.anchorPointY, currentGetter: anchorY },
+      ];
+
+      for (const { path, startVal, currentGetter } of propertyMap) {
+        const finalVal = currentGetter.value;
+        if (finalVal !== startVal) {
+          // Temporarily revert to start value (direct, no history)
+          setPropertyDirect(path, startVal);
+          // Re-apply final value through history-recording path
+          // This captures old=startVal → new=finalVal in the undo stack
+          currentGetter.setValue(finalVal);
+        }
+      }
+    }
 
     setDragState(null);
     didWriteRef.current = false;
     startSnapshotRef.current = null;
-  }, [dragState]);
+  }, [dragState, activeLayerId, posX, posY, scale, rotation, anchorX, anchorY, setPropertyDirect]);
 
   // ============================================
   // Cursor Zone  

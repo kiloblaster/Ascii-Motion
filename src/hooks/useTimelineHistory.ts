@@ -32,6 +32,7 @@ import type {
   PropertyTrackAddHistoryAction,
   PropertyTrackRemoveHistoryAction,
   FrameRateChangeHistoryAction,
+  StaticPropertyChangeHistoryAction,
 } from '../types';
 import type {
   LayerId,
@@ -53,8 +54,6 @@ export function useTimelineHistory() {
     reorderLayers: reorderLayersStore,
     renameLayer: renameLayerStore,
     setLayerVisible: setLayerVisibleStore,
-    setLayerSolo: setLayerSoloStore,
-    setLayerLocked: setLayerLockedStore,
     setLayerOpacity: setLayerOpacityStore,
     addContentFrame: addContentFrameStore,
     removeContentFrame: removeContentFrameStore,
@@ -65,10 +64,8 @@ export function useTimelineHistory() {
     addKeyframe: addKeyframeStore,
     removeKeyframe: removeKeyframeStore,
     updateKeyframe: updateKeyframeStore,
-    moveKeyframe: moveKeyframeStore,
     setFrameRate: setFrameRateStore,
     getLayer,
-    getContentFrameAt,
   } = useTimelineStore();
 
   const { pushToHistory } = useToolStore();
@@ -573,6 +570,32 @@ export function useTimelineHistory() {
   }, [config, layers, setFrameRateStore, pushToHistory]);
 
   // ============================================
+  // STATIC PROPERTY CHANGE (with history)
+  // ============================================
+
+  const setStaticProperty = useCallback((layerId: LayerId, propertyPath: string, newValue: number) => {
+    const layer = getLayer(layerId);
+    if (!layer) return;
+
+    const oldValue = layer.staticProperties?.[propertyPath];
+
+    useTimelineStore.getState().setStaticProperty(layerId, propertyPath, newValue);
+
+    const historyAction: StaticPropertyChangeHistoryAction = {
+      type: 'static_property_change',
+      timestamp: Date.now(),
+      description: `Set ${propertyPath} to ${newValue}`,
+      data: {
+        layerId,
+        propertyPath,
+        oldValue,
+        newValue,
+      },
+    };
+    pushToHistory(historyAction);
+  }, [getLayer, pushToHistory]);
+
+  // ============================================
   // PASS-THROUGH (no history needed)
   // ============================================
 
@@ -610,6 +633,9 @@ export function useTimelineHistory() {
 
     // Frame rate (with history)
     setFrameRate,
+
+    // Static property (with history)
+    setStaticProperty,
 
     // Pass-through without history (from store directly)
     setLayerSolo: useTimelineStore.getState().setLayerSolo,

@@ -156,6 +156,11 @@ export const LayerPropertiesPanel: React.FC = () => {
   const layers = useTimelineStore((s) => s.layers);
   const setShowLayerProperties = useTimelineStore((s) => s.setShowLayerProperties);
   const activeLayer = layers.find((l) => l.id === activeLayerId);
+  const {
+    addKeyframe: addKeyframeHistory,
+    updateKeyframe: updateKeyframeHistory,
+    setStaticProperty: setStaticPropertyHistory,
+  } = useTimelineHistory();
 
   if (!activeLayer) {
     return null;
@@ -219,16 +224,16 @@ export const LayerPropertiesPanel: React.FC = () => {
               const defaultVal = defaults[path] ?? (PROPERTY_DEFINITIONS[path]?.defaultValue as number) ?? 0;
 
               if (track && track.keyframes.length > 0) {
-                // Has keyframes — add a keyframe at playhead with default value
+                // Has keyframes — add a keyframe at playhead with default value (with history)
                 const existingKf = track.keyframes.find((kf) => kf.frame === currentFrame);
                 if (existingKf) {
-                  tl.updateKeyframe(activeLayerId, track.id, existingKf.id, { value: defaultVal });
+                  updateKeyframeHistory(activeLayerId, track.id, existingKf.id, { value: defaultVal });
                 } else {
-                  tl.addKeyframe(activeLayerId, track.id, currentFrame, defaultVal);
+                  addKeyframeHistory(activeLayerId, track.id, currentFrame, defaultVal);
                 }
               } else {
-                // Static property — set to default
-                tl.setStaticProperty(activeLayerId, path, defaultVal);
+                // Static property — set to default (with history)
+                setStaticPropertyHistory(activeLayerId, path, defaultVal);
               }
             }
           }}

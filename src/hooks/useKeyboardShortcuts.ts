@@ -20,6 +20,9 @@ import { clearAllSelections, hasAnySelection } from './useSelectionSync';
 import { useSelectionStore } from '../stores/selectionStore';
 import { ANSI_COLORS } from '../constants/colors';
 import type { AnyHistoryAction, CanvasHistoryAction, CanvasResizeHistoryAction, FrameId, Cell } from '../types';
+import { useTimelineStore } from '../stores/timelineStore';
+import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyPath } from '../types/timeline';
+import { PROPERTY_DEFINITIONS } from '../types/timeline';
 
 type CanvasStoreState = ReturnType<typeof useCanvasStore.getState>;
 type CanvasStoreForHistory = Pick<CanvasStoreState, 'setCanvasData'>;
@@ -671,6 +674,315 @@ const processHistoryAction = (
       // Ensure bezier tool is active
       if (toolStore.activeTool !== 'beziershape') {
         toolStore.setActiveTool('beziershape');
+      }
+      break;
+    }
+
+    // ============================================
+    // Layer/Timeline Actions (v2.0.0)
+    // ============================================
+
+    case 'layer_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-insert the layer at its original position
+        const newLayers = [...tl.layers];
+        newLayers.splice(action.data.insertIndex, 0, structuredClone(action.data.layerData));
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: action.data.layerId as LayerId },
+        });
+      } else {
+        // Remove the added layer
+        const newLayers = tl.layers.filter((l) => l.id !== action.data.layerId);
+        const newActive = newLayers.length > 0
+          ? newLayers[Math.min(action.data.insertIndex, newLayers.length - 1)].id
+          : null;
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: newActive },
+        });
+      }
+      break;
+    }
+
+    case 'layer_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the layer
+        const newLayers = tl.layers.filter((l) => l.id !== action.data.layerId);
+        const newActive = newLayers.length > 0
+          ? newLayers[Math.min(action.data.index, newLayers.length - 1)].id
+          : null;
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: newActive },
+        });
+      } else {
+        // Re-insert the removed layer at its original position
+        const newLayers = [...tl.layers];
+        newLayers.splice(action.data.index, 0, structuredClone(action.data.layerData));
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: action.data.layerId as LayerId },
+        });
+      }
+      break;
+    }
+
+    case 'layer_reorder': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        tl.reorderLayers(action.data.fromIndex, action.data.toIndex);
+      } else {
+        tl.reorderLayers(action.data.toIndex, action.data.fromIndex);
+      }
+      break;
+    }
+
+    case 'layer_rename': {
+      const tl = useTimelineStore.getState();
+      const name = isRedo ? action.data.newName : action.data.oldName;
+      tl.renameLayer(action.data.layerId as LayerId, name);
+      break;
+    }
+
+    case 'layer_visibility': {
+      const tl = useTimelineStore.getState();
+      const visible = isRedo ? action.data.newVisible : action.data.oldVisible;
+      tl.setLayerVisible(action.data.layerId as LayerId, visible);
+      break;
+    }
+
+    case 'layer_opacity': {
+      const tl = useTimelineStore.getState();
+      const opacity = isRedo ? action.data.newOpacity : action.data.oldOpacity;
+      tl.setLayerOpacity(action.data.layerId as LayerId, opacity);
+      break;
+    }
+
+    case 'content_frame_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-add the content frame
+        const layer = tl.layers.find((l) => l.id === action.data.layerId);
+        if (layer) {
+          const frameData = action.data.frameData;
+          tl.addContentFrame(
+            action.data.layerId as LayerId,
+            frameData.startFrame,
+            frameData.durationFrames,
+            frameData.data instanceof Map ? frameData.data : new Map(Object.entries(frameData.data ?? {})),
+          );
+        }
+      } else {
+        // Remove the added content frame
+        tl.removeContentFrame(
+          action.data.layerId as LayerId,
+          action.data.frameId as ContentFrameId,
+        );
+      }
+      break;
+    }
+
+    case 'content_frame_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the content frame
+        tl.removeContentFrame(
+          action.data.layerId as LayerId,
+          action.data.frameId as ContentFrameId,
+        );
+      } else {
+        // Re-add the removed content frame
+        const frameData = action.data.frameData;
+        tl.addContentFrame(
+          action.data.layerId as LayerId,
+          frameData.startFrame,
+          frameData.durationFrames,
+          frameData.data instanceof Map ? frameData.data : new Map(Object.entries(frameData.data ?? {})),
+        );
+      }
+      break;
+    }
+
+    case 'content_frame_timing': {
+      const tl = useTimelineStore.getState();
+      const timing = isRedo ? action.data.newTiming : action.data.oldTiming;
+      tl.updateContentFrameTiming(
+        action.data.layerId as LayerId,
+        action.data.frameId as ContentFrameId,
+        timing.startFrame,
+        timing.durationFrames,
+      );
+      break;
+    }
+
+    case 'content_frame_data': {
+      const tl = useTimelineStore.getState();
+      const data = isRedo ? action.data.newData : action.data.previousData;
+      const mapData = data instanceof Map ? data : new Map(Object.entries(data ?? {}));
+      tl.updateContentFrameData(
+        action.data.layerId as LayerId,
+        action.data.frameId as ContentFrameId,
+        mapData,
+      );
+      break;
+    }
+
+    case 'keyframe_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-add the keyframe
+        tl.addKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframe.frame,
+          action.data.keyframe.value as number,
+        );
+      } else {
+        // Remove the added keyframe
+        tl.removeKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframeId as KeyframeId,
+        );
+      }
+      break;
+    }
+
+    case 'keyframe_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the keyframe
+        tl.removeKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframeId as KeyframeId,
+        );
+      } else {
+        // Re-add the removed keyframe
+        tl.addKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframe.frame,
+          action.data.keyframe.value as number,
+        );
+      }
+      break;
+    }
+
+    case 'keyframe_update': {
+      const tl = useTimelineStore.getState();
+      const kf = isRedo ? action.data.newValue : action.data.oldValue;
+      tl.updateKeyframe(
+        action.data.layerId as LayerId,
+        action.data.trackId as PropertyTrackId,
+        action.data.keyframeId as KeyframeId,
+        { frame: kf.frame, value: kf.value as number, easing: kf.easing },
+      );
+      break;
+    }
+
+    case 'property_track_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-add the property track
+        tl.addPropertyTrack(
+          action.data.layerId as LayerId,
+          action.data.propertyPath as PropertyPath,
+        );
+      } else {
+        // Remove the added property track
+        tl.removePropertyTrack(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+        );
+      }
+      break;
+    }
+
+    case 'property_track_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the property track
+        tl.removePropertyTrack(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+        );
+      } else {
+        // Re-add the removed property track with its keyframes
+        const trackData = action.data.trackData;
+        const newTrackId = tl.addPropertyTrack(
+          action.data.layerId as LayerId,
+          trackData.propertyPath as PropertyPath,
+        );
+        // Restore keyframes
+        if (newTrackId && trackData.keyframes) {
+          for (const kf of trackData.keyframes) {
+            tl.addKeyframe(
+              action.data.layerId as LayerId,
+              newTrackId,
+              kf.frame,
+              kf.value as number,
+            );
+          }
+        }
+      }
+      break;
+    }
+
+    case 'frame_rate_change': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            frameRate: action.data.newFps,
+            durationFrames: action.data.newDuration,
+            durationMs: (action.data.newDuration / action.data.newFps) * 1000,
+          },
+          layers: structuredClone(action.data.newLayers),
+        });
+      } else {
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            frameRate: action.data.oldFps,
+            durationFrames: action.data.oldDuration,
+            durationMs: (action.data.oldDuration / action.data.oldFps) * 1000,
+          },
+          layers: structuredClone(action.data.oldLayers),
+        });
+      }
+      break;
+    }
+
+    case 'static_property_change': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        tl.setStaticProperty(
+          action.data.layerId as LayerId,
+          action.data.propertyPath,
+          action.data.newValue,
+        );
+      } else {
+        if (action.data.oldValue !== undefined) {
+          tl.setStaticProperty(
+            action.data.layerId as LayerId,
+            action.data.propertyPath,
+            action.data.oldValue,
+          );
+        } else {
+          // Property didn't exist before — remove it by setting to the default
+          const def = PROPERTY_DEFINITIONS[action.data.propertyPath as PropertyPath];
+          const defaultVal = (def?.defaultValue as number) ?? 0;
+          tl.setStaticProperty(
+            action.data.layerId as LayerId,
+            action.data.propertyPath,
+            defaultVal,
+          );
+        }
       }
       break;
     }

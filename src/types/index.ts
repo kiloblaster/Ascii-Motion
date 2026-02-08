@@ -288,7 +288,8 @@ export type HistoryActionType =
   | 'keyframe_update'
   | 'property_track_add'
   | 'property_track_remove'
-  | 'frame_rate_change';
+  | 'frame_rate_change'
+  | 'static_property_change';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -751,6 +752,16 @@ export interface FrameRateChangeHistoryAction extends HistoryAction {
   };
 }
 
+export interface StaticPropertyChangeHistoryAction extends HistoryAction {
+  type: 'static_property_change';
+  data: {
+    layerId: string;
+    propertyPath: string;
+    oldValue: number | undefined;
+    newValue: number;
+  };
+}
+
 export type AnyHistoryAction = 
   | CanvasHistoryAction
   | CanvasResizeHistoryAction
@@ -793,5 +804,6 @@ export type AnyHistoryAction =
   | KeyframeUpdateHistoryAction
   | PropertyTrackAddHistoryAction
   | PropertyTrackRemoveHistoryAction
-  | FrameRateChangeHistoryAction;
+  | FrameRateChangeHistoryAction
+  | StaticPropertyChangeHistoryAction;
 

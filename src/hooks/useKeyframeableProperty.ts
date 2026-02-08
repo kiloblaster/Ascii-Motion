@@ -34,8 +34,14 @@ export function useKeyframeableProperty(
     layerId ? s.layers.find((l) => l.id === layerId) : null,
   );
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
-  const { addPropertyTrack, removePropertyTrack, addKeyframe, updateKeyframe, removeKeyframe } =
-    useTimelineHistory();
+  const {
+    addPropertyTrack,
+    removePropertyTrack,
+    addKeyframe,
+    updateKeyframe,
+    removeKeyframe,
+    setStaticProperty,
+  } = useTimelineHistory();
 
   const definition = PROPERTY_DEFINITIONS[propertyPath];
   const defaultValue = (definition?.defaultValue as number) ?? 0;
@@ -71,11 +77,11 @@ export function useKeyframeableProperty(
           addKeyframe(layerId, track.id, currentFrame, newValue);
         }
       } else {
-        // Not tracked — set as static property on the layer
-        useTimelineStore.getState().setStaticProperty(layerId, propertyPath, newValue);
+        // Not tracked — set as static property on the layer (with history)
+        setStaticProperty(layerId, propertyPath, newValue);
       }
     },
-    [layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, updateKeyframe, addKeyframe],
+    [layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, updateKeyframe, addKeyframe, setStaticProperty],
   );
 
   // Toggle property track on/off
