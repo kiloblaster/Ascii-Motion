@@ -15,8 +15,14 @@ import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Switch } from '../../ui/switch';
 import { Button } from '../../ui/button';
-import { X } from 'lucide-react';
-import type { EasingCurve } from '../../../types/timeline';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../ui/dropdown-menu';
+import { X, ChevronDown } from 'lucide-react';
+import type { EasingCurve, EasingPreset } from '../../../types/timeline';
 
 export const KeyframeEditorPanel: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
@@ -71,10 +77,22 @@ export const KeyframeEditorPanel: React.FC = () => {
     setEditingKeyframe(null);
   };
 
+  const EASING_LABELS: Record<string, string> = {
+    'linear': 'Linear',
+    'hold': 'Hold',
+    'ease-in': 'Ease In',
+    'ease-out': 'Ease Out',
+    'ease-in-out': 'Ease In-Out',
+    'ease-out-back': 'Overshoot Out',
+    'ease-in-back': 'Overshoot In',
+    'bounce': 'Bounce',
+    'custom': 'Custom',
+  };
+
   return (
-    <div className="w-56 flex-shrink-0 border-l bg-muted/20 overflow-y-auto">
+    <div className="w-48 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
         <span className="text-xs font-medium">
           {definition?.displayName ?? track.propertyPath}
         </span>
@@ -88,63 +106,89 @@ export const KeyframeEditorPanel: React.FC = () => {
         </Button>
       </div>
 
-      <div className="p-3 space-y-3">
-        {/* Frame */}
-        <div>
-          <Label className="text-xs text-muted-foreground">Frame</Label>
-          <Input
-            type="number"
-            value={keyframe.frame}
-            onChange={(e) => handleFrameChange(e.target.value)}
-            className="h-7 text-xs mt-1"
-            min={0}
-          />
+      <div className="p-2 space-y-2">
+        {/* Frame + Value on same row */}
+        <div className="flex gap-1.5">
+          <div className="flex-1">
+            <Label className="text-[10px] text-muted-foreground">Frame</Label>
+            <Input
+              type="number"
+              value={keyframe.frame}
+              onChange={(e) => handleFrameChange(e.target.value)}
+              className="h-6 text-xs mt-0.5"
+              min={0}
+            />
+          </div>
+          <div className="flex-1">
+            <Label className="text-[10px] text-muted-foreground">
+              Value{definition?.unit ? ` (${definition.unit})` : ''}
+            </Label>
+            <Input
+              type="number"
+              value={keyframe.value}
+              onChange={(e) => handleValueChange(e.target.value)}
+              className="h-6 text-xs mt-0.5"
+              min={definition?.min}
+              max={definition?.max}
+              step={definition?.step ?? 1}
+            />
+          </div>
         </div>
 
-        {/* Value */}
+        {/* Easing dropdown */}
         <div>
-          <Label className="text-xs text-muted-foreground">
-            Value
-            {definition?.unit && (
-              <span className="ml-1 text-muted-foreground/60">({definition.unit})</span>
-            )}
-          </Label>
-          <Input
-            type="number"
-            value={keyframe.value}
-            onChange={(e) => handleValueChange(e.target.value)}
-            className="h-7 text-xs mt-1"
-            min={definition?.min}
-            max={definition?.max}
-            step={definition?.step ?? 1}
-          />
+          <Label className="text-[10px] text-muted-foreground">Easing</Label>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-full flex items-center justify-between h-6 px-2 mt-0.5 text-xs rounded border border-border/50 bg-background hover:bg-muted transition-colors">
+                <span>{EASING_LABELS[keyframe.easing.type] ?? keyframe.easing.type}</span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[140px]">
+              {(['linear', 'ease-in', 'ease-out', 'ease-in-out', 'ease-out-back', 'ease-in-back', 'bounce', 'hold', 'custom'] as const).map((preset) => (
+                <DropdownMenuItem
+                  key={preset}
+                  onClick={() => {
+                    if (preset === 'custom') {
+                      handleEasingChange({ type: 'custom', x1: 0.42, y1: 0, x2: 0.58, y2: 1 });
+                    } else {
+                      handleEasingChange({ type: preset });
+                    }
+                  }}
+                  className={keyframe.easing.type === preset ? 'bg-accent' : ''}
+                >
+                  {EASING_LABELS[preset]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        {/* Easing */}
-        <div>
-          <Label className="text-xs text-muted-foreground">Easing</Label>
+        {/* Custom curve editor (only when custom selected) */}
+        {keyframe.easing.type === 'custom' && (
           <EasingCurveEditor value={keyframe.easing} onChange={handleEasingChange} />
-        </div>
+        )}
 
-        {/* Loop toggle */}
-        <div className="flex items-center gap-2 pt-1">
-          <Switch
-            checked={track.loopKeyframes}
-            onCheckedChange={(loop) => setKeyframeLooping(layerId, trackId, loop)}
-            className="scale-75"
-          />
-          <Label className="text-xs text-muted-foreground">Loop keyframes</Label>
+        {/* Loop + Delete row */}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-1.5">
+            <Switch
+              checked={track.loopKeyframes}
+              onCheckedChange={(loop) => setKeyframeLooping(layerId, trackId, loop)}
+              className="scale-[0.6]"
+            />
+            <Label className="text-[10px] text-muted-foreground">Loop</Label>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 text-[10px] px-1.5 text-destructive hover:text-destructive"
+            onClick={handleDelete}
+          >
+            Delete
+          </Button>
         </div>
-
-        {/* Delete keyframe */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full text-xs h-7 text-destructive hover:text-destructive"
-          onClick={handleDelete}
-        >
-          Delete Keyframe
-        </Button>
       </div>
     </div>
   );

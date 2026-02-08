@@ -19,6 +19,7 @@ import { TimelineRuler } from './timeline/TimelineRuler';
 import { TimelineToolbar } from './timeline/TimelineToolbar';
 import { TimecodeDisplay } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
+import { OnionSkinControls } from './OnionSkinControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Slider } from '../ui/slider';
 import { Layers, Grid3X3, ZoomIn } from 'lucide-react';
@@ -29,6 +30,9 @@ export const TimelinePanel: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
   const zoom = useTimelineStore((s) => s.view.zoom);
   const setZoom = useTimelineStore((s) => s.setZoom);
+  const currentFrame = useTimelineStore((s) => s.view.currentFrame);
+  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const frameRate = useTimelineStore((s) => s.config.frameRate);
 
   // Sync vertical scroll between layer list and track area
   const layerListScrollRef = useRef<HTMLDivElement>(null);
@@ -81,7 +85,6 @@ export const TimelinePanel: React.FC = () => {
             Frames
           </TabsTrigger>
         </TabsList>
-        <TimecodeDisplay />
       </div>
 
       {/* Frames (Simple) tab — shows the existing AnimationTimeline */}
@@ -104,12 +107,16 @@ export const TimelinePanel: React.FC = () => {
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
               <TimelineRuler />
               <TimelineTrackArea scrollRef={trackAreaScrollRef} />
-              {/* Footer matching LayerList footer height — with zoom slider */}
+              {/* Footer: frame info + zoom controls */}
               <div
-                className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 flex items-center justify-end gap-2 h-[34px]"
+                className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 flex items-center gap-2 h-[34px]"
                 onMouseDown={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
+                <span className="text-[10px] text-muted-foreground tabular-nums">
+                  {currentFrame + 1} / {durationFrames} · {frameRate} fps
+                </span>
+                <div className="flex-1" />
                 <ZoomIn className="w-3 h-3 text-muted-foreground" />
                 <Slider
                   value={zoom}

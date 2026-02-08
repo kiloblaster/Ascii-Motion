@@ -17,6 +17,8 @@ import { useOptimizedPlayback } from '../../../hooks/useOptimizedPlayback';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import { useAnimationStore } from '../../../stores/animationStore';
 import { getContentFrameAtTime } from '../../../utils/layerCompositing';
+import { TimecodeDisplay } from './TimecodeDisplay';
+import { OnionSkinControls } from '../OnionSkinControls';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import {
@@ -381,12 +383,12 @@ export const TimelineToolbar: React.FC = () => {
         </TooltipContent>
       </Tooltip>
 
+      <TimecodeDisplay />
+
       </div>
 
-      {/* Right group: frame info */}
-      <span className="text-xs text-muted-foreground tabular-nums">
-        {currentFrame + 1} / {durationFrames} · {frameRate} fps
-      </span>
+      {/* Right group: onion skin */}
+      <OnionSkinControls />
     </div>
     </TooltipProvider>
   );
