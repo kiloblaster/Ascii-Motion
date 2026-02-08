@@ -73,7 +73,8 @@ export type Tool =
   | 'beziershape'
   | 'gradientfill'
   | 'fliphorizontal'
-  | 'flipvertical';
+  | 'flipvertical'
+  | 'layertransform';
 
 export type BrushShape = 'circle' | 'square' | 'horizontal' | 'vertical';
 

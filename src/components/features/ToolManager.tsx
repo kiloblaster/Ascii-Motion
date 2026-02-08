@@ -16,6 +16,7 @@ import {
 } from '../tools';
 import { FlipHorizontalTool } from '../tools/FlipHorizontalTool';
 import { FlipVerticalTool } from '../tools/FlipVerticalTool';
+import { LayerTransformTool } from '../tools/LayerTransformTool';
 
 /**
  * Tool Manager Component
@@ -55,6 +56,8 @@ export const ToolManager: React.FC = () => {
       return <FlipHorizontalTool />;
     case 'flipvertical':
       return <FlipVerticalTool />;
+    case 'layertransform':
+      return <LayerTransformTool />;
     default:
       return null;
   }

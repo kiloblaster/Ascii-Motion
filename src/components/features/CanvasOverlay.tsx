@@ -11,6 +11,7 @@ import { getFontString } from '../../utils/fontMetrics';
 import { InteractiveGradientOverlay } from './InteractiveGradientOverlay';
 import { InteractiveBezierOverlay } from './InteractiveBezierOverlay';
 import { AnchorPointOverlay } from './AnchorPointOverlay';
+import { LayerTransformOverlay } from './LayerTransformOverlay';
 import { transformCellMapToScreen } from '../../utils/layerTransformUtils';
 
 type GradientPropertyKey = 'character' | 'textColor' | 'backgroundColor';
@@ -922,7 +923,7 @@ export const CanvasOverlay: React.FC = () => {
       />
       <InteractiveGradientOverlay />
       {activeTool === 'beziershape' && <InteractiveBezierOverlay key={bezierRemountKey} />}
-      <AnchorPointOverlay />
+      {activeTool === 'layertransform' ? <LayerTransformOverlay /> : <AnchorPointOverlay />}
     </>
   );
 };

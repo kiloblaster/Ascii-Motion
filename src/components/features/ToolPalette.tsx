@@ -29,6 +29,7 @@ import {
   Wand2,
   Palette,
   Wrench,
+  Move,
   MoveHorizontal,
   MoveVertical,
   TypeOutline,
@@ -90,6 +91,7 @@ const UTILITY_TOOLS: Array<{ id: Tool; name: string; icon: React.ReactNode; desc
   { id: 'eyedropper', name: 'Eyedropper', icon: <Pipette className="w-3 h-3" />, description: 'Pick character/color' },
   { id: 'fliphorizontal', name: 'Flip H', icon: <MoveHorizontal className="w-3 h-3" />, description: 'Flip horizontally (Shift+H)' },
   { id: 'flipvertical', name: 'Flip V', icon: <MoveVertical className="w-3 h-3" />, description: 'Flip vertically (Shift+V)' },
+  { id: 'layertransform', name: 'Transform', icon: <Move className="w-3 h-3" />, description: 'Layer Transform tool' },
 ];
 
 export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {

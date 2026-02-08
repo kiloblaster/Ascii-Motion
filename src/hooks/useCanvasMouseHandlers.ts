@@ -13,6 +13,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useAsciiTypeTool } from './useAsciiTypeTool';
 import { useAsciiTypeStore } from '../stores/asciiTypeStore';
 import { useAsciiBoxTool } from './useAsciiBoxTool';
+import { useLayerTransformTool } from './useLayerTransformTool';
 import type { Tool } from '../types';
 
 export interface MouseHandlers {
@@ -46,6 +47,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
   const textToolHandlers = useTextTool();
   const gradientFillHandlers = useGradientFillTool();
   const asciiBoxHandlers = useAsciiBoxTool();
+  const layerTransformHandlers = useLayerTransformTool();
   const {
     previewGrid: asciiPreviewGrid,
     previewDimensions: asciiPreviewDimensions,
@@ -241,6 +243,11 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         asciiBoxHandlers.handleCanvasClick(boxCoords.x, boxCoords.y);
         break;
       }
+      case 'layertransform': {
+        const transformCoords = getGridCoordinatesFromEvent(event);
+        layerTransformHandlers.handleMouseDown(transformCoords.x, transformCoords.y);
+        break;
+      }
       case 'asciitype': {
         if (!asciiPreviewGrid || !asciiPreviewDimensions) {
           break;
@@ -301,6 +308,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     textToolHandlers,
     gradientFillHandlers,
     asciiBoxHandlers,
+    layerTransformHandlers,
     asciiPreviewGrid,
     asciiPreviewDimensions,
     asciiIsPreviewPlaced,
@@ -377,6 +385,11 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         asciiBoxHandlers.handleEraseDrag(boxCoords.x, boxCoords.y);
         break;
       }
+      case 'layertransform': {
+        const transformCoords = getGridCoordinatesFromEvent(event);
+        layerTransformHandlers.handleMouseMove(transformCoords.x, transformCoords.y);
+        break;
+      }
       case 'asciitype':
         // Handle drag movement if actively dragging
         if (asciiDragState) {
@@ -416,6 +429,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     clampAsciiOrigin,
     updateAsciiDrag,
     asciiBoxHandlers,
+    layerTransformHandlers,
   ]);
 
   // Route mouse up to appropriate tool handler
@@ -450,6 +464,9 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         break;
       case 'asciibox':
         asciiBoxHandlers.handleMouseUp();
+        break;
+      case 'layertransform':
+        layerTransformHandlers.handleMouseUp();
         break;
       case 'asciitype':
         // End drag if we're dragging
@@ -490,6 +507,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     asciiDragState,
     endAsciiDrag,
     asciiBoxHandlers,
+    layerTransformHandlers,
   ]);
 
   return {

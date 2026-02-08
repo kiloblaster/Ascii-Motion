@@ -22,6 +22,7 @@ import {
   AsciiTypeToolStatus,
   AsciiBoxToolStatus,
   BezierShapeToolStatus,
+  LayerTransformToolStatus,
 } from '../tools';
 import { MouseCoordinates } from '../common/MouseCoordinates';
 
@@ -95,6 +96,8 @@ export const ToolStatusManager: React.FC = () => {
         return <FlipHorizontalToolStatus />;
       case 'flipvertical':
         return <FlipVerticalToolStatus />;
+      case 'layertransform':
+        return <LayerTransformToolStatus />;
       default:
         return <span className="text-muted-foreground">No tool selected</span>;
     }

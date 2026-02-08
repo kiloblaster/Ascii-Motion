@@ -36,6 +36,8 @@ export const useToolBehavior = () => {
         return 'FlipHorizontalTool';
       case 'flipvertical':
         return 'FlipVerticalTool';
+      case 'layertransform':
+        return 'LayerTransformTool';
       default:
         return null;
     }
@@ -69,6 +71,8 @@ export const useToolBehavior = () => {
         return 'FlipHorizontalToolStatus';
       case 'flipvertical':
         return 'FlipVerticalToolStatus';
+      case 'layertransform':
+        return 'LayerTransformToolStatus';
       default:
         return null;
     }
@@ -104,6 +108,8 @@ export const useToolBehavior = () => {
       case 'fliphorizontal':
       case 'flipvertical':
         return 'cursor-pointer'; // Clickable utilities
+      case 'layertransform':
+        return 'cursor-move';
       default:
         return 'cursor-default';
     }
@@ -140,6 +146,8 @@ export const useToolBehavior = () => {
         return 'Flip Horizontal';
       case 'flipvertical':
         return 'Flip Vertical';
+      case 'layertransform':
+        return 'Layer Transform';
       default:
         return 'Unknown';
     }
@@ -147,7 +155,7 @@ export const useToolBehavior = () => {
 
   // Check if tool requires continuous interaction (click and drag)
   const isInteractiveTool = useCallback((tool: Tool) => {
-    return ['select', 'lasso', 'magicwand', 'rectangle', 'ellipse', 'beziershape', 'text', 'asciitype'].includes(tool);
+    return ['select', 'lasso', 'magicwand', 'rectangle', 'ellipse', 'beziershape', 'text', 'asciitype', 'layertransform'].includes(tool);
   }, []);
 
   // Check if tool is a drawing tool (modifies canvas on click)
