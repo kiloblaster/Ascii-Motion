@@ -6,6 +6,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import type { Cell } from '../types';
 import { unionSelectionMasks, subtractSelectionMask } from '../utils/selectionUtils';
 
@@ -169,6 +170,12 @@ export const useCanvasMagicWandSelection = () => {
       return new Set<string>();
     }
 
+    // Wrap getCell with inverse transform so screen-space coords map to local canvas data
+    const getCellLocal = (sx: number, sy: number) => {
+      const local = screenToLocal(sx, sy);
+      return getCell(local.x, local.y);
+    };
+
     const matchingCells = new Set<string>();
 
     if (magicWandContiguous) {
@@ -186,7 +193,7 @@ export const useCanvasMagicWandSelection = () => {
         }
 
         visited.add(cellKey);
-        const currentCell = getCell(x, y);
+        const currentCell = getCellLocal(x, y);
 
         // If this cell matches the target, add it and check neighbors
         if (cellsMatch(currentCell, targetCell)) {
@@ -205,7 +212,7 @@ export const useCanvasMagicWandSelection = () => {
       // Non-contiguous selection - scan entire canvas
       for (let x = 0; x < width; x++) {
         for (let y = 0; y < height; y++) {
-          const currentCell = getCell(x, y);
+          const currentCell = getCellLocal(x, y);
           if (cellsMatch(currentCell, targetCell)) {
             matchingCells.add(`${x},${y}`);
           }
@@ -333,7 +340,8 @@ export const useCanvasMagicWandSelection = () => {
         selectionCells.forEach((cellKey) => {
           originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
-          const cell = getCell(cx, cy);
+          const local = screenToLocal(cx, cy);
+          const cell = getCell(local.x, local.y);
           if (cell && !isCellEmpty(cell)) {
             originalData.set(cellKey, cell);
           }
@@ -354,7 +362,8 @@ export const useCanvasMagicWandSelection = () => {
 
     setJustCommittedMove(false);
 
-    const targetCell = getCell(x, y);
+    const localTarget = screenToLocal(x, y);
+    const targetCell = getCell(localTarget.x, localTarget.y);
     const matchingCells = findMatchingCells(x, y, targetCell);
 
     if (matchingCells.size === 0) {

@@ -8,6 +8,7 @@ import {
   magicWandSelectionToText, 
   writeToOSClipboard 
 } from '../utils/clipboardUtils';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import { 
   createRectSelectionMask,
   updateSelectionFromMask,
@@ -811,11 +812,12 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
 
   const copiedData = new Map<string, Cell>();
     selection.selectedCells.forEach((key) => {
-      const cell = canvasData.get(key);
+      const [x, y] = key.split(',').map(Number);
+      const local = screenToLocal(x, y);
+      const cell = canvasData.get(`${local.x},${local.y}`);
       if (!cell) {
         return;
       }
-      const [x, y] = key.split(',').map(Number);
       const relativeKey = `${x - bounds.minX},${y - bounds.minY}`;
       copiedData.set(relativeKey, cell);
     });
@@ -928,7 +930,8 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
     lassoSelection.selectedCells.forEach(key => {
       const [x, y] = key.split(',').map(Number);
       const relativeKey = `${x - minX},${y - minY}`;
-      const cell = canvasData.get(key);
+      const local = screenToLocal(x, y);
+      const cell = canvasData.get(`${local.x},${local.y}`);
       if (cell) {
         copiedData.set(relativeKey, cell);
       }
@@ -995,7 +998,8 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
     for (const cellKey of selectedArray) {
       const [x, y] = cellKey.split(',').map(Number);
       const relativeKey = `${x - minX},${y - minY}`;
-      const cell = canvasData.get(cellKey);
+      const local = screenToLocal(x, y);
+      const cell = canvasData.get(`${local.x},${local.y}`);
       if (cell) {
         copiedData.set(relativeKey, { ...cell });
       }

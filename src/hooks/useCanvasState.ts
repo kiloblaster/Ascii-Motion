@@ -3,6 +3,7 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { screenToLocal } from '../utils/layerTransformUtils';
 
 /**
  * Custom hook that provides canvas state management functionality
@@ -97,10 +98,12 @@ export const useCanvasState = () => {
     // Create a new canvas data map with the moved cells
     const newCells = new Map(cells);
 
-    // Clear original positions
+    // Clear original positions (inverse-transform to local space)
       const originalKeys = moveState.originalPositions ?? new Set(moveState.originalData.keys());
       originalKeys.forEach((key) => {
-        newCells.delete(key);
+        const [ox, oy] = key.split(',').map(Number);
+        const local = screenToLocal(ox, oy);
+        newCells.delete(`${local.x},${local.y}`);
     });
 
     // Place cells at new positions AND build updated selection mask
@@ -112,7 +115,8 @@ export const useCanvasState = () => {
       
       // Only place if within bounds
       if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
-        newCells.set(`${newX},${newY}`, cell);
+        const local = screenToLocal(newX, newY);
+        newCells.set(`${local.x},${local.y}`, cell);
         updatedSelectionMask.add(`${newX},${newY}`);
       }
     });

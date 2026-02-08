@@ -6,6 +6,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import { getCellsInPolygon, smoothPolygonPath } from '../utils/polygon';
 import { unionSelectionMasks, subtractSelectionMask } from '../utils/selectionUtils';
 import type { Cell } from '../types';
@@ -271,7 +272,8 @@ export const useCanvasLassoSelection = () => {
         selectionCells.forEach((cellKey) => {
           originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
-          const cell = getCell(cx, cy);
+          const local = screenToLocal(cx, cy);
+          const cell = getCell(local.x, local.y);
           if (cell && cell.char !== ' ') {
             originalData.set(cellKey, cell);
           }

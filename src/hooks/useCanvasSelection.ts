@@ -6,6 +6,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import type { Cell } from '../types';
 import { unionSelectionMasks, subtractSelectionMask, createRectSelectionMask } from '../utils/selectionUtils';
 
@@ -231,7 +232,8 @@ export const useCanvasSelection = () => {
         selectionCells.forEach((cellKey) => {
           originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
-          const cell = getCell(cx, cy);
+          const local = screenToLocal(cx, cy);
+          const cell = getCell(local.x, local.y);
           if (cell && cell.char !== ' ') {
             originalData.set(cellKey, cell);
           }
