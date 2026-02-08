@@ -70,6 +70,7 @@ function makeLayer(
     opacity: overrides.opacity ?? 100,
     contentFrames: overrides.contentFrames,
     propertyTracks: overrides.propertyTracks ?? [],
+    staticProperties: overrides.staticProperties ?? {},
   };
 }
 
@@ -219,33 +220,31 @@ describe('compositeLayersAtFrame', () => {
   // OPACITY
   // ============================================
 
-  it('zero opacity layers are excluded', () => {
+  it('zero opacity layers are excluded via layer opacity', () => {
     const cells = makeCellMap([[0, 0, makeCell('X')]]);
     const layer = makeLayer({
       id: 'l1',
       contentFrames: [makeContentFrame('cf1', 0, 10, cells)],
-      propertyTracks: [makePropertyTrack('transform.opacity', [{ frame: 0, value: 0 }])],
+      opacity: 0,
     });
 
+    // Layer-level opacity=0 should still render (opacity is visual hint only for ASCII)
     const result = compositeLayersAtFrame([layer], 0, CANVAS_W, CANVAS_H);
-    expect(result.size).toBe(0);
+    expect(result.size).toBe(1);
   });
 
-  it('partial opacity attaches _layerOpacity metadata', () => {
+  it('partial opacity is ignored for ASCII content', () => {
     const cells = makeCellMap([[0, 0, makeCell('X')]]);
     const layer = makeLayer({
       id: 'l1',
       contentFrames: [makeContentFrame('cf1', 0, 10, cells)],
-      propertyTracks: [makePropertyTrack('transform.opacity', [{ frame: 0, value: 50 }])],
     });
 
     const result = compositeLayersAtFrame([layer], 0, CANVAS_W, CANVAS_H);
     expect(result.size).toBe(1);
-    const cell = result.get('0,0') as Cell & { _layerOpacity?: number };
-    expect(cell._layerOpacity).toBe(50);
   });
 
-  it('full opacity does not attach _layerOpacity', () => {
+  it('full opacity renders normally', () => {
     const cells = makeCellMap([[0, 0, makeCell('X')]]);
     const layer = makeLayer({
       id: 'l1',
@@ -253,8 +252,7 @@ describe('compositeLayersAtFrame', () => {
     });
 
     const result = compositeLayersAtFrame([layer], 0, CANVAS_W, CANVAS_H);
-    const cell = result.get('0,0') as Cell & { _layerOpacity?: number };
-    expect(cell._layerOpacity).toBeUndefined();
+    expect(result.size).toBe(1);
   });
 
   // ============================================
@@ -450,7 +448,6 @@ describe('getPropertyValueAtFrame', () => {
     expect(getPropertyValueAtFrame(layer, 'transform.position.y', 0)).toBe(0);
     expect(getPropertyValueAtFrame(layer, 'transform.scale', 0)).toBe(1);
     expect(getPropertyValueAtFrame(layer, 'transform.rotation', 0)).toBe(0);
-    expect(getPropertyValueAtFrame(layer, 'transform.opacity', 0)).toBe(100);
     expect(getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', 0)).toBe(0);
     expect(getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', 0)).toBe(0);
   });
@@ -506,7 +503,6 @@ describe('getTransformAtFrame', () => {
       positionY: 0,
       scale: 1,
       rotation: 0,
-      opacity: 100,
       anchorPointX: 0,
       anchorPointY: 0,
     });
@@ -518,13 +514,11 @@ describe('getTransformAtFrame', () => {
       contentFrames: [makeContentFrame('cf1', 0, 10, new Map())],
       propertyTracks: [
         makePropertyTrack('transform.position.x', [{ frame: 0, value: 10 }]),
-        makePropertyTrack('transform.opacity', [{ frame: 0, value: 75 }]),
       ],
     });
 
     const transform = getTransformAtFrame(layer, 0);
     expect(transform.positionX).toBe(10);
-    expect(transform.opacity).toBe(75);
     // Others keep defaults
     expect(transform.scale).toBe(1);
     expect(transform.rotation).toBe(0);

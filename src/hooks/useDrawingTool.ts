@@ -185,7 +185,7 @@ export const useDrawingTool = () => {
     let lx = x, ly = y;
     if (tl.layers.length > 0 && tl.view.activeLayerId) {
       const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-      if (layer && layer.propertyTracks.length > 0) {
+      if (layer) {
         const transform = getTransformAtFrame(layer, tl.view.currentFrame);
         if (transform.positionX !== 0 || transform.positionY !== 0 ||
             transform.scale !== 1 || transform.rotation !== 0 ||
@@ -276,7 +276,7 @@ export const useDrawingTool = () => {
     const tl = useTimelineStore.getState();
     if (tl.layers.length > 0 && tl.view.activeLayerId) {
       const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-      if (layer && layer.propertyTracks.length > 0) {
+      if (layer) {
         const transform = getTransformAtFrame(layer, tl.view.currentFrame);
         if (transform.positionX !== 0 || transform.positionY !== 0 || transform.scale !== 1 || transform.rotation !== 0 || transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
           const ls = inverseTransformPoint(startX, startY, transform);
@@ -373,7 +373,7 @@ export const useDrawingTool = () => {
     const tl = useTimelineStore.getState();
     if (tl.layers.length > 0 && tl.view.activeLayerId) {
       const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-      if (layer && layer.propertyTracks.length > 0) {
+      if (layer) {
         const transform = getTransformAtFrame(layer, tl.view.currentFrame);
         if (transform.positionX !== 0 || transform.positionY !== 0 || transform.scale !== 1 || transform.rotation !== 0 || transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
           const ls = inverseTransformPoint(startX, startY, transform);

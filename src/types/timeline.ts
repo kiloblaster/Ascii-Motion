@@ -84,6 +84,11 @@ export interface Layer {
   // Transform property tracks (keyframeable)
   propertyTracks: PropertyTrack[];
 
+  // Static property values (non-keyframed)
+  // Used when a property has no track — provides layer-specific defaults
+  // instead of the global PROPERTY_DEFINITIONS default.
+  staticProperties: Record<string, number>;
+
   // Layer-level settings
   opacity: number;         // 0-100, default 100
 
@@ -153,7 +158,6 @@ export type PropertyPath =
   | 'transform.position.y'
   | 'transform.scale'        // Uniform scale (1.0 = 100%)
   | 'transform.rotation'     // Degrees (1° increments)
-  | 'transform.opacity'      // 0-100
   | 'transform.anchorPoint.x'
   | 'transform.anchorPoint.y'
   // Future: effect properties
@@ -217,17 +221,6 @@ export const PROPERTY_DEFINITIONS: Partial<Record<PropertyPath, PropertyDefiniti
     max: 3600,
     step: 1,      // 1° increments
     unit: '°',
-  },
-  'transform.opacity': {
-    path: 'transform.opacity',
-    displayName: 'Opacity',
-    category: 'transform',
-    valueType: 'number',
-    defaultValue: 100,
-    min: 0,
-    max: 100,
-    step: 1,
-    unit: '%',
   },
   'transform.anchorPoint.x': {
     path: 'transform.anchorPoint.x',
@@ -345,6 +338,9 @@ export interface TimelineViewState {
 
   // Layer expand/collapse state
   expandedLayerIds: Set<LayerId>;
+
+  // Layer properties panel visibility
+  showLayerProperties: boolean;
 
   // Transient drag preview for content frame reordering
   contentFrameDragPreview: {
@@ -547,6 +543,7 @@ export function createDefaultLayer(id?: LayerId, name?: string): Layer {
       data: new Map(),
     }],
     propertyTracks: [],
+    staticProperties: {},
   };
 }
 

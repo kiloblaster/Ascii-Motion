@@ -3530,6 +3530,38 @@ function PropertyRow({ label, value, onChange, isKeyframed, hasKeyframe, onToggl
 }
 ```
 
+### 4.6a Layer Properties Panel
+
+**New File:** `src/components/features/timeline/LayerPropertiesPanel.tsx`
+
+A right-side panel in the timeline area that shows all transform property values for the active layer at the current playhead position, with inline keyframe toggle buttons.
+
+**Behavior:**
+- Appears on the right side of the timeline (same position as KeyframeEditorPanel) when a layer is clicked in the layer list
+- **Mutually exclusive** with KeyframeEditorPanel — editing a keyframe replaces this panel; closing the keyframe editor shows this panel again
+- Shows all 7 transform properties (Position X, Position Y, Scale, Rotation, Opacity, Anchor X, Anchor Y) with their current interpolated values
+- Each property row has:
+  - A **keyframe toggle diamond** (empty outline = no keyframe at playhead; filled = keyframe exists)
+  - A **property label** with unit
+  - An **editable value input** that auto-creates/updates keyframes via `useKeyframeableProperty`
+- Clicking the diamond when no property track exists: creates the track AND adds a keyframe at the current frame
+- Clicking the diamond when a keyframe exists: removes the keyframe at the current frame
+- Editing the value: creates/updates keyframe at current frame if the property is tracked
+
+**Dependencies:**
+- `useKeyframeableProperty` hook (§4.5) — provides reactive value binding and auto-keyframe creation
+- `useTimelineStore` — layer state, current frame
+- `PROPERTY_DEFINITIONS` — labels, units, min/max/step
+
+**Layout Integration:**
+- In `TimelinePanel.tsx`, render `LayerPropertiesPanel` when `editingKeyframeId` is null AND `activeLayerId` is not null
+- When `editingKeyframeId` is set, render `KeyframeEditorPanel` instead (existing behavior)
+
+```typescript
+// In TimelinePanel.tsx:
+{editingKeyframeId ? <KeyframeEditorPanel /> : <LayerPropertiesPanel />}
+```
+
 ### 4.7 Testing Checkpoint
 
 - [ ] Keyframe interpolation calculates correct values

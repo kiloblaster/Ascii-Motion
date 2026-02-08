@@ -27,6 +27,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const setActiveLayer = useTimelineStore((s) => s.setActiveLayer);
   const reorderLayers = useTimelineStore((s) => s.reorderLayers);
+  const setShowLayerProperties = useTimelineStore((s) => s.setShowLayerProperties);
   const { canAddLayer } = useLayerLimit();
   const { addLayer } = useTimelineHistory();
 
@@ -82,7 +83,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
           key={layer.id}
           layer={layer}
           isActive={layer.id === activeLayerId}
-          onSelect={() => setActiveLayer(layer.id)}
+          onSelect={() => { setActiveLayer(layer.id); setShowLayerProperties(true); }}
           isDragOver={dragOverIndex === displayIndex}
           onDragStart={() => handleDragStart(displayIndex)}
           onDragOver={(e) => handleDragOver(e, displayIndex)}

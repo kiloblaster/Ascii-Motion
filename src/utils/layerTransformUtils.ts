@@ -25,7 +25,7 @@ function getActiveInverseTransform(): ((x: number, y: number) => { x: number; y:
   if (tl.layers.length === 0 || !tl.view.activeLayerId) return null;
 
   const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-  if (!layer || layer.propertyTracks.length === 0) return null;
+  if (!layer) return null;
 
   const transform = getTransformAtFrame(layer, tl.view.currentFrame);
   const hasTransform =
@@ -78,7 +78,7 @@ export function localToScreen(x: number, y: number): { x: number; y: number } {
   if (tl.layers.length === 0 || !tl.view.activeLayerId) return { x, y };
 
   const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-  if (!layer || layer.propertyTracks.length === 0) return { x, y };
+  if (!layer) return { x, y };
 
   const transform = getTransformAtFrame(layer, tl.view.currentFrame);
   const { positionX, positionY, scale, rotation, anchorPointX, anchorPointY } = transform;
@@ -107,7 +107,7 @@ export function transformCellMapToScreen(cells: Map<string, Cell>): Map<string, 
   if (tl.layers.length === 0 || !tl.view.activeLayerId) return cells;
 
   const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-  if (!layer || layer.propertyTracks.length === 0) return cells;
+  if (!layer) return cells;
 
   const transform = getTransformAtFrame(layer, tl.view.currentFrame);
   const hasTransform =

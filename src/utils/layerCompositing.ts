@@ -67,12 +67,8 @@ export function compositeLayersAtFrame(
     const posY = getPropertyValueAtFrame(layer, 'transform.position.y', frame);
     const scale = getPropertyValueAtFrame(layer, 'transform.scale', frame);
     const rotation = getPropertyValueAtFrame(layer, 'transform.rotation', frame);
-    const opacity = getPropertyValueAtFrame(layer, 'transform.opacity', frame);
     const anchorX = getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', frame);
     const anchorY = getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', frame);
-
-    // Skip fully transparent layers
-    if (opacity === 0) continue;
 
     // Check if transforms are identity (common case — skip expensive math)
     const hasTransform =
@@ -128,13 +124,7 @@ export function compositeLayersAtFrame(
       const finalKey = `${finalX},${finalY}`;
 
       // Top layer's cell wins (we iterate bottom-to-top, so overwrite)
-      if (opacity < 100) {
-        // Store cell with reduced opacity metadata
-        // Note: actual opacity rendering is handled by the renderer
-        result.set(finalKey, { ...cell, _layerOpacity: opacity } as Cell & { _layerOpacity: number });
-      } else {
-        result.set(finalKey, cell);
-      }
+      result.set(finalKey, cell);
     }
   }
 
@@ -183,7 +173,10 @@ export function getPropertyValueAtFrame(
   const track = layer.propertyTracks.find((t) => t.propertyPath === propertyPath);
 
   if (!track || track.keyframes.length === 0) {
-    // Return default value from property definitions
+    // Check layer-specific static value first, then global default
+    if (layer.staticProperties && propertyPath in layer.staticProperties) {
+      return layer.staticProperties[propertyPath];
+    }
     const def = PROPERTY_DEFINITIONS[propertyPath];
     return (def?.defaultValue as number) ?? 0;
   }
@@ -204,7 +197,6 @@ export function getTransformAtFrame(
   positionY: number;
   scale: number;
   rotation: number;
-  opacity: number;
   anchorPointX: number;
   anchorPointY: number;
 } {
@@ -213,7 +205,6 @@ export function getTransformAtFrame(
     positionY: getPropertyValueAtFrame(layer, 'transform.position.y', frame),
     scale: getPropertyValueAtFrame(layer, 'transform.scale', frame),
     rotation: getPropertyValueAtFrame(layer, 'transform.rotation', frame),
-    opacity: getPropertyValueAtFrame(layer, 'transform.opacity', frame),
     anchorPointX: getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', frame),
     anchorPointY: getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', frame),
   };

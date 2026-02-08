@@ -19,6 +19,7 @@ import { TimelineRuler } from './timeline/TimelineRuler';
 import { TimelineToolbar } from './timeline/TimelineToolbar';
 import { TimecodeDisplay } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
+import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { OnionSkinControls } from './OnionSkinControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Slider } from '../ui/slider';
@@ -28,6 +29,7 @@ export const TimelinePanel: React.FC = () => {
   const activeView = useTimelineStore((s) => s.view.activeView);
   const setActiveView = useTimelineStore((s) => s.setActiveView);
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
+  const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
   const zoom = useTimelineStore((s) => s.view.zoom);
   const setZoom = useTimelineStore((s) => s.setZoom);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
@@ -132,8 +134,8 @@ export const TimelinePanel: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: Keyframe editor (when a keyframe is selected) */}
-            {editingKeyframeId && <KeyframeEditorPanel />}
+            {/* Right: Keyframe editor or Layer properties */}
+            {editingKeyframeId ? <KeyframeEditorPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : null}
           </div>
         </div>
       </TabsContent>

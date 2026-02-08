@@ -58,17 +58,24 @@ export function useKeyframeableProperty(
     [track, currentFrame],
   );
 
-  // Set value — creates/updates keyframe if tracked, no-op if not tracked
+  // Set value — updates keyframe if tracked, or sets static property if not.
+  // Static properties apply uniformly across all frames (no animation).
   const setValue = useCallback(
     (newValue: number) => {
-      if (!layerId || !track) return;
-      if (keyframeAtCurrentFrame) {
-        updateKeyframe(layerId, track.id, keyframeAtCurrentFrame.id, { value: newValue });
+      if (!layerId) return;
+      if (track) {
+        // Property is tracked (keyframed) — update or create keyframe
+        if (keyframeAtCurrentFrame) {
+          updateKeyframe(layerId, track.id, keyframeAtCurrentFrame.id, { value: newValue });
+        } else {
+          addKeyframe(layerId, track.id, currentFrame, newValue);
+        }
       } else {
-        addKeyframe(layerId, track.id, currentFrame, newValue);
+        // Not tracked — set as static property on the layer
+        useTimelineStore.getState().setStaticProperty(layerId, propertyPath, newValue);
       }
     },
-    [layerId, track, keyframeAtCurrentFrame, currentFrame, updateKeyframe, addKeyframe],
+    [layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, updateKeyframe, addKeyframe],
   );
 
   // Toggle property track on/off

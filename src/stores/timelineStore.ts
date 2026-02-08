@@ -74,6 +74,7 @@ export interface TimelineState {
   setLayerSolo: (layerId: LayerId, solo: boolean) => void;
   setLayerLocked: (layerId: LayerId, locked: boolean) => void;
   setLayerOpacity: (layerId: LayerId, opacity: number) => void;
+  setStaticProperty: (layerId: LayerId, propertyPath: string, value: number) => void;
 
   getActiveLayer: () => Layer | null;
   setActiveLayer: (layerId: LayerId | null) => void;
@@ -190,6 +191,7 @@ export interface TimelineState {
   clearContentFrameSelection: () => void;
   setContentFrameDragPreview: (preview: TimelineViewState['contentFrameDragPreview']) => void;
   setEditingKeyframe: (keyframeId: KeyframeId | null) => void;
+  setShowLayerProperties: (show: boolean) => void;
   toggleLayerExpanded: (layerId: LayerId) => void;
 
   // ============================================
@@ -227,6 +229,7 @@ const INITIAL_VIEW: TimelineViewState = {
   panelHeight: 264,
   editingKeyframeId: null,
   expandedLayerIds: new Set(),
+  showLayerProperties: false,
   contentFrameDragPreview: null,
 };
 
@@ -288,6 +291,7 @@ export const useTimelineStore = create<TimelineState>()(
           data: new Map(),
         }],
         propertyTracks: [],
+        staticProperties: {},
       };
 
       // Insert above active layer (or at top if none active)
@@ -431,6 +435,15 @@ export const useTimelineStore = create<TimelineState>()(
         layers: updateLayer(state.layers, layerId, (l) => ({
           ...l,
           opacity: Math.max(0, Math.min(100, opacity)),
+        })),
+      }));
+    },
+
+    setStaticProperty: (layerId, propertyPath, value) => {
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          staticProperties: { ...l.staticProperties, [propertyPath]: value },
         })),
       }));
     },
@@ -955,6 +968,12 @@ export const useTimelineStore = create<TimelineState>()(
     setEditingKeyframe: (keyframeId) => {
       set((state) => ({
         view: { ...state.view, editingKeyframeId: keyframeId },
+      }));
+    },
+
+    setShowLayerProperties: (show) => {
+      set((state) => ({
+        view: { ...state.view, showLayerProperties: show },
       }));
     },
 
