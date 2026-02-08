@@ -3,7 +3,7 @@
 > **Version:** 2.0.0  
 > **Created:** February 1, 2026  
 > **Last Updated:** February 5, 2026  
-> **Status:** In Progress — Post-Phase 3 Polish (playback, frame editing, timeline UX)  
+> **Status:** In Progress — Phase 4 Keyframe System (transform-aware tools complete)  
 > **Target Completion:** TBD  
 > **Estimated Duration:** 16-22 weeks
 
@@ -369,6 +369,71 @@ export function TimelineTabs() {
   );
 }
 ```
+
+---
+
+## Coordinate Space Architecture
+
+> **Added:** 2026-02-07 based on Phase 4 implementation experience.
+
+### The Two Coordinate Spaces
+
+When layers have keyframed transforms (position, rotation, scale, anchor point), there are two coordinate spaces:
+
+| Space | Description | Used By |
+|-------|-------------|--------|
+| **Screen space** | What the user sees after compositing. Cell `(5,3)` on screen is where the composited renderer drew it. | Mouse event handlers, selection overlays, hover previews, UI feedback |
+| **Local space** (layer-local) | The raw cell positions in `canvasStore.cells` / `contentFrame.data`. Before transforms are applied. | `setCell()`, `getCell()`, `clearCell()`, `fillArea()`, `setCanvasData()` |
+
+When a layer has `positionX=2, positionY=1`, a cell stored at local `(3, 2)` appears at screen `(5, 3)` after compositing.
+
+### Transform Utility: `src/utils/layerTransformUtils.ts`
+
+Centralized utilities for converting between spaces:
+
+| Function | Direction | Usage |
+|----------|-----------|-------|
+| `screenToLocal(x, y)` | Screen → Local | Drawing tools, fill seeds, selection copy reads, magic wand BFS |
+| `localToScreen(x, y)` | Local → Screen | Preview rendering (gradient preview overlay) |
+| `transformCellMapToLocal(cells)` | Screen → Local (bulk) | Bezier commit, ASCII type/box commit, paste operations |
+| `transformCellMapToScreen(cells)` | Local → Screen (bulk) | Gradient/effect preview rendering on canvas overlay |
+| `inverseTransformPoint(sx, sy, transform)` | Screen → Local (raw) | Low-level inverse of compositing forward transform |
+
+### Which Tools Need Which Transform
+
+**Drawing tools** (`useDrawingTool.ts`) — Inverse transform applied inside `drawAtPosition()`, `drawRectangle()`, `drawEllipse()` before `setCell()`. The mouse coordinate conversion (`getGridCoordinatesFromEvent`) stays in screen space so hover overlays remain aligned.
+
+**Brush smoothing** (`useCanvasDragAndDrop.ts`) — Gap-fill between mouse samples uses `screenToLocal()` before `drawBrushLine()`/`eraseBrushLine()` because `pencilLastPosition` is stored in local space by `drawAtPosition`.
+
+**Selection copy** (`toolStore.ts`) — `screenToLocal()` on each selected cell key before `canvasData.get()` since canvasStore cells are in local space.
+
+**Selection move** (`useCanvasState.ts`) — `screenToLocal()` on both original position keys (for delete) and destination keys (for set) in `commitMove()`.
+
+**Paste** (`usePasteMode.ts`) — `transformCellMapToLocal()` on the absolute-coordinate paste map.
+
+**Magic wand** (`useCanvasMagicWandSelection.ts`) — `getCellLocal()` wrapper around `getCell()` for BFS flood fill and initial target read.
+
+**Bezier/ASCII type/ASCII box commit** — `transformCellMapToLocal()` on the preview cell map before `setCanvasData()`.
+
+**Gradient** — Special case: fill area seed, gradient start/end, and ellipse point all inverse-transformed to local space. Output is local. Preview rendering forward-transforms via `transformCellMapToScreen()` for canvas overlay display.
+
+**Text tool** — `screenToLocal()` in `insertCharacter()`, `handleBackspace()`, `handlePaste()`.
+
+**Selection constraint** (`selectionConstraint.ts`) — `localToScreen()` applied in `isCellDrawable()`, `isCellDrawableWithState()`, `constrainCellsToSelection()` etc. Drawing tools pass local-space coords; selection masks are screen-space, so the constraint functions forward-transform before checking membership.
+
+### Key Rule
+
+> **Mouse events → screen space → drawing tools inverse-transform → canvasStore (local space) → compositing forward-transforms → rendered output (screen space)**
+>
+> Overlays and selection masks stay in screen space. Only the write path goes through inverse transform.
+> Preview overlays that display local-space data must forward-transform for visual alignment.
+
+### Impact on Future Phases
+
+- **Phase 5 (Export)**: Export composites via `compositeLayersAtFrame()` which already handles forward transforms. No inverse transform needed — exports read from composited output.
+- **Phase 6 (Effects)**: Layer-scoped effects may need to read cell data. If they read from `canvasStore.cells`, they're in local space. If they need screen-space awareness, use `localToScreen()`.
+- **Phase 6 (Generators)**: Generators create new layers with content frames — data is always in local space (no transform on a new layer's default identity transform). No transform utilities needed.
+- **Phase 7 (Multi-layer drawing)**: If `applyToAllLayers` mode draws to multiple layers simultaneously, each layer has its own transform. The inverse transform must be computed per-layer, not globally.
 
 ---
 
@@ -3854,6 +3919,11 @@ function renderOnionSkins(
 **Duration:** 2-3 weeks  
 **Goal:** Update all export formats, session format v2, and backward compatibility
 
+> **ℹ️ Coordinate Space Note (from Phase 4):** Export operations read from `compositeLayersAtFrame()` which
+> produces screen-space output. No inverse transforms needed for export — the compositing engine handles
+> the forward transform. Session serialization reads from `canvasStore.cells` (local space) directly via
+> `contentFrame.data`, which is correct since transforms are stored separately as keyframes.
+
 ### 5.1 Export Data Collector Updates
 
 **Modify:** `src/utils/exportDataCollector.ts`
@@ -4310,6 +4380,13 @@ export function exportHTML(settings: HTMLExportSettings): string {
 
 **Duration:** 2-3 weeks  
 **Goal:** Effects system, MCP protocol v2, and polish
+
+> **ℹ️ Coordinate Space Note (from Phase 4):** Layer-scoped effects that read/write cell data from
+> `canvasStore.cells` are operating in local space. If an effect needs to sample from the composited
+> (screen-space) view, it must use `compositeLayersAtFrame()`. If it writes cells, no inverse transform
+> is needed (writing to local space is correct). The `transformCellMapToLocal()` and
+> `transformCellMapToScreen()` utilities in `src/utils/layerTransformUtils.ts` are available if needed.
+> Generator outputs create new layers with identity transforms, so no coordinate conversion is needed.
 
 ### 6.1 Effects System Layer Integration
 
@@ -4913,6 +4990,14 @@ Keyframes support cubic bezier easing:
 
 **Duration:** 2-3 weeks  
 **Goal:** Add advanced multi-layer features that were deferred from Phase 2 to reduce MVP scope
+
+> **ℹ️ Coordinate Space Note (from Phase 4):** The `applyToAllLayers` drawing mode (§7.1) requires
+> per-layer inverse transforms. The current `screenToLocal()` utility reads the active layer's transform.
+> For multi-layer drawing, each target layer has its own transform, so the function must accept an
+> explicit `layerId` parameter or be called per-layer with that layer's transform. The selection
+> constraint system would also need per-layer awareness. Layer group transforms (§7.3) compose with
+> child layer transforms — `inverseTransformPoint` would need to invert the composed transform.
+> See `src/utils/layerTransformUtils.ts` for the existing utility patterns.
 
 > **Prerequisite:** Phases 1-6 must be complete and stable before starting Phase 7.
 > These features add complexity on top of the core layer system. They should only be built
@@ -5840,6 +5925,23 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 
 ### Phase 4-7: Not yet started
 
+### Phase 4: Keyframe System (Partial)
+
+| Task | File(s) | Status | Notes |
+|------|---------|--------|-------|
+| §4.1 Keyframe interpolation | `src/types/easing.ts` | ✅ DONE (Phase 1) | Newton-Raphson solver + `interpolateKeyframes()` with LUT caching. Lives in `easing.ts` not a separate file. |
+| §4.2 Property value provider | `src/utils/layerCompositing.ts` | ✅ DONE (Phase 2) | `getPropertyValueAtFrame()` + `getTransformAtFrame()`. Utility fns, not a React hook. |
+| §4.3 Live preview updates | `src/hooks/useCompositedCanvas.ts` | ✅ DONE (Phase 2) | `useMemo` re-composites on `layers`/`currentFrame`/`canvasCells` changes. |
+| §4.4 Anchor point overlay | `src/components/features/AnchorPointOverlay.tsx` | ✅ DONE | Yellow crosshair at anchor+position. Motion path dots per frame. Shows when layer has transform tracks. Integrated in CanvasOverlay. |
+| §4.5 useKeyframeableProperty hook | `src/hooks/useKeyframeableProperty.ts` | ✅ DONE | Reactive binding: `value`, `setValue` (auto keyframe), `toggleTrack`, `toggleKeyframe`, `isTracked`, `hasKeyframeAtCurrentFrame`. |
+| §4.6 Keyframe icons in side panels | `LayerListItem.tsx` | ✅ DONE (Phase 3) | Inline diamond toggle per property track in expanded layer list. |
+| §4.8 Pre-computed playback | — | ⬜ DEFERRED | Real-time compositing works; will optimize if perf becomes an issue. |
+| §4.9 Layer-aware onion skinning | `src/hooks/useOnionSkinRenderer.ts` | ✅ DONE | Dual-mode: layer mode composites via `compositeLayersAtFrame()`, legacy mode uses `getFrameData()`. |
+| Inverse transform for drawing tools | `src/utils/layerTransformUtils.ts`, `src/hooks/useDrawingTool.ts` | ✅ DONE | `screenToLocal()`, `localToScreen()`, `transformCellMapToLocal()`, `transformCellMapToScreen()`. Applied to all 9 drawing tools. |
+| Inverse transform for selection tools | `src/stores/toolStore.ts`, `src/hooks/useCanvasState.ts`, `src/hooks/usePasteMode.ts` | ✅ DONE | Copy reads, move commit writes, paste commit, magic wand BFS all use inverse transform. |
+| Selection constraint with transforms | `src/utils/selectionConstraint.ts` | ✅ DONE | `localToScreen()` in all constraint functions so drawing in local space respects screen-space selection masks. |
+| Gradient preview forward transform | `src/components/features/CanvasOverlay.tsx` | ✅ DONE | `transformCellMapToScreen()` for preview display since gradient data is computed in local space. |
+
 ### Phase 2: Layer Data Model (Core)
 
 | Task | File(s) | Status | Notes |
@@ -5951,3 +6053,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 2.1.0 | 2026-02-06 | Copilot | **Phase 2: Layer Data Model (Core) complete.** Created `phase-2/layer-data-model` branch (off `timeline-refactor`, Phase 1 merged in). New files: `src/utils/layerLimits.ts` (subscription-tier-aware layer limit enforcement), `src/hooks/useLayerLimit.ts` (React hook), `src/utils/layerCompositing.ts` (multi-layer compositing engine with position/scale/rotation/opacity/anchor transforms, solo mode, visibility filtering, content frame gap handling), `src/hooks/useCompositedCanvas.ts` (renderer-facing composited cell provider), `src/components/features/ActiveLayerIndicator.tsx` (header display). Modified: `src/stores/timelineStore.ts` (addLayer/duplicateLayer return null at limit), `src/stores/canvasStore.ts` (+activeLayerId, isDirty, layer sync state), `src/hooks/useCanvasRenderer.ts` (getCell→getCellForRender swap), `src/hooks/useDrawingTool.ts` (+locked/invisible layer guards with toast), `src/App.tsx` (+ActiveLayerIndicator). Fixed `getImportableLayerCount()` to use `Math.min(incoming, available)`. 78 new tests (layerLimits: 23, layerCompositing: 40, canvasStoreLayerSync: 15). Total: 205/205 tests passing. TypeScript clean. |
 | 2.2.0 | 2026-02-06 | Copilot | **Phase 3: Timeline UI complete.** 12 new components, 92 new tests. Total: 297/297. TypeScript clean. |
 | 2.3.0 | 2026-02-06 | Copilot | **Post-Phase 3: Playback & Timeline Polish.** Dual-mode playback (timeline compositing + legacy). Fixed adapter `play()`/`pause()`/`stop()`. Dual-mode `useFrameNavigation`. Space key in both tabs. Drag-to-scrub ruler. Pause preserves frame. Canvas data isolation per layer (layer-aware `useFrameSynchronization` with `effectiveFrameIndex` + layer-switch flush/load). Content frame CRUD: add/duplicate/split/delete in toolbar with `splitContentFrame()`/`duplicateContentFrame()` in store + history. Every-frame ruler ticks. Purple draggable end bracket. 3-column toolbar layout. Loop purple. Add Layer pinned footer. Content frame selection (`selectedContentFrameIds`). Drag-to-reorder with slot-snap, ghost preview, cross-layer drag, per-layer rendering. Zoom slider. Default zoom 3x, panel 264px. 297/297 tests. TypeScript clean. |
+| 2.4.0 | 2026-02-07 | Copilot | **Phase 4: Keyframe System (partial).** Built `useKeyframeableProperty` hook (reactive property→keyframe binding). Built `AnchorPointOverlay` (crosshair + motion path, integrated in CanvasOverlay). Upgraded `useOnionSkinRenderer` for layer-aware compositing. **Transform-aware coordinate system** (major architectural addition): Created `src/utils/layerTransformUtils.ts` with `screenToLocal()`, `localToScreen()`, `transformCellMapToLocal()`, `transformCellMapToScreen()`, `inverseTransformPoint()`. Added `inverseTransformPoint()` to `layerCompositing.ts`. Fixed ALL 9 drawing tools: pencil, eraser, fill, rectangle, ellipse, gradient, bezier, text, ASCII type/box — each applies inverse transform before canvas writes. Fixed brush smoothing gap-fill coordinate mismatch. Fixed all 3 selection tool copy/move/paste operations. Fixed magic wand flood fill BFS. Fixed selection constraint checks (`localToScreen()` in `selectionConstraint.ts`). Fixed gradient preview rendering (`transformCellMapToScreen()`). Added Coordinate Space Architecture section to plan. 297/297 tests. TypeScript clean. |
