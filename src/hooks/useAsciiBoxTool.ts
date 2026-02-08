@@ -4,6 +4,7 @@ import { useToolStore } from '../stores/toolStore';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
+import { transformCellMapToLocal } from '../utils/layerTransformUtils';
 import { BOX_DRAWING_STYLES } from '../constants/boxDrawingStyles';
 import {
   generateBoxRectangle,
@@ -479,9 +480,10 @@ export const useAsciiBoxTool = () => {
     // Store original for undo
     const originalCells = new Map(cells);
     
-    // Apply preview to canvas
+    // Apply preview to canvas (inverse-transform for layer alignment)
+    const transformedPreview = transformCellMapToLocal(previewData);
     const newCells = new Map(cells);
-    previewData.forEach((cell, key) => {
+    transformedPreview.forEach((cell, key) => {
       newCells.set(key, { ...cell });
     });
     

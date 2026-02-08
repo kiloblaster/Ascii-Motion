@@ -1,7 +1,11 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
+import { useCanvasStore } from '../stores/canvasStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { useCanvasState } from './useCanvasState';
+import { compositeLayersAtFrame } from '../utils/layerCompositing';
+import { getContentFrameAtTime } from '../utils/layerCompositing';
 import { 
   calculateOnionSkinOpacity, 
   getOnionSkinColor 
@@ -9,11 +13,24 @@ import {
 import type { Cell } from '../types';
 
 /**
- * Hook for rendering onion skin layers with caching
- * Renders previous and next frames with tinted transparency
+ * Hook for rendering onion skin layers with caching.
+ * Supports both legacy frame mode and layer-compositing mode.
+ *
+ * In layer mode, can show:
+ *  - Current layer only (default)
+ *  - All layers composited
  */
 export const useOnionSkinRenderer = () => {
-  const { onionSkin, getFrameData, currentFrameIndex, frames, isPlaying } = useAnimationStore();
+  const { onionSkin, currentFrameIndex, frames, isPlaying } = useAnimationStore();
+  const layers = useTimelineStore((s) => s.layers);
+  const tlCurrentFrame = useTimelineStore((s) => s.view.currentFrame);
+  const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
+  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const { width: canvasWidth, height: canvasHeight } = useCanvasStore();
+  const isLayerMode = layers.length > 0;
+  const effectiveFrame = isLayerMode ? tlCurrentFrame : currentFrameIndex;
+  const effectiveTotal = isLayerMode ? durationFrames : frames.length;
+
   const { canvasRef, panOffset, fontMetrics } = useCanvasContext();
   const {
     effectiveCellWidth,
@@ -39,10 +56,26 @@ export const useOnionSkinRenderer = () => {
 
   // Generate cache key for onion skin frame
   const getCacheKey = useCallback((frameIndex: number, distance: number, isPrevious: boolean): string => {
+    if (isLayerMode) {
+      // In layer mode, cache by frame index + layer count (composited frames change with layer edits)
+      return `layer-${frameIndex}-${distance}-${isPrevious ? 'prev' : 'next'}-${zoom}-${layers.length}`;
+    }
     const frame = frames[frameIndex];
     const thumbKey = frame?.thumbnail || `frame-${frameIndex}`;
     return `${thumbKey}-${distance}-${isPrevious ? 'prev' : 'next'}-${zoom}-${effectiveCellWidth}-${effectiveCellHeight}`;
-  }, [frames, zoom, effectiveCellWidth, effectiveCellHeight]);
+  }, [isLayerMode, layers.length, frames, zoom, effectiveCellWidth, effectiveCellHeight]);
+
+  /** Get cell data for onion skin at a given frame index */
+  const getOnionFrameData = useCallback((frameIndex: number): Map<string, Cell> | undefined => {
+    if (isLayerMode) {
+      // Composite all visible layers at this frame
+      return compositeLayersAtFrame(layers, frameIndex, canvasWidth, canvasHeight);
+    } else {
+      // Legacy mode: get frame data from the animation store
+      const { getFrameData } = useAnimationStore.getState();
+      return getFrameData(frameIndex);
+    }
+  }, [isLayerMode, layers, canvasWidth, canvasHeight]);
 
   // Create or get cached onion skin layer
   const getOrCreateOnionSkinLayer = useCallback((
@@ -136,10 +169,10 @@ export const useOnionSkinRenderer = () => {
 
     // Render previous frames (blue tinted)
     for (let i = 1; i <= onionSkin.previousFrames; i++) {
-      const frameIndex = currentFrameIndex - i;
+      const frameIndex = effectiveFrame - i;
       if (frameIndex >= 0) {
-        const frameData = getFrameData(frameIndex);
-        if (frameData) {
+        const frameData = getOnionFrameData(frameIndex);
+        if (frameData && frameData.size > 0) {
           const onionLayer = getOrCreateOnionSkinLayer(frameData, i, true, frameIndex);
           if (onionLayer) {
             ctx.drawImage(onionLayer, 0, 0);
@@ -150,10 +183,10 @@ export const useOnionSkinRenderer = () => {
 
     // Render next frames (red tinted)
     for (let i = 1; i <= onionSkin.nextFrames; i++) {
-      const frameIndex = currentFrameIndex + i;
-      if (frameIndex < frames.length) {
-        const frameData = getFrameData(frameIndex);
-        if (frameData) {
+      const frameIndex = effectiveFrame + i;
+      if (frameIndex < effectiveTotal) {
+        const frameData = getOnionFrameData(frameIndex);
+        if (frameData && frameData.size > 0) {
           const onionLayer = getOrCreateOnionSkinLayer(frameData, i, false, frameIndex);
           if (onionLayer) {
             ctx.drawImage(onionLayer, 0, 0);
@@ -167,9 +200,9 @@ export const useOnionSkinRenderer = () => {
     onionSkin.previousFrames,
     onionSkin.nextFrames,
     isPlaying,
-    currentFrameIndex,
-    frames.length,
-    getFrameData,
+    effectiveFrame,
+    effectiveTotal,
+    getOnionFrameData,
     getOrCreateOnionSkinLayer
   ]);
 

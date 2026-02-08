@@ -10,6 +10,8 @@ import { useCanvasState } from '../../hooks/useCanvasState';
 import { getFontString } from '../../utils/fontMetrics';
 import { InteractiveGradientOverlay } from './InteractiveGradientOverlay';
 import { InteractiveBezierOverlay } from './InteractiveBezierOverlay';
+import { AnchorPointOverlay } from './AnchorPointOverlay';
+import { transformCellMapToScreen } from '../../utils/layerTransformUtils';
 
 type GradientPropertyKey = 'character' | 'textColor' | 'backgroundColor';
 
@@ -603,7 +605,9 @@ export const CanvasOverlay: React.FC = () => {
       if (gradientPreview && gradientPreview.size > 0) {
         ctx.globalAlpha = 1.0;
         
-        gradientPreview.forEach((cell, key) => {
+        // Preview data is in local space — forward-transform to screen for display
+        const screenPreview = transformCellMapToScreen(gradientPreview);
+        screenPreview.forEach((cell, key) => {
           const [x, y] = key.split(',').map(Number);
           const pixelX = x * effectiveCellWidth + panOffset.x;
           const pixelY = y * effectiveCellHeight + panOffset.y;
@@ -918,6 +922,7 @@ export const CanvasOverlay: React.FC = () => {
       />
       <InteractiveGradientOverlay />
       {activeTool === 'beziershape' && <InteractiveBezierOverlay key={bezierRemountKey} />}
+      <AnchorPointOverlay />
     </>
   );
 };

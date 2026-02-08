@@ -285,3 +285,38 @@ export function getVisibleLayers(layers: Layer[]): Layer[] {
 export function isLayerEditable(layer: Layer): boolean {
   return layer.visible && !layer.locked;
 }
+
+/**
+ * Inverse-transform a screen-space cell coordinate back to layer-local space.
+ * This is the reverse of the forward transform applied during compositing.
+ *
+ * Used by drawing tools so that drawing on the composited canvas writes
+ * to the correct position in the layer's raw data.
+ *
+ * @param screenX - Cell X in composited (screen) space
+ * @param screenY - Cell Y in composited (screen) space
+ * @param transform - The layer's transform at the current frame
+ * @returns Layer-local cell coordinates
+ */
+export function inverseTransformPoint(
+  screenX: number,
+  screenY: number,
+  transform: ReturnType<typeof getTransformAtFrame>,
+): { x: number; y: number } {
+  const { positionX, positionY, scale, rotation, anchorPointX, anchorPointY } = transform;
+
+  // 1. Remove position and anchor offset
+  const relX = screenX - positionX - anchorPointX;
+  const relY = screenY - positionY - anchorPointY;
+
+  // 2. Inverse rotation (negate angle)
+  const { rotatedX: invRotX, rotatedY: invRotY } = applyRotation(
+    relX, relY, -rotation,
+  );
+
+  // 3. Inverse scale
+  const localX = scale !== 0 ? Math.round(invRotX / scale + anchorPointX) : anchorPointX;
+  const localY = scale !== 0 ? Math.round(invRotY / scale + anchorPointY) : anchorPointY;
+
+  return { x: localX, y: localY };
+}

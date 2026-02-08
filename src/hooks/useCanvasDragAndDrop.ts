@@ -5,6 +5,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useDrawingTool } from './useDrawingTool';
 import { calculateBrushCells } from '../utils/brushUtils';
+import { screenToLocal } from '../utils/layerTransformUtils';
 
 /**
  * Hook for handling drag and drop operations on the canvas
@@ -135,17 +136,18 @@ export const useCanvasDragAndDrop = () => {
       if (pencilLastPosition && 
           (Math.abs(x - pencilLastPosition.x) > 1 || Math.abs(y - pencilLastPosition.y) > 1)) {
         // Large distance during drag - fill the gap with a line
+        // Convert current position to local space to match pencilLastPosition
+        // (which is stored in local space by drawAtPosition)
+        const local = screenToLocal(x, y);
         if (tool === 'pencil') {
-          // Use brush-aware gap-filling for pencil to respect brush settings
-          drawBrushLine(pencilLastPosition.x, pencilLastPosition.y, x, y);
+          drawBrushLine(pencilLastPosition.x, pencilLastPosition.y, local.x, local.y);
         } else if (tool === 'eraser') {
-          // Use brush-aware gap-filling for eraser to respect brush size/shape
-          eraseBrushLine(pencilLastPosition.x, pencilLastPosition.y, x, y);
+          eraseBrushLine(pencilLastPosition.x, pencilLastPosition.y, local.x, local.y);
         }
         
-        // Update position after gap-filling
+        // Update position after gap-filling (in local space)
         const { setPencilLastPosition } = useToolStore.getState();
-        setPencilLastPosition({ x, y });
+        setPencilLastPosition({ x: local.x, y: local.y });
       } else {
         // Normal drag drawing - use regular drawing function
   handleDrawing(x, y, false, toolOverride); // Continuous stroke

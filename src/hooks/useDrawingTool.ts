@@ -6,7 +6,7 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import { calculateBrushCells } from '../utils/brushUtils';
 import { useSelectionStore } from '../stores/selectionStore';
 import { isCellDrawableWithState, constrainCellsToSelectionWithState } from '../utils/selectionConstraint';
-import { isLayerEditable } from '../utils/layerCompositing';
+import { isLayerEditable, getTransformAtFrame, inverseTransformPoint } from '../utils/layerCompositing';
 import { toast } from 'sonner';
 import type { Cell } from '../types';
 
@@ -178,32 +178,51 @@ export const useDrawingTool = () => {
     // Guard: check if active layer allows editing
     if (!checkActiveLayerEditable(toolToUse)) return;
 
+    // Apply inverse layer transform so drawing lands at the visual cursor position.
+    // The compositing renderer applies forward transforms when displaying, so we
+    // need to undo that transform when writing to get visual alignment.
+    const tl = useTimelineStore.getState();
+    let lx = x, ly = y;
+    if (tl.layers.length > 0 && tl.view.activeLayerId) {
+      const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
+      if (layer && layer.propertyTracks.length > 0) {
+        const transform = getTransformAtFrame(layer, tl.view.currentFrame);
+        if (transform.positionX !== 0 || transform.positionY !== 0 ||
+            transform.scale !== 1 || transform.rotation !== 0 ||
+            transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
+          const local = inverseTransformPoint(x, y, transform);
+          lx = local.x;
+          ly = local.y;
+        }
+      }
+    }
+
     switch (toolToUse) {
       case 'pencil': {
         const brushTool: 'pencil' | 'eraser' = 'pencil';
         if (isShiftClick && pencilLastPosition) {
-          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, x, y);
+          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, lx, ly);
         } else {
-          applyBrushStroke(brushTool, x, y);
+          applyBrushStroke(brushTool, lx, ly);
         }
         
         // Update position for potential shift+click line drawing
-        setPencilLastPosition({ x, y });
+        setPencilLastPosition({ x: lx, y: ly });
         break;
       }
       case 'eraser': {
         const brushTool: 'pencil' | 'eraser' = 'eraser';
         if (isShiftClick && pencilLastPosition) {
-          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, x, y);
+          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, lx, ly);
         } else {
-          applyBrushStroke(brushTool, x, y);
+          applyBrushStroke(brushTool, lx, ly);
         }
         // Update last position for eraser too
-        setPencilLastPosition({ x, y });
+        setPencilLastPosition({ x: lx, y: ly });
         break;
       }
       case 'eyedropper': {
-        const existingCell = getCell(x, y);
+        const existingCell = getCell(lx, ly);
         if (existingCell) {
           pickFromCell(existingCell.char, existingCell.color, existingCell.bgColor);
         }
@@ -216,8 +235,8 @@ export const useDrawingTool = () => {
           bgColor: selectedBgColor
         };
         fillArea(
-          x, 
-          y, 
+          lx, 
+          ly, 
           newCell, 
           paintBucketContiguous, 
           { char: fillMatchChar, color: fillMatchColor, bgColor: fillMatchBgColor },
@@ -252,10 +271,25 @@ export const useDrawingTool = () => {
     // Guard: check if active layer allows editing
     if (!checkActiveLayerEditable()) return;
 
-    const minX = Math.min(startX, endX);
-    const maxX = Math.max(startX, endX);
-    const minY = Math.min(startY, endY);
-    const maxY = Math.max(startY, endY);
+    // Inverse layer transform for both corners
+    let sx = startX, sy = startY, ex = endX, ey = endY;
+    const tl = useTimelineStore.getState();
+    if (tl.layers.length > 0 && tl.view.activeLayerId) {
+      const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
+      if (layer && layer.propertyTracks.length > 0) {
+        const transform = getTransformAtFrame(layer, tl.view.currentFrame);
+        if (transform.positionX !== 0 || transform.positionY !== 0 || transform.scale !== 1 || transform.rotation !== 0 || transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
+          const ls = inverseTransformPoint(startX, startY, transform);
+          const le = inverseTransformPoint(endX, endY, transform);
+          sx = ls.x; sy = ls.y; ex = le.x; ey = le.y;
+        }
+      }
+    }
+
+    const minX = Math.min(sx, ex);
+    const maxX = Math.max(sx, ex);
+    const minY = Math.min(sy, ey);
+    const maxY = Math.max(sy, ey);
     
     // Get selection state once for efficiency
     const { isActive, selectedCells } = useSelectionStore.getState();
@@ -334,10 +368,25 @@ export const useDrawingTool = () => {
     // Guard: check if active layer allows editing
     if (!checkActiveLayerEditable()) return;
 
-    const centerX = (startX + endX) / 2;
-    const centerY = (startY + endY) / 2;
-    const radiusX = Math.abs(endX - startX) / 2;
-    const radiusY = Math.abs(endY - startY) / 2;
+    // Inverse layer transform for both corners
+    let sx = startX, sy = startY, ex = endX, ey = endY;
+    const tl = useTimelineStore.getState();
+    if (tl.layers.length > 0 && tl.view.activeLayerId) {
+      const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
+      if (layer && layer.propertyTracks.length > 0) {
+        const transform = getTransformAtFrame(layer, tl.view.currentFrame);
+        if (transform.positionX !== 0 || transform.positionY !== 0 || transform.scale !== 1 || transform.rotation !== 0 || transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
+          const ls = inverseTransformPoint(startX, startY, transform);
+          const le = inverseTransformPoint(endX, endY, transform);
+          sx = ls.x; sy = ls.y; ex = le.x; ey = le.y;
+        }
+      }
+    }
+
+    const centerX = (sx + ex) / 2;
+    const centerY = (sy + ey) / 2;
+    const radiusX = Math.abs(ex - sx) / 2;
+    const radiusY = Math.abs(ey - sy) / 2;
 
     const rawPoints = getEllipsePoints(centerX, centerY, radiusX, radiusY, rectangleFilled);
     

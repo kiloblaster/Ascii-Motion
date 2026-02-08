@@ -69,7 +69,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     effectiveTool = 'eyedropper';
   }
 
-  // Utility to get grid coordinates from mouse event
+  // Utility to get grid coordinates from mouse event (screen-space)
   const getGridCoordinatesFromEvent = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };

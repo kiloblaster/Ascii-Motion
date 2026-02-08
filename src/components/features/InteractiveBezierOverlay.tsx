@@ -14,6 +14,7 @@ import { useCanvasStore } from '../../stores/canvasStore';
 import { useCharacterPaletteStore } from '../../stores/characterPaletteStore';
 import { useAnimationStore } from '../../stores/animationStore';
 import { usePaletteStore } from '../../stores/paletteStore';
+import { transformCellMapToLocal } from '../../utils/layerTransformUtils';
 import { generateBezierPreview } from '../../utils/bezierFillUtils';
 import { BezierActionButtons } from './BezierActionButtons';
 import type { 
@@ -152,9 +153,10 @@ export const InteractiveBezierOverlay: React.FC = () => {
       // Get cells to commit from store
       const cellsToCommit = commitShape();
 
-      // Apply to canvas
+      // Apply to canvas (inverse-transform for layer alignment)
+      const transformedCells = transformCellMapToLocal(cellsToCommit);
       const newCells = new Map(cells);
-      cellsToCommit.forEach((cell, key) => {
+      transformedCells.forEach((cell, key) => {
         if (cell.char === ' ' && cell.color === '#FFFFFF' && cell.bgColor === 'transparent') {
           // Remove empty cells to save memory
           newCells.delete(key);
