@@ -186,12 +186,17 @@ export interface TimelineState {
   setPanelHeight: (height: number) => void;
 
   selectKeyframes: (keyframeIds: KeyframeId[]) => void;
+  addKeyframesToSelection: (keyframeIds: KeyframeId[]) => void;
+  toggleKeyframeSelected: (keyframeId: KeyframeId) => void;
+  clearKeyframeSelection: () => void;
   selectContentFrames: (frameIds: ContentFrameId[]) => void;
   addContentFramesToSelection: (frameIds: ContentFrameId[]) => void;
   toggleContentFrameSelected: (frameId: ContentFrameId) => void;
   clearContentFrameSelection: () => void;
   setContentFrameDragPreview: (preview: TimelineViewState['contentFrameDragPreview']) => void;
   setEditingKeyframe: (keyframeId: KeyframeId | null) => void;
+  setKeyframeDuplicateGhosts: (ghosts: Map<KeyframeId, number>) => void;
+  clearKeyframeDuplicateGhosts: () => void;
   setShowLayerProperties: (show: boolean) => void;
   toggleLayerExpanded: (layerId: LayerId) => void;
 
@@ -231,6 +236,7 @@ const INITIAL_VIEW: TimelineViewState = {
   editingKeyframeId: null,
   expandedLayerIds: new Set(),
   showLayerProperties: false,
+  keyframeDuplicateGhosts: new Map(),
   contentFrameDragPreview: null,
 };
 
@@ -942,6 +948,36 @@ export const useTimelineStore = create<TimelineState>()(
       }));
     },
 
+    addKeyframesToSelection: (keyframeIds) => {
+      set((state) => {
+        const next = new Set(state.view.selectedKeyframeIds);
+        for (const id of keyframeIds) next.add(id);
+        return { view: { ...state.view, selectedKeyframeIds: next } };
+      });
+    },
+
+    toggleKeyframeSelected: (keyframeId) => {
+      set((state) => {
+        const next = new Set(state.view.selectedKeyframeIds);
+        if (next.has(keyframeId)) {
+          next.delete(keyframeId);
+        } else {
+          next.add(keyframeId);
+        }
+        return { view: { ...state.view, selectedKeyframeIds: next } };
+      });
+    },
+
+    clearKeyframeSelection: () => {
+      set((state) => ({
+        view: {
+          ...state.view,
+          selectedKeyframeIds: new Set(),
+          editingKeyframeId: null,
+        },
+      }));
+    },
+
     selectContentFrames: (frameIds) => {
       set((state) => ({
         view: { ...state.view, selectedContentFrameIds: new Set(frameIds) },
@@ -983,6 +1019,18 @@ export const useTimelineStore = create<TimelineState>()(
     setEditingKeyframe: (keyframeId) => {
       set((state) => ({
         view: { ...state.view, editingKeyframeId: keyframeId },
+      }));
+    },
+
+    setKeyframeDuplicateGhosts: (ghosts) => {
+      set((state) => ({
+        view: { ...state.view, keyframeDuplicateGhosts: ghosts },
+      }));
+    },
+
+    clearKeyframeDuplicateGhosts: () => {
+      set((state) => ({
+        view: { ...state.view, keyframeDuplicateGhosts: new Map() },
       }));
     },
 

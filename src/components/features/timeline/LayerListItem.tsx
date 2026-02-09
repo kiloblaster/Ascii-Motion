@@ -55,6 +55,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
   const removePropertyTrack = useTimelineStore((s) => s.removePropertyTrack);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
+  const addKeyframesToSelection = useTimelineStore((s) => s.addKeyframesToSelection);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -257,7 +258,23 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
                 key={track.id}
                 className="flex items-center px-1.5 py-0.5 min-h-[24px] text-xs text-muted-foreground group/track"
               >
-                <span className="flex-1 truncate">
+                <span
+                  className="flex-1 truncate cursor-pointer hover:text-foreground"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const kfIds = track.keyframes.map((kf) => kf.id);
+                    if (kfIds.length === 0) return;
+                    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                      // Shift+click: add all keyframes on this track to selection
+                      addKeyframesToSelection(kfIds);
+                    } else {
+                      // Plain click: select only this track's keyframes
+                      selectKeyframes(kfIds);
+                    }
+                    // Set editing to the last keyframe
+                    setEditingKeyframe(kfIds[kfIds.length - 1]);
+                  }}
+                >
                   {def?.displayName ?? track.propertyPath.split('.').pop()}
                 </span>
                 <Tooltip>

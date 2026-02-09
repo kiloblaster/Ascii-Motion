@@ -9,7 +9,6 @@
 import React, { useMemo } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
-import { EASING_PRESETS } from '../../../types/timeline';
 import { EasingCurveEditor } from './EasingCurveEditor';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
@@ -22,16 +21,20 @@ import {
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
 import { X, ChevronDown } from 'lucide-react';
-import type { EasingCurve, EasingPreset } from '../../../types/timeline';
+import type { EasingCurve } from '../../../types/timeline';
 
 export const KeyframeEditorPanel: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
+  const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const layers = useTimelineStore((s) => s.layers);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const moveKeyframe = useTimelineStore((s) => s.moveKeyframe);
   const updateKeyframe = useTimelineStore((s) => s.updateKeyframe);
   const setKeyframeLooping = useTimelineStore((s) => s.setKeyframeLooping);
   const removeKeyframe = useTimelineStore((s) => s.removeKeyframe);
+  const clearKeyframeSelection = useTimelineStore((s) => s.clearKeyframeSelection);
+
+  const multiSelectCount = selectedKeyframeIds.size;
 
   // Find the keyframe being edited across all layers/tracks
   const kfData = useMemo(() => {
@@ -46,6 +49,22 @@ export const KeyframeEditorPanel: React.FC = () => {
     }
     return null;
   }, [editingKeyframeId, layers]);
+
+  // Build a lookup for all selected keyframes (for batch operations)
+  const selectedKeyframeEntries = useMemo(() => {
+    if (selectedKeyframeIds.size <= 1) return [];
+    const entries: Array<{ layerId: typeof layers[0]['id']; trackId: typeof layers[0]['propertyTracks'][0]['id']; keyframe: typeof layers[0]['propertyTracks'][0]['keyframes'][0] }> = [];
+    for (const layer of layers) {
+      for (const track of layer.propertyTracks) {
+        for (const kf of track.keyframes) {
+          if (selectedKeyframeIds.has(kf.id)) {
+            entries.push({ layerId: layer.id, trackId: track.id, keyframe: kf });
+          }
+        }
+      }
+    }
+    return entries;
+  }, [selectedKeyframeIds, layers]);
 
   if (!kfData) {
     return null;
@@ -69,12 +88,27 @@ export const KeyframeEditorPanel: React.FC = () => {
   };
 
   const handleEasingChange = (easing: EasingCurve) => {
-    updateKeyframe(layerId, trackId, keyframe.id, { easing });
+    // Apply easing to ALL selected keyframes
+    if (selectedKeyframeEntries.length > 1) {
+      for (const entry of selectedKeyframeEntries) {
+        updateKeyframe(entry.layerId, entry.trackId, entry.keyframe.id, { easing });
+      }
+    } else {
+      updateKeyframe(layerId, trackId, keyframe.id, { easing });
+    }
   };
 
   const handleDelete = () => {
-    removeKeyframe(layerId, trackId, keyframe.id);
-    setEditingKeyframe(null);
+    // Delete ALL selected keyframes
+    if (selectedKeyframeEntries.length > 1) {
+      for (const entry of selectedKeyframeEntries) {
+        removeKeyframe(entry.layerId, entry.trackId, entry.keyframe.id);
+      }
+      clearKeyframeSelection();
+    } else {
+      removeKeyframe(layerId, trackId, keyframe.id);
+      setEditingKeyframe(null);
+    }
   };
 
   const EASING_LABELS: Record<string, string> = {
@@ -93,9 +127,16 @@ export const KeyframeEditorPanel: React.FC = () => {
     <div className="w-48 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
-        <span className="text-xs font-medium">
-          {definition?.displayName ?? track.propertyPath}
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-xs font-medium truncate">
+            {definition?.displayName ?? track.propertyPath}
+          </span>
+          {multiSelectCount > 1 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-500 tabular-nums flex-shrink-0">
+              {multiSelectCount} selected
+            </span>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="sm"

@@ -9,12 +9,13 @@
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §3.8, §3.9
  */
 
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
+import type { KeyframeId } from '../../../types/timeline';
 import { cn } from '@/lib/utils';
 
 /** Pixels per frame at zoom=1 */
@@ -37,9 +38,16 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const expandedLayerIds = useTimelineStore((s) => s.view.expandedLayerIds);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
   const clearContentFrameSelection = useTimelineStore((s) => s.clearContentFrameSelection);
+  const clearKeyframeSelection = useTimelineStore((s) => s.clearKeyframeSelection);
   const contentFrameDragPreview = useTimelineStore((s) => s.view.contentFrameDragPreview);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const { addKeyframe } = useTimelineHistory();
+
+  // Marquee selection state
+  const [marquee, setMarquee] = useState<{
+    startX: number; startY: number; currentX: number; currentY: number;
+  } | null>(null);
+  const marqueeRef = useRef<typeof marquee>(null);
 
   const internalRef = useRef<HTMLDivElement>(null);
   // Merge scrollRef (from parent for sync) with internal ref (for wheel zoom)
@@ -80,14 +88,113 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
     return () => el.removeEventListener('wheel', handleWheel);
   }, [zoom, setZoom]);
 
-  // Clear content frame selection when clicking empty track space
+  // ── Marquee selection + click-to-deselect ──
+
+  /**
+   * Compute which keyframes fall inside a pixel rectangle (relative to scroll container content).
+   * Each property track row is 24px high. We compute the vertical offsets dynamically
+   * based on the layer/track layout.
+   */
+  const getKeyframesInRect = useCallback(
+    (x1: number, y1: number, x2: number, y2: number): KeyframeId[] => {
+      const left = Math.min(x1, x2);
+      const right = Math.max(x1, x2);
+      const top = Math.min(y1, y2);
+      const bottom = Math.max(y1, y2);
+
+      const CONTENT_ROW_H = 32; // content frame row height
+      const TRACK_ROW_H = 24;   // property track row height
+      const ADD_PROP_ROW_H = 24; // "+ Add Property" spacer
+
+      const result: KeyframeId[] = [];
+      let yOffset = 0;
+
+      for (const layer of displayLayers) {
+        // Content frame row
+        yOffset += CONTENT_ROW_H;
+
+        // Property track rows (only when expanded)
+        if (expandedLayerIds.has(layer.id)) {
+          for (const track of layer.propertyTracks) {
+            const trackTop = yOffset;
+            const trackBottom = yOffset + TRACK_ROW_H;
+
+            // Check each keyframe on this track
+            for (const kf of track.keyframes) {
+              const kfX = kf.frame * pxPerFrame;
+              // Keyframe diamond is ~12px, centered at kfX
+              if (kfX >= left - 6 && kfX <= right + 6 && trackBottom > top && trackTop < bottom) {
+                result.push(kf.id);
+              }
+            }
+
+            yOffset += TRACK_ROW_H;
+          }
+          // Add Property spacer
+          yOffset += ADD_PROP_ROW_H;
+        }
+      }
+
+      return result;
+    },
+    [displayLayers, expandedLayerIds, pxPerFrame],
+  );
+
   const handleTrackAreaMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      // Only clear if the click target is the track area itself or a layer row,
-      // not a content frame block (which calls stopPropagation)
+      // Only handle left button clicks on the background (not on diamonds or content frames)
+      if (e.button !== 0) return;
       clearContentFrameSelection();
+
+      const el = internalRef.current;
+      if (!el) return;
+
+      // Get position relative to the scrollable content
+      const rect = el.getBoundingClientRect();
+      const startX = e.clientX - rect.left + el.scrollLeft;
+      const startY = e.clientY - rect.top + el.scrollTop;
+
+      let didDrag = false;
+      const DRAG_THRESHOLD = 4;
+
+      const onMouseMove = (me: MouseEvent) => {
+        const dx = me.clientX - e.clientX;
+        const dy = me.clientY - e.clientY;
+        if (!didDrag && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+        didDrag = true;
+
+        const currentX = me.clientX - rect.left + el.scrollLeft;
+        const currentY = me.clientY - rect.top + el.scrollTop;
+
+        const m = { startX, startY, currentX, currentY };
+        marqueeRef.current = m;
+        setMarquee(m);
+
+        // Live-update selection as marquee changes
+        const kfIds = getKeyframesInRect(startX, startY, currentX, currentY);
+        useTimelineStore.getState().selectKeyframes(kfIds);
+        if (kfIds.length > 0) {
+          useTimelineStore.getState().setEditingKeyframe(kfIds[kfIds.length - 1]);
+        }
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+
+        marqueeRef.current = null;
+        setMarquee(null);
+
+        if (!didDrag) {
+          // Click on blank space with no drag → deselect all keyframes + close editor
+          clearKeyframeSelection();
+        }
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
     },
-    [clearContentFrameSelection],
+    [clearContentFrameSelection, clearKeyframeSelection, getKeyframesInRect],
   );
 
   return (
@@ -228,6 +335,19 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
             )}
           </div>
         ))}
+
+        {/* Marquee selection rectangle */}
+        {marquee && (
+          <div
+            className="absolute border border-blue-400/70 bg-blue-400/15 pointer-events-none z-30"
+            style={{
+              left: Math.min(marquee.startX, marquee.currentX),
+              top: Math.min(marquee.startY, marquee.currentY),
+              width: Math.abs(marquee.currentX - marquee.startX),
+              height: Math.abs(marquee.currentY - marquee.startY),
+            }}
+          />
+        )}
 
         {/* Playhead line spanning all rows */}
         <div

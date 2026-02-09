@@ -342,6 +342,9 @@ export interface TimelineViewState {
   // Layer properties panel visibility
   showLayerProperties: boolean;
 
+  // Transient ghost markers for Alt+drag keyframe duplication
+  keyframeDuplicateGhosts: Map<KeyframeId, number>;
+
   // Transient drag preview for content frame reordering
   contentFrameDragPreview: {
     /** Layer the frame is being dragged FROM */
