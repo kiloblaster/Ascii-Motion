@@ -498,8 +498,12 @@ export const useTimelineStore = create<TimelineState>()(
         }
       }
 
-      // Auto-expand timeline if needed
-      get().ensureTimelineContains(startFrame + durationFrames - 1);
+      // Auto-expand timeline if the new content frame extends past the current duration.
+      // Only extends — never shrinks.
+      const frameEnd = startFrame + durationFrames;
+      if (frameEnd > get().config.durationFrames) {
+        get().ensureTimelineContains(frameEnd - 1);
+      }
 
       set((state) => ({
         layers: updateLayer(state.layers, layerId, (l) => ({
@@ -545,8 +549,10 @@ export const useTimelineStore = create<TimelineState>()(
         }
       }
 
-      // Auto-expand timeline
-      get().ensureTimelineContains(clampedStart + clampedDuration - 1);
+      // Note: we do NOT auto-expand the timeline here. This method is called
+      // during drag reorder with intermediate "parking" positions that would
+      // incorrectly extend the timeline. Callers that need auto-expand (like
+      // resize handlers) should call ensureTimelineContains() explicitly.
 
       set((state) => ({
         layers: updateLayer(state.layers, layerId, (l) => ({

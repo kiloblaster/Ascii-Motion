@@ -7,7 +7,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
+import type { TimelineDurationChangeHistoryAction } from '../../../types';
 
 /** Pixels per frame at zoom=1 */
 const BASE_PX_PER_FRAME = 12;
@@ -22,6 +24,7 @@ export const TimelineRuler: React.FC = () => {
   const scrollX = useTimelineStore((s) => s.view.scrollX);
   const goToFrame = useTimelineStore((s) => s.goToFrame);
   const setDuration = useTimelineStore((s) => s.setDuration);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   const rulerRef = useRef<HTMLDivElement>(null);
   const pxPerFrame = BASE_PX_PER_FRAME * zoom;
@@ -71,9 +74,13 @@ export const TimelineRuler: React.FC = () => {
       e.preventDefault();
       e.stopPropagation(); // don't trigger ruler seek
       setIsDraggingEnd(true);
+      // Capture duration at drag start for history
+      durationAtDragStartRef.current = useTimelineStore.getState().config.durationFrames;
     },
     [],
   );
+
+  const durationAtDragStartRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isDraggingEnd) return;
@@ -81,14 +88,29 @@ export const TimelineRuler: React.FC = () => {
       const newDuration = clientXToUnclamped(e.clientX);
       setDuration(newDuration);
     };
-    const handleUp = () => setIsDraggingEnd(false);
+    const handleUp = () => {
+      setIsDraggingEnd(false);
+      // Record history for the duration change
+      const oldDuration = durationAtDragStartRef.current;
+      const newDuration = useTimelineStore.getState().config.durationFrames;
+      if (oldDuration !== null && oldDuration !== newDuration) {
+        const historyAction: TimelineDurationChangeHistoryAction = {
+          type: 'timeline_duration_change',
+          timestamp: Date.now(),
+          description: `Change timeline duration from ${oldDuration} to ${newDuration} frames`,
+          data: { oldDuration, newDuration },
+        };
+        pushToHistory(historyAction);
+      }
+      durationAtDragStartRef.current = null;
+    };
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
     return () => {
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
     };
-  }, [isDraggingEnd, clientXToUnclamped, setDuration]);
+  }, [isDraggingEnd, clientXToUnclamped, setDuration, pushToHistory]);
 
   // Global mousemove / mouseup for drag-to-scrub
   useEffect(() => {

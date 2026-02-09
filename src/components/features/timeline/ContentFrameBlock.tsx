@@ -14,8 +14,11 @@
 
 import React, { useCallback, useRef } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
+import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
 import type { ContentFrame, ContentFrameId, LayerId } from '../../../types/timeline';
+import type { ContentFrameReorderHistoryAction } from '../../../types';
 
 interface ContentFrameBlockProps {
   layerId: LayerId;
@@ -33,6 +36,8 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
   scrollX,
 }) => {
   const updateContentFrameTiming = useTimelineStore((s) => s.updateContentFrameTiming);
+  const { updateContentFrameTiming: updateTimingHistory } = useTimelineHistory();
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const selectedIds = useTimelineStore((s) => s.view.selectedContentFrameIds);
   const selectContentFrames = useTimelineStore((s) => s.selectContentFrames);
@@ -98,6 +103,22 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
 
   // ── Main handler: click / shift-click / drag ──
 
+  /** Snapshot a layer's content frames for undo history */
+  const snapshotLayerFrames = (lid: LayerId) => {
+    const layer = useTimelineStore.getState().layers.find((l) => l.id === lid);
+    if (!layer) return { layerId: lid, contentFrames: [] };
+    return {
+      layerId: lid,
+      contentFrames: layer.contentFrames.map((cf) => ({
+        id: cf.id,
+        startFrame: cf.startFrame,
+        durationFrames: cf.durationFrames,
+        name: cf.name,
+        data: new Map(cf.data),
+      })),
+    };
+  };
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
@@ -109,12 +130,21 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       const origStart = contentFrame.startFrame;
       const duration = contentFrame.durationFrames;
       let didDrag = false;
+      let beforeSnapshot: ReturnType<typeof snapshotLayerFrames>[] | null = null;
 
       const onMouseMove = (me: MouseEvent) => {
         const dx = me.clientX - startX;
         const dy = me.clientY - startY;
-        if (!didDrag && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
-        didDrag = true;
+        if (!didDrag && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) {
+          return;
+        }
+        if (!didDrag) {
+          // Capture snapshot of ALL layers BEFORE any reordering
+          // (simpler than tracking which layers will be affected)
+          const allLayers = useTimelineStore.getState().layers;
+          beforeSnapshot = allLayers.map((l) => snapshotLayerFrames(l.id));
+          didDrag = true;
+        }
 
         // Check if we're dragging a multi-selection group
         const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
@@ -265,14 +295,6 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           for (const planned of sim.filter((cf) => selectedIdSet.has(cf.id))) {
             updateContentFrameTiming(layerId, planned.id, planned.startFrame, planned.durationFrames);
           }
-
-          // Trim timeline
-          const allLayers = useTimelineStore.getState().layers;
-          const globalMaxEnd = Math.max(1, ...allLayers.flatMap((l) => l.contentFrames.map((cf) => cf.startFrame + cf.durationFrames)));
-          const currentDuration = useTimelineStore.getState().config.durationFrames;
-          if (globalMaxEnd < currentDuration) {
-            useTimelineStore.getState().setDuration(globalMaxEnd);
-          }
         } else if (tgtLayerId !== layerId) {
           // ── Cross-layer move ──
           const others = getOtherFrames(tgtLayerId);
@@ -353,20 +375,30 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           }
 
           updateContentFrameTiming(layerId, contentFrame.id, targetStart, duration);
+        }
 
+        // Record history for the entire drag-reorder operation
+        if (beforeSnapshot) {
           const allLayers = useTimelineStore.getState().layers;
-          const globalMaxEnd = Math.max(1, ...allLayers.flatMap((l) => l.contentFrames.map((cf) => cf.startFrame + cf.durationFrames)));
-          const currentDuration = useTimelineStore.getState().config.durationFrames;
-          if (globalMaxEnd < currentDuration) {
-            useTimelineStore.getState().setDuration(globalMaxEnd);
-          }
+          const afterSnapshot = allLayers.map((l) => snapshotLayerFrames(l.id));
+
+          const historyAction: ContentFrameReorderHistoryAction = {
+            type: 'content_frame_reorder',
+            timestamp: Date.now(),
+            description: 'Reorder content frames',
+            data: {
+              previousState: beforeSnapshot,
+              newState: afterSnapshot,
+            },
+          };
+          pushToHistory(historyAction);
         }
       };
 
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     },
-    [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, activeLayerId, setActiveLayer, goToFrame, selectContentFrames, addContentFramesToSelection, toggleContentFrameSelected, setContentFrameDragPreview],
+    [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, activeLayerId, setActiveLayer, goToFrame, selectContentFrames, addContentFramesToSelection, toggleContentFrameSelected, setContentFrameDragPreview, pushToHistory],
   );
 
   // ── Resize handlers ──
@@ -375,32 +407,63 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
     e.stopPropagation();
     e.preventDefault();
     const startX = e.clientX;
-    const startDuration = contentFrame.durationFrames;
+    const origStart = contentFrame.startFrame;
+    const origDuration = contentFrame.durationFrames;
+    let lastDuration = origDuration;
     const onMouseMove = (me: MouseEvent) => {
-      const newDuration = Math.max(1, startDuration + Math.round((me.clientX - startX) / pxPerFrame));
-      if (newDuration !== contentFrame.durationFrames) updateContentFrameTiming(layerId, contentFrame.id, contentFrame.startFrame, newDuration);
+      const newDuration = Math.max(1, origDuration + Math.round((me.clientX - startX) / pxPerFrame));
+      if (newDuration !== lastDuration) {
+        // Auto-extend timeline if resize pushes past end
+        useTimelineStore.getState().ensureTimelineContains(origStart + newDuration - 1);
+        updateContentFrameTiming(layerId, contentFrame.id, origStart, newDuration);
+        lastDuration = newDuration;
+      }
     };
-    const onMouseUp = () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      // Record history if timing actually changed
+      if (lastDuration !== origDuration) {
+        // Revert to original, then re-apply via history wrapper
+        updateContentFrameTiming(layerId, contentFrame.id, origStart, origDuration);
+        updateTimingHistory(layerId, contentFrame.id, origStart, lastDuration);
+      }
+    };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [contentFrame, layerId, pxPerFrame, updateContentFrameTiming]);
+  }, [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, updateTimingHistory]);
 
   const handleResizeLeft = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
     const startX = e.clientX;
-    const sf = contentFrame.startFrame;
-    const sd = contentFrame.durationFrames;
-    const endFrame = sf + sd;
+    const origStart = contentFrame.startFrame;
+    const origDuration = contentFrame.durationFrames;
+    const endFrame = origStart + origDuration;
+    let lastStart = origStart;
+    let lastDuration = origDuration;
     const onMouseMove = (me: MouseEvent) => {
-      const newStart = Math.max(0, Math.min(endFrame - 1, sf + Math.round((me.clientX - startX) / pxPerFrame)));
+      const newStart = Math.max(0, Math.min(endFrame - 1, origStart + Math.round((me.clientX - startX) / pxPerFrame)));
       const newDuration = endFrame - newStart;
-      if (newStart !== contentFrame.startFrame || newDuration !== contentFrame.durationFrames) updateContentFrameTiming(layerId, contentFrame.id, newStart, newDuration);
+      if (newStart !== lastStart || newDuration !== lastDuration) {
+        updateContentFrameTiming(layerId, contentFrame.id, newStart, newDuration);
+        lastStart = newStart;
+        lastDuration = newDuration;
+      }
     };
-    const onMouseUp = () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      // Record history if timing actually changed
+      if (lastStart !== origStart || lastDuration !== origDuration) {
+        // Revert to original, then re-apply via history wrapper
+        updateContentFrameTiming(layerId, contentFrame.id, origStart, origDuration);
+        updateTimingHistory(layerId, contentFrame.id, lastStart, lastDuration);
+      }
+    };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [contentFrame, layerId, pxPerFrame, updateContentFrameTiming]);
+  }, [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, updateTimingHistory]);
 
   const cellCount = contentFrame.data.size;
 

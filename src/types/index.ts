@@ -289,7 +289,9 @@ export type HistoryActionType =
   | 'property_track_add'
   | 'property_track_remove'
   | 'frame_rate_change'
-  | 'static_property_change';
+  | 'static_property_change'
+  | 'content_frame_reorder'
+  | 'timeline_duration_change';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -762,6 +764,34 @@ export interface StaticPropertyChangeHistoryAction extends HistoryAction {
   };
 }
 
+/**
+ * Captures before/after snapshots of all content frame timings across
+ * affected layers during a drag-and-drop reorder operation.
+ */
+export interface ContentFrameReorderHistoryAction extends HistoryAction {
+  type: 'content_frame_reorder';
+  data: {
+    /** Snapshot of affected layers' content frames BEFORE the reorder */
+    previousState: Array<{
+      layerId: string;
+      contentFrames: Array<{ id: string; startFrame: number; durationFrames: number; name: string; data: Map<string, Cell> }>;
+    }>;
+    /** Snapshot of affected layers' content frames AFTER the reorder */
+    newState: Array<{
+      layerId: string;
+      contentFrames: Array<{ id: string; startFrame: number; durationFrames: number; name: string; data: Map<string, Cell> }>;
+    }>;
+  };
+}
+
+export interface TimelineDurationChangeHistoryAction extends HistoryAction {
+  type: 'timeline_duration_change';
+  data: {
+    oldDuration: number;
+    newDuration: number;
+  };
+}
+
 export type AnyHistoryAction = 
   | CanvasHistoryAction
   | CanvasResizeHistoryAction
@@ -805,5 +835,7 @@ export type AnyHistoryAction =
   | PropertyTrackAddHistoryAction
   | PropertyTrackRemoveHistoryAction
   | FrameRateChangeHistoryAction
-  | StaticPropertyChangeHistoryAction;
+  | StaticPropertyChangeHistoryAction
+  | ContentFrameReorderHistoryAction
+  | TimelineDurationChangeHistoryAction;
 

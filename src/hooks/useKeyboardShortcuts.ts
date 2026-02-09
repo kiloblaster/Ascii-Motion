@@ -986,6 +986,37 @@ const processHistoryAction = (
       }
       break;
     }
+
+    case 'content_frame_reorder': {
+      // Restore the before or after snapshot of all affected layers' content frames
+      const snapshot = isRedo ? action.data.newState : action.data.previousState;
+      const tl = useTimelineStore.getState();
+
+      for (const layerSnap of snapshot) {
+        const lid = layerSnap.layerId as LayerId;
+        const layer = tl.layers.find((l) => l.id === lid);
+        if (!layer) continue;
+
+        // Remove all existing content frames on this layer
+        for (const cf of [...layer.contentFrames]) {
+          tl.removeContentFrame(lid, cf.id as ContentFrameId);
+        }
+
+        // Re-add content frames from the snapshot
+        for (const cf of layerSnap.contentFrames) {
+          const data = cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data ?? {}));
+          tl.addContentFrame(lid, cf.startFrame, cf.durationFrames, data);
+        }
+      }
+      break;
+    }
+
+    case 'timeline_duration_change': {
+      const tl = useTimelineStore.getState();
+      const duration = isRedo ? action.data.newDuration : action.data.oldDuration;
+      tl.setDuration(duration);
+      break;
+    }
       
     default:
       console.warn('Unknown history action type:', action);
