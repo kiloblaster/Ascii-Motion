@@ -291,7 +291,8 @@ export type HistoryActionType =
   | 'frame_rate_change'
   | 'static_property_change'
   | 'content_frame_reorder'
-  | 'timeline_duration_change';
+  | 'timeline_duration_change'
+  | 'trim_to_work_area';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -792,6 +793,22 @@ export interface TimelineDurationChangeHistoryAction extends HistoryAction {
   };
 }
 
+/**
+ * Captures full before/after state for trim-to-work-area.
+ * Includes layers, duration, and work area state.
+ */
+export interface TrimToWorkAreaHistoryAction extends HistoryAction {
+  type: 'trim_to_work_area';
+  data: {
+    previousLayers: import('../types/timeline').Layer[];
+    previousDuration: number;
+    previousWorkAreaStart: number;
+    previousWorkAreaEnd: number;
+    newLayers: import('../types/timeline').Layer[];
+    newDuration: number;
+  };
+}
+
 export type AnyHistoryAction = 
   | CanvasHistoryAction
   | CanvasResizeHistoryAction
@@ -837,5 +854,6 @@ export type AnyHistoryAction =
   | FrameRateChangeHistoryAction
   | StaticPropertyChangeHistoryAction
   | ContentFrameReorderHistoryAction
-  | TimelineDurationChangeHistoryAction;
+  | TimelineDurationChangeHistoryAction
+  | TrimToWorkAreaHistoryAction;
 

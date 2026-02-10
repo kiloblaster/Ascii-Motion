@@ -4357,6 +4357,45 @@ Suspected bottleneck sources (to be profiled):
 - [ ] Canvas renders correctly during playback (no artifacts)
 - [ ] Playback stop syncs final frame back to timeline store
 
+### 4.14 Work Area + Frame Start/End Controls
+
+**Purpose:** Add a work area range that constrains playback to a subset of the timeline, plus buttons to set content frame boundaries to the playhead.
+
+#### 4.14.1 Work Area
+
+**State:** `workAreaStart`, `workAreaEnd`, `workAreaEnabled` in `TimelineViewState`.
+
+**UI:**
+- Green line along the bottom of the ruler with downward ticks at start/end
+- Draggable start/end ticks and draggable body (moves the whole range)
+- 3 footer buttons: Set Start, Set End, Trim to Work Area
+- Trim destructively crops all layers/keyframes to the work area range (undoable)
+
+**Playback:** When enabled, playback starts from `max(currentFrame, workAreaStart)`, loops/stops at `workAreaEnd`.
+
+#### 4.14.2 Frame Start/End Buttons
+
+**Two buttons in toolbar** (next to add/duplicate/split/delete):
+- **Set Frame Start** — moves selected content frame's start to playhead
+- **Set Frame End** — moves selected content frame's end to playhead
+- Edge cases: start past end → 1 frame at end; end before start → 1 frame at start
+
+**History:** Uses existing `content_frame_timing` history action (via `updateContentFrameTiming`).
+
+#### 4.14.3 Files Modified
+
+| File | Change |
+|------|--------|
+| `src/types/timeline.ts` | Added `workAreaStart/End/Enabled` to `TimelineViewState` |
+| `src/types/index.ts` | Added `trim_to_work_area` history action type |
+| `src/stores/timelineStore.ts` | Added work area actions + `trimToWorkArea()` |
+| `src/hooks/useTimelineHistory.ts` | Added `trimToWorkArea` wrapper with history |
+| `src/hooks/useKeyboardShortcuts.ts` | Added `trim_to_work_area` undo handler |
+| `src/components/features/timeline/TimelineRuler.tsx` | Added green work area overlay with drag |
+| `src/components/features/TimelinePanel.tsx` | Added 3 footer buttons (Set Start/End, Trim) |
+| `src/components/features/timeline/TimelineToolbar.tsx` | Added Set Frame Start/End buttons |
+| `src/hooks/useOptimizedPlayback.ts` | Constrained playback to work area bounds |
+
 ---
 
 ## Phase 5: Export & Migration

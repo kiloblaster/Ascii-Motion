@@ -359,6 +359,11 @@ export interface TimelineViewState {
     /** Frame position of the slot boundary (for the indicator line) */
     slotFrame: number;
   } | null;
+
+  // Work area — constrains playback to a sub-range of the timeline
+  workAreaStart: number;    // Frame (inclusive), default 0
+  workAreaEnd: number;      // Frame (exclusive), default durationFrames
+  workAreaEnabled: boolean; // Whether playback is constrained to work area
 }
 
 /**

@@ -116,9 +116,14 @@ export const useOptimizedPlayback = () => {
       return;
     }
 
-    // Starting frame — timeline playhead position
+    // Work area bounds (if enabled)
+    const waEnabled = view.workAreaEnabled;
+    const waStart = waEnabled ? view.workAreaStart : 0;
+    const waEnd = waEnabled ? view.workAreaEnd : durationFrames;
+
+    // Starting frame — clamp to work area if enabled
     const startingFrame = isLayerMode
-      ? Math.max(0, Math.min(view.currentFrame, durationFrames - 1))
+      ? Math.max(waStart, Math.min(view.currentFrame, waEnd - 1))
       : Math.max(0, Math.min(useAnimationStore.getState().currentFrameIndex, frames.length - 1));
 
     // Initialize render settings
@@ -128,10 +133,15 @@ export const useOptimizedPlayback = () => {
     // Frame duration in ms (uniform for timeline mode)
     const frameDurationMs = 1000 / config.frameRate;
 
-    // Build a synthetic legacy-style Frame array for the playbackOnlyStore
-    // (the store is only used for isActive / subscriber bookkeeping)
+    // Build a synthetic legacy-style Frame array for the playbackOnlyStore.
+    // In timeline mode, we need durationFrames entries so goToFrame() bounds-checking works.
     const syntheticFrames: Frame[] = isLayerMode
-      ? [{ id: 'synth-0' as unknown as FrameId, name: 'synth', duration: frameDurationMs, data: new Map() }]
+      ? Array.from({ length: durationFrames }, (_, i) => ({
+          id: `synth-${i}` as unknown as FrameId,
+          name: `Frame ${i}`,
+          duration: frameDurationMs,
+          data: new Map(),
+        }))
       : frames;
 
     playbackOnlyStore.start(
@@ -196,16 +206,15 @@ export const useOptimizedPlayback = () => {
       if (!playbackOnlyStore.isActive()) return;
 
       const elapsed = timestamp - lastFrameTime;
-      const totalFrames = isLayerMode ? durationFrames : frames.length;
 
       if (isLayerMode) {
         // ── Timeline / layer mode (pre-computed) ──
         if (elapsed >= frameDurationMs) {
-          const atLast = currentIndex >= totalFrames - 1;
+          const atLast = currentIndex >= waEnd - 1;
           if (atLast) {
             const { looping } = useTimelineStore.getState().view;
             if (looping) {
-              currentIndex = 0;
+              currentIndex = waStart;
             } else {
               stopOptimizedPlayback({ preserveFrameIndex: true, frameIndex: currentIndex });
               return;

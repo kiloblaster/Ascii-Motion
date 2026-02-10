@@ -15,6 +15,7 @@ import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
+import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import type { KeyframeId } from '../../../types/timeline';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +43,9 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const contentFrameDragPreview = useTimelineStore((s) => s.view.contentFrameDragPreview);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const { addKeyframe } = useTimelineHistory();
+
+  // Playback position for live indicator
+  const { isActive: isPlaybackActive, currentFrameIndex: playbackFrame } = usePlaybackOnlySnapshot();
 
   // Marquee selection state
   const [marquee, setMarquee] = useState<{
@@ -376,6 +380,14 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
           className="absolute top-0 bottom-0 w-0.5 bg-red-500/50 pointer-events-none z-10"
           style={{ left: currentFrame * pxPerFrame }}
         />
+
+        {/* Playback position line (moves during playback) */}
+        {isPlaybackActive && (
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-red-400/50 pointer-events-none z-10"
+            style={{ left: playbackFrame * pxPerFrame }}
+          />
+        )}
       </div>
     </div>
   );

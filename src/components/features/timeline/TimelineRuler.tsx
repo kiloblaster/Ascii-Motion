@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useToolStore } from '../../../stores/toolStore';
+import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import { cn } from '@/lib/utils';
 import type { TimelineDurationChangeHistoryAction } from '../../../types';
 
@@ -25,6 +26,16 @@ export const TimelineRuler: React.FC = () => {
   const goToFrame = useTimelineStore((s) => s.goToFrame);
   const setDuration = useTimelineStore((s) => s.setDuration);
   const pushToHistory = useToolStore((s) => s.pushToHistory);
+
+  // Work area state
+  const workAreaStart = useTimelineStore((s) => s.view.workAreaStart);
+  const workAreaEnd = useTimelineStore((s) => s.view.workAreaEnd);
+  const workAreaEnabled = useTimelineStore((s) => s.view.workAreaEnabled);
+  const setWorkAreaStart = useTimelineStore((s) => s.setWorkAreaStart);
+  const setWorkAreaEnd = useTimelineStore((s) => s.setWorkAreaEnd);
+
+  // Playback position (updates during optimized playback without React re-renders)
+  const { isActive: isPlaybackActive, currentFrameIndex: playbackFrame } = usePlaybackOnlySnapshot();
 
   const rulerRef = useRef<HTMLDivElement>(null);
   const pxPerFrame = BASE_PX_PER_FRAME * zoom;
@@ -169,13 +180,23 @@ export const TimelineRuler: React.FC = () => {
       {/* Ticks */}
       {ticks}
 
-      {/* Playhead marker */}
+      {/* Playhead marker (static — stays at the frame where playback started) */}
       <div
         className="absolute top-0 bottom-0 w-0.5 bg-red-500 pointer-events-none z-10"
         style={{ left: currentFrame * pxPerFrame - scrollX }}
       >
         <div className="absolute -top-0.5 -left-[3px] w-2 h-2 bg-red-500 rounded-full" />
       </div>
+
+      {/* Playback position indicator (moves during playback) */}
+      {isPlaybackActive && (
+        <div
+          className="absolute top-0 bottom-0 w-0.5 bg-red-400/70 pointer-events-none z-10"
+          style={{ left: playbackFrame * pxPerFrame - scrollX }}
+        >
+          <div className="absolute -top-0.5 -left-[2px] w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-red-400" />
+        </div>
+      )}
 
       {/* End-of-timeline bracket — draggable to resize duration */}
       <div
@@ -195,6 +216,71 @@ export const TimelineRuler: React.FC = () => {
         {/* Hover glow */}
         <div className="absolute left-[2px] top-0 bottom-0 w-[3px] bg-purple-400/0 group-hover:bg-purple-400/30 transition-colors" />
       </div>
+
+      {/* Work area overlay — green range indicator along the bottom edge */}
+      {workAreaEnabled && (() => {
+        const waLeft = workAreaStart * pxPerFrame - scrollX;
+        const waWidth = (workAreaEnd - workAreaStart) * pxPerFrame;
+        const TICK_W = 6;
+        const TICK_H = 6;
+
+        const handleWorkAreaDrag = (e: React.MouseEvent, mode: 'start' | 'end' | 'body') => {
+          e.stopPropagation();
+          e.preventDefault();
+          const startX = e.clientX;
+          const origStart = workAreaStart;
+          const origEnd = workAreaEnd;
+
+          const onMove = (me: MouseEvent) => {
+            const dx = me.clientX - startX;
+            const frameDelta = Math.round(dx / pxPerFrame);
+            if (mode === 'start') {
+              setWorkAreaStart(origStart + frameDelta);
+            } else if (mode === 'end') {
+              setWorkAreaEnd(origEnd + frameDelta);
+            } else {
+              const duration = origEnd - origStart;
+              const newStart = Math.max(0, origStart + frameDelta);
+              const newEnd = Math.min(durationFrames, newStart + duration);
+              useTimelineStore.getState().setWorkAreaStart(Math.max(0, newEnd - duration));
+              useTimelineStore.getState().setWorkAreaEnd(newEnd);
+            }
+          };
+          const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+          };
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        };
+
+        return (
+          <div className="absolute bottom-0 z-30" style={{ left: waLeft, width: waWidth, height: 6 }}>
+            {/* Green bar */}
+            <div className="absolute inset-x-0 bottom-0 h-[2px] bg-green-500/70 cursor-grab"
+              onMouseDown={(e) => handleWorkAreaDrag(e, 'body')}
+            />
+            {/* Start tick */}
+            <div
+              className="absolute left-0 bottom-0 cursor-col-resize"
+              style={{ width: TICK_W, height: TICK_H }}
+              onMouseDown={(e) => handleWorkAreaDrag(e, 'start')}
+            >
+              <div className="absolute left-0 bottom-0 w-[2px] bg-green-500" style={{ height: TICK_H }} />
+              <div className="absolute left-0 bottom-0 h-[2px] bg-green-500" style={{ width: TICK_W }} />
+            </div>
+            {/* End tick */}
+            <div
+              className="absolute right-0 bottom-0 cursor-col-resize"
+              style={{ width: TICK_W, height: TICK_H }}
+              onMouseDown={(e) => handleWorkAreaDrag(e, 'end')}
+            >
+              <div className="absolute right-0 bottom-0 w-[2px] bg-green-500" style={{ height: TICK_H }} />
+              <div className="absolute right-0 bottom-0 h-[2px] bg-green-500" style={{ width: TICK_W }} />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

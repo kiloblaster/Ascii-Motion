@@ -33,6 +33,8 @@ import {
   StepBack,
   StepForward,
   RotateCcw,
+  ArrowLeftToLine,
+  ArrowRightToLine,
 } from 'lucide-react';
 
 export const TimelineToolbar: React.FC = () => {
@@ -215,6 +217,34 @@ export const TimelineToolbar: React.FC = () => {
     }
   }, [isPlaybackActive, startOptimizedPlayback, stopOptimizedPlayback]);
 
+  // Set content frame start/end to playhead
+  const handleSetFrameStart = useCallback(() => {
+    if (!activeLayer || isPlaybackActive || !contentFrameAtPlayhead) return;
+    const cf = contentFrameAtPlayhead;
+    const cfEnd = cf.startFrame + cf.durationFrames;
+    if (currentFrame >= cfEnd) {
+      // Start past end → 1 frame at end
+      updateContentFrameTiming(activeLayer.id, cf.id, cfEnd - 1, 1);
+    } else {
+      // Normal: move start to playhead, shrink from left
+      const newDuration = cfEnd - currentFrame;
+      updateContentFrameTiming(activeLayer.id, cf.id, currentFrame, newDuration);
+    }
+  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, currentFrame, updateContentFrameTiming]);
+
+  const handleSetFrameEnd = useCallback(() => {
+    if (!activeLayer || isPlaybackActive || !contentFrameAtPlayhead) return;
+    const cf = contentFrameAtPlayhead;
+    if (currentFrame < cf.startFrame) {
+      // End before start → 1 frame at start
+      updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, 1);
+    } else {
+      // Normal: set end to playhead (inclusive, so +1)
+      const newDuration = currentFrame - cf.startFrame + 1;
+      updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, newDuration);
+    }
+  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, currentFrame, updateContentFrameTiming]);
+
   return (
     <TooltipProvider>
     <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-muted/30">
@@ -278,6 +308,38 @@ export const TimelineToolbar: React.FC = () => {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top">Delete frame block</TooltipContent>
+      </Tooltip>
+
+      <div className="w-px h-4 bg-border/50 mx-0.5" />
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1"
+            onClick={handleSetFrameStart}
+            disabled={isPlaybackActive || !contentFrameAtPlayhead}
+          >
+            <ArrowLeftToLine className="w-3.5 h-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Set frame start to playhead</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1"
+            onClick={handleSetFrameEnd}
+            disabled={isPlaybackActive || !contentFrameAtPlayhead}
+          >
+            <ArrowRightToLine className="w-3.5 h-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Set frame end to playhead</TooltipContent>
       </Tooltip>
       </div>
 

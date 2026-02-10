@@ -200,6 +200,13 @@ export interface TimelineState {
   setShowLayerProperties: (show: boolean) => void;
   toggleLayerExpanded: (layerId: LayerId) => void;
 
+  // Work area
+  setWorkAreaStart: (frame: number) => void;
+  setWorkAreaEnd: (frame: number) => void;
+  setWorkAreaEnabled: (enabled: boolean) => void;
+  clearWorkArea: () => void;
+  trimToWorkArea: () => void;
+
   // ============================================
   // PROJECT LIFECYCLE
   // ============================================
@@ -238,6 +245,9 @@ const INITIAL_VIEW: TimelineViewState = {
   showLayerProperties: false,
   keyframeDuplicateGhosts: new Map(),
   contentFrameDragPreview: null,
+  workAreaStart: 0,
+  workAreaEnd: 1,
+  workAreaEnabled: false,
 };
 
 // ============================================
@@ -1049,6 +1059,96 @@ export const useTimelineStore = create<TimelineState>()(
           next.add(layerId);
         }
         return { view: { ...state.view, expandedLayerIds: next } };
+      });
+    },
+
+    // ============================================
+    // WORK AREA
+    // ============================================
+
+    setWorkAreaStart: (frame) => {
+      set((state) => ({
+        view: {
+          ...state.view,
+          workAreaStart: Math.max(0, Math.min(frame, state.view.workAreaEnd - 1)),
+          workAreaEnabled: true,
+        },
+      }));
+    },
+
+    setWorkAreaEnd: (frame) => {
+      set((state) => ({
+        view: {
+          ...state.view,
+          workAreaEnd: Math.max(state.view.workAreaStart + 1, Math.min(frame, state.config.durationFrames)),
+          workAreaEnabled: true,
+        },
+      }));
+    },
+
+    setWorkAreaEnabled: (enabled) => {
+      set((state) => ({ view: { ...state.view, workAreaEnabled: enabled } }));
+    },
+
+    clearWorkArea: () => {
+      set((state) => ({
+        view: {
+          ...state.view,
+          workAreaStart: 0,
+          workAreaEnd: state.config.durationFrames,
+          workAreaEnabled: false,
+        },
+      }));
+    },
+
+    trimToWorkArea: () => {
+      const { view, layers, config } = get();
+      const { workAreaStart, workAreaEnd } = view;
+      if (!view.workAreaEnabled || workAreaStart >= workAreaEnd) return;
+
+      const trimDuration = workAreaEnd - workAreaStart;
+
+      // Trim all layers' content frames and keyframes to the work area range
+      const trimmedLayers = layers.map((layer) => ({
+        ...layer,
+        contentFrames: layer.contentFrames
+          .map((cf) => {
+            const cfEnd = cf.startFrame + cf.durationFrames;
+            // Fully outside — remove
+            if (cfEnd <= workAreaStart || cf.startFrame >= workAreaEnd) return null;
+            // Clip to work area bounds
+            const newStart = Math.max(cf.startFrame, workAreaStart) - workAreaStart;
+            const newEnd = Math.min(cfEnd, workAreaEnd) - workAreaStart;
+            return {
+              ...cf,
+              startFrame: newStart,
+              durationFrames: newEnd - newStart,
+              data: new Map(cf.data),
+            };
+          })
+          .filter((cf): cf is NonNullable<typeof cf> => cf !== null),
+        propertyTracks: layer.propertyTracks.map((track) => ({
+          ...track,
+          keyframes: track.keyframes
+            .filter((kf) => kf.frame >= workAreaStart && kf.frame < workAreaEnd)
+            .map((kf) => ({ ...kf, frame: kf.frame - workAreaStart })),
+        })),
+      }));
+
+      set({
+        config: {
+          ...config,
+          durationFrames: trimDuration,
+          durationMs: (trimDuration / config.frameRate) * 1000,
+        },
+        layers: trimmedLayers,
+        view: {
+          ...view,
+          currentFrame: Math.min(view.currentFrame - workAreaStart, trimDuration - 1),
+          workAreaStart: 0,
+          workAreaEnd: trimDuration,
+          workAreaEnabled: false,
+        },
       });
     },
 

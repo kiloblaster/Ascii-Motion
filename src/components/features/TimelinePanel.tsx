@@ -23,8 +23,11 @@ import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { OnionSkinControls } from './OnionSkinControls';
 import { FrameRateControl } from './timeline/FrameRateControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Button } from '../ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Slider } from '../ui/slider';
-import { Layers, Grid3X3, ZoomIn } from 'lucide-react';
+import { Layers, Grid3X3, ZoomIn, CornerDownLeft, CornerDownRight, Scissors } from 'lucide-react';
+import { useTimelineHistory } from '../../hooks/useTimelineHistory';
 
 export const TimelinePanel: React.FC = () => {
   const activeView = useTimelineStore((s) => s.view.activeView);
@@ -33,6 +36,10 @@ export const TimelinePanel: React.FC = () => {
   const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
   const zoom = useTimelineStore((s) => s.view.zoom);
   const setZoom = useTimelineStore((s) => s.setZoom);
+  const setWorkAreaStart = useTimelineStore((s) => s.setWorkAreaStart);
+  const setWorkAreaEnd = useTimelineStore((s) => s.setWorkAreaEnd);
+  const workAreaEnabled = useTimelineStore((s) => s.view.workAreaEnabled);
+  const { trimToWorkArea } = useTimelineHistory();
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
 
@@ -119,6 +126,50 @@ export const TimelinePanel: React.FC = () => {
                   {currentFrame + 1} / {durationFrames} ·{' '}
                 </span>
                 <FrameRateControl />
+                <TooltipProvider>
+                  <div className="flex items-center gap-0.5 ml-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={() => setWorkAreaStart(currentFrame)}
+                        >
+                          <CornerDownLeft className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Set work area start to playhead</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={() => setWorkAreaEnd(currentFrame + 1)}
+                        >
+                          <CornerDownRight className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Set work area end to playhead</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={trimToWorkArea}
+                          disabled={!workAreaEnabled}
+                        >
+                          <Scissors className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Trim timeline to work area</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
                 <div className="flex-1" />
                 <ZoomIn className="w-3 h-3 text-muted-foreground" />
                 <Slider

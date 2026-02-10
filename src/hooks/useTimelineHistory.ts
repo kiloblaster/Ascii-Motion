@@ -596,6 +596,38 @@ export function useTimelineHistory() {
   }, [getLayer, pushToHistory]);
 
   // ============================================
+  // TRIM TO WORK AREA (with history)
+  // ============================================
+
+  const trimToWorkArea = useCallback(() => {
+    const tl = useTimelineStore.getState();
+    const { workAreaStart, workAreaEnd, workAreaEnabled } = tl.view;
+    if (!workAreaEnabled || workAreaStart >= workAreaEnd) return;
+
+    const previousLayers = structuredClone(tl.layers);
+    const previousDuration = tl.config.durationFrames;
+
+    tl.trimToWorkArea();
+
+    const newState = useTimelineStore.getState();
+
+    const historyAction: import('../types').TrimToWorkAreaHistoryAction = {
+      type: 'trim_to_work_area',
+      timestamp: Date.now(),
+      description: `Trim timeline to work area (frames ${workAreaStart}–${workAreaEnd})`,
+      data: {
+        previousLayers,
+        previousDuration,
+        previousWorkAreaStart: workAreaStart,
+        previousWorkAreaEnd: workAreaEnd,
+        newLayers: structuredClone(newState.layers),
+        newDuration: newState.config.durationFrames,
+      },
+    };
+    pushToHistory(historyAction);
+  }, [pushToHistory]);
+
+  // ============================================
   // PASS-THROUGH (no history needed)
   // ============================================
 
@@ -636,6 +668,9 @@ export function useTimelineHistory() {
 
     // Static property (with history)
     setStaticProperty,
+
+    // Work area (with history)
+    trimToWorkArea,
 
     // Pass-through without history (from store directly)
     setLayerSolo: useTimelineStore.getState().setLayerSolo,

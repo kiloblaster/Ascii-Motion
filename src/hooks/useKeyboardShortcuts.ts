@@ -1017,6 +1017,45 @@ const processHistoryAction = (
       tl.setDuration(duration);
       break;
     }
+
+    case 'trim_to_work_area': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-apply trimmed state
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            durationFrames: action.data.newDuration,
+            durationMs: (action.data.newDuration / tl.config.frameRate) * 1000,
+          },
+          layers: structuredClone(action.data.newLayers),
+          view: {
+            ...tl.view,
+            workAreaStart: 0,
+            workAreaEnd: action.data.newDuration,
+            workAreaEnabled: false,
+            currentFrame: Math.min(tl.view.currentFrame, action.data.newDuration - 1),
+          },
+        });
+      } else {
+        // Restore pre-trim state
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            durationFrames: action.data.previousDuration,
+            durationMs: (action.data.previousDuration / tl.config.frameRate) * 1000,
+          },
+          layers: structuredClone(action.data.previousLayers),
+          view: {
+            ...tl.view,
+            workAreaStart: action.data.previousWorkAreaStart,
+            workAreaEnd: action.data.previousWorkAreaEnd,
+            workAreaEnabled: true,
+          },
+        });
+      }
+      break;
+    }
       
     default:
       console.warn('Unknown history action type:', action);
