@@ -27,6 +27,7 @@ import {
 } from '../utils/layerCompositing';
 import { PROPERTY_DEFINITIONS, type PropertyPath } from '../types/timeline';
 import { useKeyframeableProperty } from './useKeyframeableProperty';
+import { useTimelineHistory } from './useTimelineHistory';
 import { useToolStore } from '../stores/toolStore';
 import { toast } from 'sonner';
 
@@ -169,6 +170,10 @@ export function useLayerTransformTool() {
   const rotation = useKeyframeableProperty(activeLayerId, 'transform.rotation');
   const anchorX = useKeyframeableProperty(activeLayerId, 'transform.anchorPoint.x');
   const anchorY = useKeyframeableProperty(activeLayerId, 'transform.anchorPoint.y');
+
+  // Auto-keyframe mode + history-wrapped track creation
+  const autoKeyframe = useToolStore((s) => s.layerTransformAutoKeyframe);
+  const { addPropertyTrack, addKeyframe: addKeyframeHistory } = useTimelineHistory();
 
   const isDisabled = !activeLayer || isPlaying || isPlaybackMode;
   const isLocked = activeLayer?.locked ?? false;
@@ -331,8 +336,42 @@ export function useLayerTransformTool() {
       };
 
       setDragState(state);
+
+      // Auto-keyframe: create property tracks for affected properties if they don't exist
+      if (autoKeyframe && activeLayerId) {
+        const propsForMode: Record<TransformDragMode, PropertyPath[]> = {
+          move: ['transform.position.x', 'transform.position.y'],
+          scale: ['transform.scale'],
+          rotate: ['transform.rotation'],
+          anchor: ['transform.anchorPoint.x', 'transform.anchorPoint.y'],
+          none: [],
+        };
+        const affectedProps = propsForMode[mode] ?? [];
+        const layer = useTimelineStore.getState().layers.find((l) => l.id === activeLayerId);
+        if (layer) {
+          for (const prop of affectedProps) {
+            const hasTrack = layer.propertyTracks.some((t) => t.propertyPath === prop);
+            if (!hasTrack) {
+              // Create the property track (with history)
+              const trackId = addPropertyTrack(activeLayerId, prop);
+              if (trackId) {
+                // Add an initial keyframe at current frame with the current value
+                const currentValue = startValues[
+                  prop === 'transform.position.x' ? 'positionX' :
+                  prop === 'transform.position.y' ? 'positionY' :
+                  prop === 'transform.scale' ? 'scale' :
+                  prop === 'transform.rotation' ? 'rotation' :
+                  prop === 'transform.anchorPoint.x' ? 'anchorPointX' :
+                  'anchorPointY'
+                ];
+                addKeyframeHistory(activeLayerId, trackId, useTimelineStore.getState().view.currentFrame, currentValue);
+              }
+            }
+          }
+        }
+      }
     },
-    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scale.value, rotation.value, anchorX.value, anchorY.value],
+    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scale.value, rotation.value, anchorX.value, anchorY.value, autoKeyframe, activeLayerId, addPropertyTrack, addKeyframeHistory],
   );
 
   const handleMouseMove = useCallback(

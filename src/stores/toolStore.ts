@@ -74,6 +74,9 @@ interface ToolStoreState extends ToolState {
   // Brush size preview overlay state
   brushSizePreviewVisible: boolean;
   brushSizePreviewTimerRef: NodeJS.Timeout | null;
+
+  // Layer Transform tool auto-keyframe mode
+  layerTransformAutoKeyframe: boolean;
   
   // Actions
   setActiveTool: (tool: Tool) => void;
@@ -272,6 +275,9 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   // Brush size preview overlay state
   brushSizePreviewVisible: false,
   brushSizePreviewTimerRef: null,
+
+  // Layer Transform tool auto-keyframe mode
+  layerTransformAutoKeyframe: false,
   
   // Pencil tool state
   pencilLastPosition: null,
