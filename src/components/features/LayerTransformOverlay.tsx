@@ -7,14 +7,16 @@
  *  - Anchor point crosshair (yellow, matching AnchorPointOverlay style)
  *  - Motion path dots (position at each frame)
  *
- * All elements are pointer-events-none — mouse events are handled by
- * useCanvasMouseHandlers routing to useLayerTransformTool.
+ * The overlay is pointer-events-auto and captures all mouse interactions
+ * for the transform tool, including areas outside the canvas element bounds.
+ * This is necessary because the canvas element is sized to the grid dimensions,
+ * but bounding boxes/corners/anchors can extend beyond those bounds.
  *
  * Part of the Layer Timeline Refactor (Phase 4)
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §4.10
  */
 
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useToolStore } from '../../stores/toolStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
@@ -27,16 +29,94 @@ export const LayerTransformOverlay: React.FC = () => {
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
 
-  const { cellWidth, cellHeight, zoom, panOffset } = useCanvasContext();
-  const { boundingBox, anchorScreenPos, isLocked, activeLayer } =
-    useLayerTransformTool();
+  const { canvasRef, cellWidth, cellHeight, zoom, panOffset } = useCanvasContext();
+  const {
+    boundingBox,
+    dragState,
+    anchorScreenPos,
+    isLocked,
+    activeLayer,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    cursorZone,
+  } = useLayerTransformTool();
+
+  const isDraggingRef = useRef(false);
+
+  const effectiveCellWidth = cellWidth * zoom;
+  const effectiveCellHeight = cellHeight * zoom;
+
+  // Convert pixel coordinates (relative to the canvas element's position)
+  // to cell coordinates. Uses the canvas element's bounding rect so this
+  // works even for events originating on the overlay (outside canvas bounds).
+  const pixelToCell = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
+      const adjustedX = clientX - rect.left - panOffset.x;
+      const adjustedY = clientY - rect.top - panOffset.y;
+      return {
+        x: Math.floor(adjustedX / effectiveCellWidth),
+        y: Math.floor(adjustedY / effectiveCellHeight),
+      };
+    },
+    [canvasRef, panOffset, effectiveCellWidth, effectiveCellHeight],
+  );
+
+  // Global mousemove/mouseup during drag — allows dragging beyond overlay bounds
+  useEffect(() => {
+    if (!isDraggingRef.current) return;
+
+    const onGlobalMouseMove = (e: MouseEvent) => {
+      const cell = pixelToCell(e.clientX, e.clientY);
+      handleMouseMove(cell.x, cell.y);
+    };
+    const onGlobalMouseUp = () => {
+      handleMouseUp();
+      isDraggingRef.current = false;
+      window.removeEventListener('mousemove', onGlobalMouseMove);
+      window.removeEventListener('mouseup', onGlobalMouseUp);
+    };
+
+    window.addEventListener('mousemove', onGlobalMouseMove);
+    window.addEventListener('mouseup', onGlobalMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', onGlobalMouseMove);
+      window.removeEventListener('mouseup', onGlobalMouseUp);
+    };
+  }, [dragState, pixelToCell, handleMouseMove, handleMouseUp]);
+
+  const onOverlayMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Only handle left mouse button
+      if (e.button !== 0) return;
+      const cell = pixelToCell(e.clientX, e.clientY);
+      handleMouseDown(cell.x, cell.y);
+      isDraggingRef.current = true;
+      // Prevent default to avoid text selection during drag
+      e.preventDefault();
+    },
+    [pixelToCell, handleMouseDown],
+  );
+
+  const onOverlayMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // When not dragging, just update cursor zone via the hook
+      if (!isDraggingRef.current) {
+        const cell = pixelToCell(e.clientX, e.clientY);
+        handleMouseMove(cell.x, cell.y);
+      }
+      // During drag, global listeners handle this
+    },
+    [pixelToCell, handleMouseMove],
+  );
 
   // Only render when transform tool is active
   if (activeTool !== 'layertransform') return null;
   if (!activeLayer) return null;
-
-  const effectiveCellWidth = cellWidth * zoom;
-  const effectiveCellHeight = cellHeight * zoom;
 
   const toPixelX = (cellX: number) => cellX * effectiveCellWidth + panOffset.x;
   const toPixelY = (cellY: number) => cellY * effectiveCellHeight + panOffset.y;
@@ -81,10 +161,22 @@ export const LayerTransformOverlay: React.FC = () => {
   const handleColor = isLocked ? 'rgba(128, 128, 128, 0.6)' : 'rgba(147, 130, 255, 1)';
   const handleSize = 8; // pixels
 
+  // Cursor based on current zone (CSS cursor values, not Tailwind classes)
+  const cursorMap: Record<string, string> = {
+    move: 'move',
+    scale: 'nwse-resize',
+    rotate: 'crosshair',
+    anchor: 'crosshair',
+    none: 'default',
+  };
+  const cursorStyle = isLocked ? 'not-allowed' : (cursorMap[cursorZone] || 'default');
+
   return (
     <div
-      className="absolute inset-0 pointer-events-none"
-      style={{ zIndex: 15 }}
+      className="absolute inset-0 pointer-events-auto"
+      style={{ zIndex: 15, cursor: cursorStyle, overflow: 'visible' }}
+      onMouseDown={onOverlayMouseDown}
+      onMouseMove={onOverlayMouseMove}
     >
       {/* Motion path dots */}
       {motionPath.length > 1 &&
@@ -97,7 +189,7 @@ export const LayerTransformOverlay: React.FC = () => {
             <div
               key={idx}
               className={cn(
-                'absolute rounded-full -translate-x-1/2 -translate-y-1/2',
+                'absolute rounded-full -translate-x-1/2 -translate-y-1/2 pointer-events-none',
                 isCurrent
                   ? 'w-2.5 h-2.5 bg-yellow-400 border border-yellow-600'
                   : 'w-1 h-1 bg-yellow-500/50',
@@ -110,7 +202,7 @@ export const LayerTransformOverlay: React.FC = () => {
       {/* Bounding box + corner handles (SVG overlay) */}
       {boundingBox && boxPath && (
         <svg
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 w-full h-full pointer-events-none"
           style={{ overflow: 'visible' }}
         >
           {/* Bounding box outline */}
@@ -145,7 +237,7 @@ export const LayerTransformOverlay: React.FC = () => {
 
       {/* Anchor point crosshair */}
       <div
-        className="absolute"
+        className="absolute pointer-events-none"
         style={{
           left: anchorPixelX,
           top: anchorPixelY,
