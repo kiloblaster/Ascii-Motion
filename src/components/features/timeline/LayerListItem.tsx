@@ -9,7 +9,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, Lock, Unlock, ChevronRight, Trash2, Plus, X, Diamond } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import {
@@ -57,6 +57,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
   const addKeyframesToSelection = useTimelineStore((s) => s.addKeyframesToSelection);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
+  const goToFrame = useTimelineStore((s) => s.goToFrame);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(layer.name);
@@ -277,6 +278,27 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
                 >
                   {def?.displayName ?? track.propertyPath.split('.').pop()}
                 </span>
+                {/* Previous keyframe on this track */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="p-0.5 hover:bg-muted rounded"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const prev = [...track.keyframes]
+                          .map((kf) => kf.frame)
+                          .filter((f) => f < currentFrame)
+                          .sort((a, b) => b - a)[0];
+                        if (prev !== undefined) goToFrame(prev);
+                      }}
+                      disabled={!track.keyframes.some((kf) => kf.frame < currentFrame)}
+                    >
+                      <ChevronLeft className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Previous keyframe on this track</TooltipContent>
+                </Tooltip>
+                {/* Add/remove keyframe at current frame */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -305,6 +327,26 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
                   <TooltipContent side="top">
                     {existingKf ? 'Remove keyframe at current frame' : 'Add keyframe at current frame'}
                   </TooltipContent>
+                </Tooltip>
+                {/* Next keyframe on this track */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className="p-0.5 hover:bg-muted rounded"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const next = [...track.keyframes]
+                          .map((kf) => kf.frame)
+                          .filter((f) => f > currentFrame)
+                          .sort((a, b) => a - b)[0];
+                        if (next !== undefined) goToFrame(next);
+                      }}
+                      disabled={!track.keyframes.some((kf) => kf.frame > currentFrame)}
+                    >
+                      <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Next keyframe on this track</TooltipContent>
                 </Tooltip>
                 <button
                   className="p-0.5 hover:bg-muted rounded"

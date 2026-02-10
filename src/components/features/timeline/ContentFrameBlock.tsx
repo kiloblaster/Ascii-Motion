@@ -45,7 +45,6 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
   const toggleContentFrameSelected = useTimelineStore((s) => s.toggleContentFrameSelected);
   const setActiveLayer = useTimelineStore((s) => s.setActiveLayer);
   const setContentFrameDragPreview = useTimelineStore((s) => s.setContentFrameDragPreview);
-  const goToFrame = useTimelineStore((s) => s.goToFrame);
 
   const isActive = layerId === activeLayerId;
   const isSelected = selectedIds.has(contentFrame.id);
@@ -129,6 +128,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       const startY = e.clientY;
       const origStart = contentFrame.startFrame;
       const duration = contentFrame.durationFrames;
+      const isAltDuplicate = e.altKey;
       let didDrag = false;
       let beforeSnapshot: ReturnType<typeof snapshotLayerFrames>[] | null = null;
 
@@ -140,7 +140,6 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
         }
         if (!didDrag) {
           // Capture snapshot of ALL layers BEFORE any reordering
-          // (simpler than tracking which layers will be affected)
           const allLayers = useTimelineStore.getState().layers;
           beforeSnapshot = allLayers.map((l) => snapshotLayerFrames(l.id));
           didDrag = true;
@@ -187,8 +186,8 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
         setContentFrameDragPreview(null);
 
         if (!didDrag) {
+          // Click (no drag): select frame without moving playhead
           if (layerId !== activeLayerId) setActiveLayer(layerId);
-          goToFrame(contentFrame.startFrame);
 
           if (me.metaKey || me.ctrlKey) {
             // Cmd/Ctrl+click: toggle individual frame in/out of selection
@@ -377,7 +376,18 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           updateContentFrameTiming(layerId, contentFrame.id, targetStart, duration);
         }
 
-        // Record history for the entire drag-reorder operation
+        // Alt+drag: create a duplicate at the ORIGINAL position now that the
+        // original frame has moved to its new position (same pattern as keyframe Alt+drag)
+        if (isAltDuplicate) {
+          useTimelineStore.getState().addContentFrame(
+            layerId,
+            origStart,
+            duration,
+            new Map(contentFrame.data),
+          );
+        }
+
+        // Record history for the entire drag-reorder (+ optional duplicate) operation
         if (beforeSnapshot) {
           const allLayers = useTimelineStore.getState().layers;
           const afterSnapshot = allLayers.map((l) => snapshotLayerFrames(l.id));
@@ -398,7 +408,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     },
-    [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, activeLayerId, setActiveLayer, goToFrame, selectContentFrames, addContentFramesToSelection, toggleContentFrameSelected, setContentFrameDragPreview, pushToHistory],
+    [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, activeLayerId, setActiveLayer, selectContentFrames, addContentFramesToSelection, toggleContentFrameSelected, setContentFrameDragPreview, pushToHistory],
   );
 
   // ── Resize handlers ──

@@ -1699,6 +1699,46 @@ export const useKeyboardShortcuts = () => {
 
     // Check for modifier keys (Cmd on Mac, Ctrl on Windows/Linux)
     if (!isModifierPressed) return;
+
+    // Handle Ctrl+Arrow Left/Right: jump to next/previous visible keyframe
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      const tl = useTimelineStore.getState();
+      if (tl.layers.length > 0) {
+        event.preventDefault();
+        const current = tl.view.currentFrame;
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const expandedIds = tl.view.expandedLayerIds;
+
+        // Collect all keyframe frame numbers from expanded (visible) layers
+        const keyframeFrames = new Set<number>();
+        for (const layer of tl.layers) {
+          if (!expandedIds.has(layer.id)) continue; // skip collapsed layers
+          for (const track of layer.propertyTracks) {
+            for (const kf of track.keyframes) {
+              keyframeFrames.add(kf.frame);
+            }
+          }
+        }
+
+        if (keyframeFrames.size > 0) {
+          const sorted = [...keyframeFrames].sort((a, b) => a - b);
+          let target: number | null = null;
+          if (direction === 1) {
+            // Next keyframe after current
+            target = sorted.find((f) => f > current) ?? null;
+          } else {
+            // Previous keyframe before current
+            for (let i = sorted.length - 1; i >= 0; i--) {
+              if (sorted[i] < current) { target = sorted[i]; break; }
+            }
+          }
+          if (target !== null) {
+            tl.goToFrame(target);
+          }
+        }
+        return;
+      }
+    }
     
     // Handle Ctrl+Delete or Ctrl+Backspace for frame deletion (before the switch statement)
     if ((event.key === 'Delete' || event.key === 'Backspace') && isModifierPressed) {
