@@ -26,7 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Slider } from '../ui/slider';
-import { Layers, Grid3X3, ZoomIn, CornerDownLeft, CornerDownRight, Scissors } from 'lucide-react';
+import { Layers, Grid3X3, ZoomIn, CornerDownLeft, CornerDownRight, Scissors, X } from 'lucide-react';
 import { useTimelineHistory } from '../../hooks/useTimelineHistory';
 
 export const TimelinePanel: React.FC = () => {
@@ -39,6 +39,7 @@ export const TimelinePanel: React.FC = () => {
   const setWorkAreaStart = useTimelineStore((s) => s.setWorkAreaStart);
   const setWorkAreaEnd = useTimelineStore((s) => s.setWorkAreaEnd);
   const workAreaEnabled = useTimelineStore((s) => s.view.workAreaEnabled);
+  const clearWorkArea = useTimelineStore((s) => s.clearWorkArea);
   const { trimToWorkArea } = useTimelineHistory();
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
@@ -167,6 +168,20 @@ export const TimelinePanel: React.FC = () => {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Trim timeline to work area</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={clearWorkArea}
+                          disabled={!workAreaEnabled}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Clear work area</TooltipContent>
                     </Tooltip>
                   </div>
                 </TooltipProvider>
