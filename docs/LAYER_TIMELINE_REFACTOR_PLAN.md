@@ -4298,6 +4298,65 @@ Export passes `clip: true` to `compositeLayersAtFrame()`, which applies the canv
 - [ ] Timeline ruler second markers update correctly
 - [ ] Timecode display updates correctly
 
+### 4.13 Playback Performance Optimization
+
+**Purpose:** Address playback speed bottleneck capping at ~10-11 fps. Required now because §4.12 added frame rate controls offering 24/30/60 fps, which are unusable without fixing this.
+
+**Status:** 🔴 BLOCKING — Frame rate selector advertises rates the engine can't achieve.
+
+#### 4.13.1 Root Cause Investigation
+
+Suspected bottleneck sources (to be profiled):
+
+1. **`compositeLayersAtFrame()` per-frame overhead** — Called on every frame during playback. With `clip: false` (§4.11 unbounded canvas), may iterate more cells than necessary. The compositing function rebuilds a full `Map<string, Cell>` each frame.
+
+2. **React re-renders during playback** — If `useOptimizedPlayback` triggers Zustand state updates that cause React to re-render components, this kills frame rate. The existing `playbackOnlyStore` pattern is designed to avoid this, but the timeline store's `goToFrame()` may be triggering re-renders.
+
+3. **`useCanvasRenderer` render callback** — The renderer iterates `width × height` cells PLUS a second pass over the composited Map (§4.11). For large canvases or many cells, this could be slow.
+
+4. **String key parsing** — `coordKey.split(',').map(Number)` is called for every cell in every layer on every frame. Hot path allocation.
+
+#### 4.13.2 Fix Strategy
+
+**Phase A — Profile:**
+- Add `performance.now()` timing around compositing, rendering, and the playback loop
+- Identify which step takes >16ms (the budget for 60fps)
+
+**Phase B — Pre-computed playback (implement §4.8):**
+- Pre-composite all frames at playback start (for short animations)
+- Store composited Maps in an array, index by frame number
+- During playback, just look up the pre-computed Map and render directly
+- Eliminates per-frame compositing entirely
+
+**Phase C — Rendering fast path:**
+- During playback, use `renderFrameDirectly()` which writes to the canvas element without React
+- Ensure the playback loop does NOT call `timelineStore.goToFrame()` (which triggers React state updates)
+- Use `playbackOnlyStore` for frame tracking during playback, sync back to `timelineStore` only on stop
+
+**Phase D — Compositing optimization (if still needed):**
+- Cache per-layer transformed cells (invalidate on layer/keyframe change)
+- Use typed arrays or pre-parsed coordinate caches instead of string key splitting
+- Skip invisible/empty layers early
+
+#### 4.13.3 Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/hooks/useOptimizedPlayback.ts` | Pre-compute composited frames at start, eliminate per-frame compositing |
+| `src/utils/layerCompositing.ts` | Add `clip: true` for playback pre-computation (export-style clipping is fine for playback) |
+| `src/stores/playbackOnlyStore.ts` | Store pre-computed frame array |
+| `src/hooks/useCanvasRenderer.ts` | Ensure no re-render during playback |
+
+#### 4.13.4 Testing Checkpoint
+
+- [ ] Playback achieves 24 fps with 1 layer, 80×24 canvas
+- [ ] Playback achieves 24 fps with 3 layers, 80×24 canvas
+- [ ] Playback achieves 12 fps with 5 layers, 80×24 canvas
+- [ ] No visible stutter or frame drops at 12 fps
+- [ ] Playback start delay < 500ms for 100 frames, 3 layers
+- [ ] Canvas renders correctly during playback (no artifacts)
+- [ ] Playback stop syncs final frame back to timeline store
+
 ---
 
 ## Phase 5: Export & Migration

@@ -147,9 +147,23 @@ export const useOptimizedPlayback = () => {
     useTimelineStore.getState().setPlaying(true);
     useAnimationStore.setState({ isPlaying: true });
 
-    // Helper: composite & render a timeline frame
-    const renderTimelineFrame = (frame: number) => {
-      const cells = compositeLayersAtFrame(layers, frame, canvasWidth, canvasHeight);
+    // Helper: render a pre-computed frame directly to canvas
+    // Pre-compute ALL composited frames at playback start for smooth playback.
+    // This eliminates per-frame compositing overhead entirely.
+    let precomputedFrames: Map<string, import('../types').Cell>[] | null = null;
+
+    if (isLayerMode) {
+      precomputedFrames = [];
+      for (let f = 0; f < durationFrames; f++) {
+        precomputedFrames.push(
+          compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight, undefined, true),
+        );
+      }
+    }
+
+    const renderPrecomputedFrame = (frame: number) => {
+      const cells = precomputedFrames![frame];
+      if (!cells) return;
       const syntheticFrame: Frame = {
         id: `frame-${frame}` as unknown as FrameId,
         name: `Frame ${frame}`,
@@ -165,7 +179,7 @@ export const useOptimizedPlayback = () => {
 
     // Render the initial frame immediately
     if (isLayerMode) {
-      renderTimelineFrame(startingFrame);
+      renderPrecomputedFrame(startingFrame);
     } else {
       renderFrameDirectly(
         frames[startingFrame],
@@ -185,7 +199,7 @@ export const useOptimizedPlayback = () => {
       const totalFrames = isLayerMode ? durationFrames : frames.length;
 
       if (isLayerMode) {
-        // ── Timeline / layer mode ──
+        // ── Timeline / layer mode (pre-computed) ──
         if (elapsed >= frameDurationMs) {
           const atLast = currentIndex >= totalFrames - 1;
           if (atLast) {
@@ -200,12 +214,14 @@ export const useOptimizedPlayback = () => {
             currentIndex += 1;
           }
 
-          // Update timeline playhead so the ruler / UI follows
+          // Track frame in playbackOnlyStore only (no React state updates)
           playbackOnlyStore.goToFrame(currentIndex);
-          useTimelineStore.getState().goToFrame(currentIndex);
 
-          renderTimelineFrame(currentIndex);
-          lastFrameTime = timestamp;
+          // Render the pre-computed composited frame directly to canvas
+          renderPrecomputedFrame(currentIndex);
+          // Fixed timestep: advance by intended duration, not actual elapsed.
+          // This prevents cumulative timing drift from rAF overshoot.
+          lastFrameTime += frameDurationMs;
 
           const { fpsMonitorCallback } = useAnimationStore.getState();
           if (fpsMonitorCallback) fpsMonitorCallback(timestamp);
@@ -236,7 +252,8 @@ export const useOptimizedPlayback = () => {
             canvasRef as React.RefObject<HTMLCanvasElement>,
             renderSettingsRef.current!,
           );
-          lastFrameTime = timestamp;
+          // Fixed timestep: advance by intended duration, not actual elapsed.
+          lastFrameTime += currentFrame.duration;
           const { fpsMonitorCallback } = useAnimationStore.getState();
           if (fpsMonitorCallback) fpsMonitorCallback(timestamp);
         }
