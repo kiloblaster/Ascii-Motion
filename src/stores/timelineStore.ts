@@ -193,6 +193,7 @@ export interface TimelineState {
   addContentFramesToSelection: (frameIds: ContentFrameId[]) => void;
   toggleContentFrameSelected: (frameId: ContentFrameId) => void;
   clearContentFrameSelection: () => void;
+  toggleContentFrameHidden: (layerId: LayerId, frameIds: ContentFrameId[], hidden: boolean) => void;
   setContentFrameDragPreview: (preview: TimelineViewState['contentFrameDragPreview']) => void;
   setEditingKeyframe: (keyframeId: KeyframeId | null) => void;
   setKeyframeDuplicateGhosts: (ghosts: Map<KeyframeId, number>) => void;
@@ -1019,6 +1020,17 @@ export const useTimelineStore = create<TimelineState>()(
     clearContentFrameSelection: () => {
       set((state) => ({
         view: { ...state.view, selectedContentFrameIds: new Set() },
+      }));
+    },
+
+    toggleContentFrameHidden: (layerId, frameIds, hidden) => {
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          contentFrames: l.contentFrames.map((cf) =>
+            frameIds.includes(cf.id) ? { ...cf, hidden } : cf,
+          ),
+        })),
       }));
     },
 

@@ -132,6 +132,9 @@ export interface ContentFrame {
   // Canvas data for this frame
   data: Map<string, Cell>; // Key: "x,y" coordinate string
 
+  // Visibility — hidden frames are skipped during playback/export
+  hidden?: boolean;
+
   // Optional thumbnail for timeline display
   thumbnail?: string;      // Base64 data URL
 }

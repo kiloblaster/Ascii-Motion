@@ -513,11 +513,15 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       className={cn(
         'absolute top-1 h-[24px] rounded border cursor-move',
         isDragging && 'opacity-30',
-        isSelected
-          ? 'bg-purple-500/30 border-purple-500/70 ring-1 ring-purple-500/40'
-          : isActive
-            ? 'bg-primary/30 border-primary/60'
-            : 'bg-muted-foreground/15 border-muted-foreground/30',
+        contentFrame.hidden
+          ? isSelected
+            ? 'bg-muted-foreground/20 border-muted-foreground/40'
+            : 'bg-transparent border-muted-foreground/20 border-dashed'
+          : isSelected
+            ? 'bg-purple-500/30 border-purple-500/70 ring-1 ring-purple-500/40'
+            : isActive
+              ? 'bg-primary/30 border-primary/60'
+              : 'bg-muted-foreground/15 border-muted-foreground/30',
       )}
       style={{ left, width }}
       onMouseDown={handleMouseDown}

@@ -36,6 +36,8 @@ import {
   RotateCcw,
   ArrowLeftToLine,
   ArrowRightToLine,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export const TimelineToolbar: React.FC = () => {
@@ -396,6 +398,46 @@ export const TimelineToolbar: React.FC = () => {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="top">Set selected frame end to playhead (⌘.)</TooltipContent>
+      </Tooltip>
+
+      <div className="w-px h-4 bg-border/50 mx-0.5" />
+
+      {/* Hide/Show selected frame(s) */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1"
+            onClick={() => {
+              if (!activeLayer || isPlaybackActive) return;
+              const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+              if (selectedIds.size === 0) return;
+              // Use the last-added frame's state to determine toggle direction
+              const selectedArr = [...selectedIds];
+              const lastId = selectedArr[selectedArr.length - 1];
+              const lastCf = activeLayer.contentFrames.find((cf) => cf.id === lastId);
+              const newHidden = !(lastCf?.hidden ?? false);
+              useTimelineStore.getState().toggleContentFrameHidden(
+                activeLayer.id,
+                selectedArr,
+                newHidden,
+              );
+            }}
+            disabled={isPlaybackActive || !hasSelection}
+          >
+            {(() => {
+              if (!activeLayer || !hasSelection) return <Eye className="w-3.5 h-3.5" />;
+              const selectedArr = [...selectedContentFrameIds];
+              const lastId = selectedArr[selectedArr.length - 1];
+              const lastCf = activeLayer.contentFrames.find((cf) => cf.id === lastId);
+              return lastCf?.hidden
+                ? <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+                : <Eye className="w-3.5 h-3.5" />;
+            })()}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">Hide/show selected frame(s)</TooltipContent>
       </Tooltip>
       </div>
 

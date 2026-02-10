@@ -142,6 +142,7 @@ export function compositeLayersAtFrame(
  */
 export function getContentFrameAtTime(layer: Layer, frame: number): ContentFrame | null {
   for (const cf of layer.contentFrames) {
+    if (cf.hidden) continue; // Skip hidden frames during compositing/playback
     if (frame >= cf.startFrame && frame < cf.startFrame + cf.durationFrames) {
       return cf;
     }
