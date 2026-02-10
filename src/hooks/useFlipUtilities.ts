@@ -3,10 +3,11 @@
  * Provides flip actions that work with all selection types
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { 
   applyHorizontalFlip, 
   applyVerticalFlip, 
@@ -15,6 +16,8 @@ import {
   transformSelectedCellsForFlip
 } from '../utils/flipUtils';
 import { useCanvasContext } from '../contexts/CanvasContext';
+import { getTransformAtFrame } from '../utils/layerCompositing';
+import { screenToLocal as screenToLocalFn } from '../utils/layerTransformUtils';
 
 /**
  * Custom hook providing flip utilities with integrated undo/redo history
@@ -34,6 +37,19 @@ export const useFlipUtilities = () => {
     updateMagicWandSelectedCells
   } = useToolStore();
 
+  // Get active layer's anchor point for anchor-based flipping
+  const layers = useTimelineStore((s) => s.layers);
+  const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
+  const currentFrame = useTimelineStore((s) => s.view.currentFrame);
+
+  const anchorPoint = useMemo(() => {
+    if (!activeLayerId) return undefined;
+    const layer = layers.find((l) => l.id === activeLayerId);
+    if (!layer) return undefined;
+    const transform = getTransformAtFrame(layer, currentFrame);
+    return { x: transform.anchorPointX, y: transform.anchorPointY };
+  }, [layers, activeLayerId, currentFrame]);
+
   /**
    * Flip canvas content horizontally around selection center
    * Works with any active selection or entire canvas if no selection
@@ -46,7 +62,9 @@ export const useFlipUtilities = () => {
     const { bounds, selectedCells } = getActiveSelectionBounds(
       { selection, lassoSelection, magicWandSelection },
       width,
-      height
+      height,
+      cells,
+      anchorPoint,
     );
 
     const hasMagicSelection = magicWandSelection.active && magicWandSelection.selectedCells.size > 0;
@@ -57,6 +75,9 @@ export const useFlipUtilities = () => {
       : null;
 
     // Apply horizontal flip
+    // When selectedCells is provided and we're reading from canvasStore.cells,
+    // coordinates are in screen space but cells are in local space — pass screenToLocal.
+    // moveState.originalData already uses screen-space keys, so no conversion needed.
     if (moveState) {
       const flippedMoveData = applyHorizontalFlip(moveState.originalData, bounds, selectedCells || undefined);
       setMoveState({
@@ -64,7 +85,8 @@ export const useFlipUtilities = () => {
         originalData: flippedMoveData
       });
     } else {
-      const flippedData = applyHorizontalFlip(cells, bounds, selectedCells || undefined);
+      const stl = selectedCells ? screenToLocalFn : undefined;
+      const flippedData = applyHorizontalFlip(cells, bounds, selectedCells || undefined, stl);
       setCanvasData(flippedData);
       finalizeCanvasHistory(new Map(flippedData));
     }
@@ -93,7 +115,8 @@ export const useFlipUtilities = () => {
     updateLassoSelectedCells,
     finalizeCanvasHistory,
     setLassoPath,
-    updateMagicWandSelectedCells
+    updateMagicWandSelectedCells,
+    anchorPoint
   ]);
 
   /**
@@ -108,7 +131,9 @@ export const useFlipUtilities = () => {
     const { bounds, selectedCells } = getActiveSelectionBounds(
       { selection, lassoSelection, magicWandSelection },
       width,
-      height
+      height,
+      cells,
+      anchorPoint,
     );
 
     const hasMagicSelection = magicWandSelection.active && magicWandSelection.selectedCells.size > 0;
@@ -119,6 +144,9 @@ export const useFlipUtilities = () => {
       : null;
 
     // Apply vertical flip
+    // When selectedCells is provided and we're reading from canvasStore.cells,
+    // coordinates are in screen space but cells are in local space — pass screenToLocal.
+    // moveState.originalData already uses screen-space keys, so no conversion needed.
     if (moveState) {
       const flippedMoveData = applyVerticalFlip(moveState.originalData, bounds, selectedCells || undefined);
       setMoveState({
@@ -126,7 +154,8 @@ export const useFlipUtilities = () => {
         originalData: flippedMoveData
       });
     } else {
-      const flippedData = applyVerticalFlip(cells, bounds, selectedCells || undefined);
+      const stl = selectedCells ? screenToLocalFn : undefined;
+      const flippedData = applyVerticalFlip(cells, bounds, selectedCells || undefined, stl);
       setCanvasData(flippedData);
       finalizeCanvasHistory(new Map(flippedData));
     }
@@ -155,7 +184,8 @@ export const useFlipUtilities = () => {
     setMoveState,
     updateLassoSelectedCells,
     setLassoPath,
-    updateMagicWandSelectedCells
+    updateMagicWandSelectedCells,
+    anchorPoint
   ]);
 
   /**
