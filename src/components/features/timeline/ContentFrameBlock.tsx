@@ -131,6 +131,8 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       const isAltDuplicate = e.altKey;
       let didDrag = false;
       let beforeSnapshot: ReturnType<typeof snapshotLayerFrames>[] | null = null;
+      // For Alt+drag duplicate: capture original positions/data of all affected frames
+      let altDupEntries: { layerId: LayerId; startFrame: number; durationFrames: number; data: Map<string, import('../../../types').Cell> }[] = [];
 
       const onMouseMove = (me: MouseEvent) => {
         const dx = me.clientX - startX;
@@ -143,6 +145,31 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           const allLayers = useTimelineStore.getState().layers;
           beforeSnapshot = allLayers.map((l) => snapshotLayerFrames(l.id));
           didDrag = true;
+
+          // For Alt+drag: capture original data of all frames that will move
+          if (isAltDuplicate) {
+            const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+            const isGroupDrag = selectedIds.has(contentFrame.id) && selectedIds.size > 1;
+            if (isGroupDrag) {
+              const layer = allLayers.find((l) => l.id === layerId);
+              if (layer) {
+                const selected = layer.contentFrames.filter((cf) => selectedIds.has(cf.id));
+                altDupEntries = selected.map((cf) => ({
+                  layerId,
+                  startFrame: cf.startFrame,
+                  durationFrames: cf.durationFrames,
+                  data: new Map(cf.data),
+                }));
+              }
+            } else {
+              altDupEntries = [{
+                layerId,
+                startFrame: origStart,
+                durationFrames: duration,
+                data: new Map(contentFrame.data),
+              }];
+            }
+          }
         }
 
         // Check if we're dragging a multi-selection group
@@ -376,15 +403,18 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           updateContentFrameTiming(layerId, contentFrame.id, targetStart, duration);
         }
 
-        // Alt+drag: create a duplicate at the ORIGINAL position now that the
-        // original frame has moved to its new position (same pattern as keyframe Alt+drag)
-        if (isAltDuplicate) {
-          useTimelineStore.getState().addContentFrame(
-            layerId,
-            origStart,
-            duration,
-            new Map(contentFrame.data),
-          );
+        // Alt+drag: create duplicates at the ORIGINAL positions now that the
+        // originals have moved to their new positions (same pattern as keyframe Alt+drag)
+        if (isAltDuplicate && altDupEntries.length > 0) {
+          const tl = useTimelineStore.getState();
+          for (const entry of altDupEntries) {
+            tl.addContentFrame(
+              entry.layerId,
+              entry.startFrame,
+              entry.durationFrames,
+              new Map(entry.data),
+            );
+          }
         }
 
         // Record history for the entire drag-reorder (+ optional duplicate) operation
