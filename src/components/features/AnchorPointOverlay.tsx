@@ -34,7 +34,7 @@ export const AnchorPointOverlay: React.FC = () => {
     [layers, activeLayerId],
   );
 
-  // Check if we're editing a transform property
+  // Check if we're editing a transform property keyframe
   const isEditingTransform = useMemo(() => {
     if (!editingKeyframeId || !activeLayer) return false;
     for (const track of activeLayer.propertyTracks) {
@@ -45,21 +45,8 @@ export const AnchorPointOverlay: React.FC = () => {
     return false;
   }, [editingKeyframeId, activeLayer]);
 
-  // Also show when the active layer has any transform tracks or static transforms
-  const hasTransformTracks = useMemo(() => {
-    if (!activeLayer) return false;
-    // Check keyframed tracks
-    const hasKeyframedTracks = activeLayer.propertyTracks.some(
-      (t) => t.propertyPath.startsWith('transform.') && t.keyframes.length > 0,
-    );
-    // Check static properties for any non-default transform values
-    const hasStaticTransform = activeLayer.staticProperties &&
-      Object.keys(activeLayer.staticProperties).some((k) => k.startsWith('transform.'));
-    return hasKeyframedTracks || !!hasStaticTransform;
-  }, [activeLayer]);
-
-  // Show when: editing a keyframe, layer properties panel is open, or layer has transforms
-  const shouldShow = isEditingTransform || showLayerProperties || hasTransformTracks;
+  // Show when: editing a transform keyframe OR layer properties panel is open
+  const shouldShow = isEditingTransform || showLayerProperties;
 
   // Calculate motion path points
   const motionPath = useMemo(() => {
