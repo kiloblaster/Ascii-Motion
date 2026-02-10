@@ -16,6 +16,7 @@ import { useFrameNavigation } from '../../../hooks/useFrameNavigation';
 import { useOptimizedPlayback } from '../../../hooks/useOptimizedPlayback';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import { useAnimationStore } from '../../../stores/animationStore';
+import { useCanvasStore } from '../../../stores/canvasStore';
 import { getContentFrameAtTime } from '../../../utils/layerCompositing';
 import { TimecodeDisplay } from './TimecodeDisplay';
 import { OnionSkinControls } from '../OnionSkinControls';
@@ -217,33 +218,88 @@ export const TimelineToolbar: React.FC = () => {
     }
   }, [isPlaybackActive, startOptimizedPlayback, stopOptimizedPlayback]);
 
-  // Set content frame start/end to playhead
+  // The "selected" content frame for set-start/set-end operations.
+  // This is the explicitly clicked frame (from selectedContentFrameIds), NOT the frame under playhead.
+  // Only enabled when exactly 1 frame is selected.
+  const singleSelectedFrame = (() => {
+    if (selectedContentFrameIds.size !== 1 || !activeLayer) return null;
+    const selectedId = [...selectedContentFrameIds][0];
+    return activeLayer.contentFrames.find((cf) => cf.id === selectedId) ?? null;
+  })();
+  const hasSingleSelection = singleSelectedFrame !== null;
+
+  /** After changing content frame timing, reload canvas if the frame now covers the playhead */
+  const syncCanvasAfterTimingChange = useCallback(() => {
+    if (!activeLayer) return;
+    const updatedLayer = useTimelineStore.getState().layers.find((l) => l.id === activeLayer.id);
+    if (!updatedLayer) return;
+    const cf = getContentFrameAtTime(updatedLayer, currentFrame);
+    if (cf) {
+      useCanvasStore.getState().setCanvasData(new Map(cf.data));
+    }
+  }, [activeLayer, currentFrame]);
+
+  // Set SELECTED content frame's start/end to playhead (can extend beyond current bounds)
   const handleSetFrameStart = useCallback(() => {
-    if (!activeLayer || isPlaybackActive || !contentFrameAtPlayhead) return;
-    const cf = contentFrameAtPlayhead;
+    if (!activeLayer || isPlaybackActive || !singleSelectedFrame) return;
+    const cf = singleSelectedFrame;
     const cfEnd = cf.startFrame + cf.durationFrames;
     if (currentFrame >= cfEnd) {
       // Start past end → 1 frame at end
       updateContentFrameTiming(activeLayer.id, cf.id, cfEnd - 1, 1);
     } else {
-      // Normal: move start to playhead, shrink from left
-      const newDuration = cfEnd - currentFrame;
-      updateContentFrameTiming(activeLayer.id, cf.id, currentFrame, newDuration);
+      // Move start to playhead — trim any overlapping frames in the way
+      const newStart = currentFrame;
+      const newDuration = cfEnd - newStart;
+
+      // Remove or trim any content frames that would overlap [newStart, cfEnd)
+      for (const other of activeLayer.contentFrames) {
+        if (other.id === cf.id) continue;
+        const otherEnd = other.startFrame + other.durationFrames;
+        if (other.startFrame >= newStart && otherEnd <= cfEnd) {
+          // Fully enveloped — remove
+          removeContentFrame(activeLayer.id, other.id);
+        } else if (other.startFrame < newStart && otherEnd > newStart && otherEnd <= cfEnd) {
+          // Overlaps from the left — trim its end
+          updateContentFrameTiming(activeLayer.id, other.id, other.startFrame, newStart - other.startFrame);
+        }
+      }
+
+      updateContentFrameTiming(activeLayer.id, cf.id, newStart, newDuration);
     }
-  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, currentFrame, updateContentFrameTiming]);
+    syncCanvasAfterTimingChange();
+  }, [activeLayer, isPlaybackActive, singleSelectedFrame, currentFrame, updateContentFrameTiming, removeContentFrame, syncCanvasAfterTimingChange]);
 
   const handleSetFrameEnd = useCallback(() => {
-    if (!activeLayer || isPlaybackActive || !contentFrameAtPlayhead) return;
-    const cf = contentFrameAtPlayhead;
+    if (!activeLayer || isPlaybackActive || !singleSelectedFrame) return;
+    const cf = singleSelectedFrame;
     if (currentFrame < cf.startFrame) {
       // End before start → 1 frame at start
       updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, 1);
     } else {
-      // Normal: set end to playhead (inclusive, so +1)
-      const newDuration = currentFrame - cf.startFrame + 1;
+      // Set end to playhead (inclusive) — trim any overlapping frames in the way
+      const newEnd = currentFrame + 1;
+      const newDuration = newEnd - cf.startFrame;
+
+      // Remove or trim any content frames that would overlap [cf.startFrame, newEnd)
+      for (const other of activeLayer.contentFrames) {
+        if (other.id === cf.id) continue;
+        const otherEnd = other.startFrame + other.durationFrames;
+        if (other.startFrame >= cf.startFrame && otherEnd <= newEnd) {
+          // Fully enveloped — remove
+          removeContentFrame(activeLayer.id, other.id);
+        } else if (other.startFrame >= cf.startFrame && other.startFrame < newEnd && otherEnd > newEnd) {
+          // Overlaps from the right — push its start past the new end
+          const trimmedStart = newEnd;
+          const trimmedDuration = otherEnd - trimmedStart;
+          updateContentFrameTiming(activeLayer.id, other.id, trimmedStart, trimmedDuration);
+        }
+      }
+
       updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, newDuration);
     }
-  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, currentFrame, updateContentFrameTiming]);
+    syncCanvasAfterTimingChange();
+  }, [activeLayer, isPlaybackActive, singleSelectedFrame, currentFrame, updateContentFrameTiming, removeContentFrame, syncCanvasAfterTimingChange]);
 
   return (
     <TooltipProvider>
@@ -319,12 +375,12 @@ export const TimelineToolbar: React.FC = () => {
             size="sm"
             className="h-6 px-1"
             onClick={handleSetFrameStart}
-            disabled={isPlaybackActive || !contentFrameAtPlayhead}
+            disabled={isPlaybackActive || !hasSingleSelection}
           >
             <ArrowLeftToLine className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Set frame start to playhead</TooltipContent>
+        <TooltipContent side="top">Set selected frame start to playhead</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -334,12 +390,12 @@ export const TimelineToolbar: React.FC = () => {
             size="sm"
             className="h-6 px-1"
             onClick={handleSetFrameEnd}
-            disabled={isPlaybackActive || !contentFrameAtPlayhead}
+            disabled={isPlaybackActive || !hasSingleSelection}
           >
             <ArrowRightToLine className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Set frame end to playhead</TooltipContent>
+        <TooltipContent side="top">Set selected frame end to playhead</TooltipContent>
       </Tooltip>
       </div>
 
