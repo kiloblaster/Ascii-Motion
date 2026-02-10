@@ -7,7 +7,9 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import { getToolForHotkey } from '../constants/hotkeys';
 import { useZoomControls } from './useZoomControls';
 import { useFrameNavigation } from './useFrameNavigation';
+import { useTimelineHistory } from './useTimelineHistory';
 import { useAnimationHistory } from './useAnimationHistory';
+import { getContentFrameAtTime } from '../utils/layerCompositing';
 import { useOptimizedPlayback } from './useOptimizedPlayback';
 import { usePlaybackOnlySnapshot } from './usePlaybackOnlySnapshot';
 import { usePaletteStore } from '../stores/paletteStore';
@@ -1100,6 +1102,9 @@ export const useKeyboardShortcuts = () => {
   // Crop utility for Cmd+Shift+C / Ctrl+Shift+C
   const { canCrop, cropToSelection } = useCropToSelection();
 
+  // Timeline layer-aware content frame operations
+  const { addContentFrame, removeContentFrame, duplicateContentFrame, splitContentFrame, updateContentFrameTiming } = useTimelineHistory();
+
   // Helper function to handle different types of history actions
   const handleHistoryAction = useCallback((action: AnyHistoryAction, isRedo: boolean) => {
     processHistoryAction(action, isRedo, { setCanvasData }, useAnimationStore.getState());
@@ -1631,6 +1636,24 @@ export const useKeyboardShortcuts = () => {
         zoomOut();
         return;
       }
+
+      // Handle timeline zoom hotkeys (1 = zoom in, 2 = zoom out)
+      if (event.key === '1') {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          tl.setZoom(Math.min(16, tl.view.zoom + 0.5));
+          return;
+        }
+      }
+      if (event.key === '2') {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          tl.setZoom(Math.max(0.5, tl.view.zoom - 0.5));
+          return;
+        }
+      }
       
       // Handle frame navigation shortcuts (comma and period keys)
       if (event.key === ',' && canNavigate) {
@@ -1679,17 +1702,34 @@ export const useKeyboardShortcuts = () => {
     
     // Handle Ctrl+Delete or Ctrl+Backspace for frame deletion (before the switch statement)
     if ((event.key === 'Delete' || event.key === 'Backspace') && isModifierPressed) {
+      event.preventDefault();
+
+      // Layer mode: delete content frame block
+      const tl = useTimelineStore.getState();
+      if (tl.layers.length > 0) {
+        const activeLayerId = tl.view.activeLayerId;
+        const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+        if (activeLayer) {
+          const selectedIds = tl.view.selectedContentFrameIds;
+          if (selectedIds.size > 0) {
+            for (const cfId of selectedIds) {
+              removeContentFrame(activeLayer.id, cfId);
+            }
+            tl.clearContentFrameSelection();
+          } else {
+            const cf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+            if (cf) removeContentFrame(activeLayer.id, cf.id);
+          }
+        }
+        return;
+      }
+
+      // Legacy mode
       if (frames.length > 1) {
-        event.preventDefault();
-        
-        // Check if multiple frames are selected
         const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
-        
         if (selectedFrames.length > 1) {
-          // Batch delete all selected frames
           deleteFrameRange(selectedFrames);
         } else {
-          // Single frame delete
           removeFrame(currentFrameIndex);
         }
       }
@@ -1697,34 +1737,123 @@ export const useKeyboardShortcuts = () => {
     }
 
     switch (normalizedKey) {
-      case 'n':
-        // Ctrl+N = Add new frame after current frame
+      case 'n': {
+        // Ctrl+N = Add new frame block at playhead
         if (!event.shiftKey) {
           event.preventDefault();
-          addFrame(currentFrameIndex + 1);
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer) {
+              addContentFrame(activeLayer.id, tl.view.currentFrame, 1);
+            }
+          } else {
+            addFrame(currentFrameIndex + 1);
+          }
         }
         break;
+      }
         
-      case 'd':
-        // Cmd/Ctrl+D = Deselect All (if selection exists) OR Duplicate current frame (if no selection)
-        // This matches Photoshop/Figma behavior where Cmd+D is "Deselect"
+      case 'd': {
+        // Cmd/Ctrl+D = Deselect (if selection) or Duplicate frame block
         if (!event.shiftKey) {
           event.preventDefault();
           
-          // PERSISTENT SELECTION: Cmd+D is a primary way to deselect
           if (hasAnySelection()) {
             clearAllSelections();
           } else {
-            // No selection - duplicate frame (legacy behavior)
-            const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
-            if (selectedFrames.length > 1) {
-              duplicateFrameRange(selectedFrames);
+            const tl = useTimelineStore.getState();
+            if (tl.layers.length > 0) {
+              const activeLayerId = tl.view.activeLayerId;
+              const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+              if (activeLayer) {
+                const selectedIds = tl.view.selectedContentFrameIds;
+                if (selectedIds.size > 0) {
+                  for (const cfId of selectedIds) {
+                    const cf = activeLayer.contentFrames.find((c) => c.id === cfId);
+                    if (cf) duplicateContentFrame(activeLayer.id, cf.id);
+                  }
+                } else {
+                  const cf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+                  if (cf) duplicateContentFrame(activeLayer.id, cf.id);
+                }
+              }
             } else {
-              duplicateFrame(currentFrameIndex);
+              const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
+              if (selectedFrames.length > 1) {
+                duplicateFrameRange(selectedFrames);
+              } else {
+                duplicateFrame(currentFrameIndex);
+              }
             }
           }
         }
         break;
+      }
+
+      case 'x': {
+        // Ctrl+X = Split frame block at playhead (layer mode)
+        if (!event.shiftKey) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            event.preventDefault();
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer) {
+              const cf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+              if (cf && tl.view.currentFrame > cf.startFrame) {
+                splitContentFrame(activeLayer.id, cf.id, tl.view.currentFrame);
+              }
+            }
+          }
+          // In non-layer mode, don't prevent default (allows native cut)
+        }
+        break;
+      }
+
+      case ',': {
+        // Ctrl+, = Set selected frame start to playhead
+        if (!event.shiftKey) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            event.preventDefault();
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer && tl.view.selectedContentFrameIds.size === 1) {
+              const cfId = [...tl.view.selectedContentFrameIds][0];
+              const cf = activeLayer.contentFrames.find((c) => c.id === cfId);
+              if (cf) {
+                const cfEnd = cf.startFrame + cf.durationFrames;
+                const newStart = Math.min(tl.view.currentFrame, cfEnd - 1);
+                updateContentFrameTiming(activeLayer.id, cf.id, newStart, cfEnd - newStart);
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case '.': {
+        // Ctrl+. = Set selected frame end to playhead
+        if (!event.shiftKey) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            event.preventDefault();
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer && tl.view.selectedContentFrameIds.size === 1) {
+              const cfId = [...tl.view.selectedContentFrameIds][0];
+              const cf = activeLayer.contentFrames.find((c) => c.id === cfId);
+              if (cf) {
+                const newEnd = Math.max(tl.view.currentFrame + 1, cf.startFrame + 1);
+                updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, newEnd - cf.startFrame);
+              }
+            }
+          }
+        }
+        break;
+      }
 
         
       case 'a':
@@ -1885,7 +2014,12 @@ export const useKeyboardShortcuts = () => {
     blockBrowserShortcut,
     isPlaybackActive,
     startOptimizedPlayback,
-    stopOptimizedPlayback
+    stopOptimizedPlayback,
+    addContentFrame,
+    removeContentFrame,
+    duplicateContentFrame,
+    splitContentFrame,
+    updateContentFrameTiming,
   ]);
 
   const handleShortcutKeyPress = useCallback((event: KeyboardEvent) => {

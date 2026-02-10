@@ -318,7 +318,7 @@ export const TimelineToolbar: React.FC = () => {
             <FilePlus2 className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Add frame block at playhead</TooltipContent>
+        <TooltipContent side="top">Add frame block at playhead (⌘N)</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -333,7 +333,7 @@ export const TimelineToolbar: React.FC = () => {
             <Copy className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Duplicate frame block</TooltipContent>
+        <TooltipContent side="top">Duplicate frame block (⌘D)</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -348,7 +348,7 @@ export const TimelineToolbar: React.FC = () => {
             <Scissors className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Split frame block at playhead</TooltipContent>
+        <TooltipContent side="top">Split frame block at playhead (⌘X)</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -363,7 +363,7 @@ export const TimelineToolbar: React.FC = () => {
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Delete frame block</TooltipContent>
+        <TooltipContent side="top">Delete frame block (⌘⌫)</TooltipContent>
       </Tooltip>
 
       <div className="w-px h-4 bg-border/50 mx-0.5" />
@@ -380,7 +380,7 @@ export const TimelineToolbar: React.FC = () => {
             <ArrowLeftToLine className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Set selected frame start to playhead</TooltipContent>
+        <TooltipContent side="top">Set selected frame start to playhead (⌘,)</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -395,7 +395,7 @@ export const TimelineToolbar: React.FC = () => {
             <ArrowRightToLine className="w-3.5 h-3.5" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="top">Set selected frame end to playhead</TooltipContent>
+        <TooltipContent side="top">Set selected frame end to playhead (⌘.)</TooltipContent>
       </Tooltip>
       </div>
 
