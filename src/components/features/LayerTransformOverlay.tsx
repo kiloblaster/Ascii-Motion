@@ -22,6 +22,7 @@ import { useToolStore } from '../../stores/toolStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { getPropertyValueAtFrame } from '../../utils/layerCompositing';
 import { useLayerTransformTool } from '../../hooks/useLayerTransformTool';
+import { usePlaybackOnlySnapshot } from '../../hooks/usePlaybackOnlySnapshot';
 import { cn } from '@/lib/utils';
 
 export const LayerTransformOverlay: React.FC = () => {
@@ -30,6 +31,7 @@ export const LayerTransformOverlay: React.FC = () => {
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
 
   const { canvasRef, cellWidth, cellHeight, zoom, panOffset } = useCanvasContext();
+  const playbackSnapshot = usePlaybackOnlySnapshot();
   const {
     boundingBox,
     dragState,
@@ -114,9 +116,10 @@ export const LayerTransformOverlay: React.FC = () => {
     [pixelToCell, handleMouseMove],
   );
 
-  // Only render when transform tool is active
+  // Hide during playback
   if (activeTool !== 'layertransform') return null;
   if (!activeLayer) return null;
+  if (playbackSnapshot.isActive) return null;
 
   const toPixelX = (cellX: number) => cellX * effectiveCellWidth + panOffset.x;
   const toPixelY = (cellY: number) => cellY * effectiveCellHeight + panOffset.y;

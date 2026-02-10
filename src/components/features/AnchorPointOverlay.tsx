@@ -16,6 +16,7 @@
 import React, { useMemo } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
+import { usePlaybackOnlySnapshot } from '../../hooks/usePlaybackOnlySnapshot';
 import { getPropertyValueAtFrame, getTransformAtFrame, getContentFrameAtTime, applyRotation } from '../../utils/layerCompositing';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +29,7 @@ export const AnchorPointOverlay: React.FC = () => {
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
 
   const { cellWidth, cellHeight, zoom, panOffset } = useCanvasContext();
+  const playbackSnapshot = usePlaybackOnlySnapshot();
 
   const activeLayer = useMemo(
     () => layers.find((l) => l.id === activeLayerId) ?? null,
@@ -81,6 +83,7 @@ export const AnchorPointOverlay: React.FC = () => {
   }, [activeLayer, currentFrame]);
 
   if (!shouldShow || !activeLayer) return null;
+  if (playbackSnapshot.isActive) return null;
 
   const effectiveCellWidth = cellWidth * zoom;
   const effectiveCellHeight = cellHeight * zoom;
