@@ -225,6 +225,28 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 />
               ))}
 
+              {/* Keyframe dots on collapsed layers */}
+              {!expandedLayerIds.has(layer.id) && layer.propertyTracks.length > 0 && (() => {
+                // Collect unique frame positions across all property tracks
+                const kfFrames = new Set<number>();
+                for (const track of layer.propertyTracks) {
+                  for (const kf of track.keyframes) {
+                    kfFrames.add(kf.frame);
+                  }
+                }
+                return [...kfFrames].map((frame) => (
+                  <div
+                    key={`kf-dot-${frame}`}
+                    className="absolute w-[6px] h-[6px] rounded-full bg-yellow-500/80 pointer-events-none z-10"
+                    style={{
+                      left: frame * pxPerFrame - 3,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                    }}
+                  />
+                ));
+              })()}
+
               {/* Ghost + drop indicator — only on the target layer */}
               {contentFrameDragPreview && contentFrameDragPreview.targetLayerId === layer.id && (
                 <>

@@ -16,7 +16,7 @@
 import React, { useMemo } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
-import { getPropertyValueAtFrame } from '../../utils/layerCompositing';
+import { getPropertyValueAtFrame, getTransformAtFrame, getContentFrameAtTime, applyRotation } from '../../utils/layerCompositing';
 import { cn } from '@/lib/utils';
 
 export const AnchorPointOverlay: React.FC = () => {
@@ -92,8 +92,59 @@ export const AnchorPointOverlay: React.FC = () => {
   const anchorPixelX = toPixelX(currentAnchor.x + currentPos.x);
   const anchorPixelY = toPixelY(currentAnchor.y + currentPos.y);
 
+  // Bounding box outline (same as transform tool, but 30% opacity, no handles)
+  const cellAspectRatio = cellWidth && cellHeight ? cellWidth / cellHeight : 0.6;
+
+  const boxPath = (() => {
+    const contentFrame = getContentFrameAtTime(activeLayer, currentFrame);
+    if (!contentFrame || contentFrame.data.size === 0) return null;
+
+    const transform = getTransformAtFrame(activeLayer, currentFrame);
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const key of contentFrame.data.keys()) {
+      const [x, y] = key.split(',').map(Number);
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    }
+    maxX += 1; maxY += 1;
+
+    const forwardPt = (lx: number, ly: number) => {
+      const relX = lx - transform.anchorPointX;
+      const relY = ly - transform.anchorPointY;
+      const scaledX = relX * transform.scale;
+      const scaledY = relY * transform.scale;
+      const { rotatedX, rotatedY } = applyRotation(scaledX, scaledY, transform.rotation, cellAspectRatio);
+      return {
+        x: rotatedX + transform.anchorPointX + transform.positionX,
+        y: rotatedY + transform.anchorPointY + transform.positionY,
+      };
+    };
+
+    const corners = [
+      forwardPt(minX, minY), forwardPt(maxX, minY),
+      forwardPt(maxX, maxY), forwardPt(minX, maxY),
+    ];
+
+    return corners
+      .map((c, i) => `${i === 0 ? 'M' : 'L'} ${toPixelX(c.x)} ${toPixelY(c.y)}`)
+      .join(' ') + ' Z';
+  })();
+
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 15 }}>
+      {/* Content bounding box outline (30% opacity, no handles) */}
+      {boxPath && (
+        <svg className="absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+          <path
+            d={boxPath}
+            fill="none"
+            stroke="rgba(147, 130, 255, 0.3)"
+            strokeWidth={1.5}
+            strokeDasharray="6 3"
+          />
+        </svg>
+      )}
       {/* Motion path dots */}
       {motionPath.length > 1 && motionPath.map((point, idx) => {
         const px = toPixelX(point.x);
