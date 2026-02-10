@@ -817,6 +817,11 @@ const processHistoryAction = (
         timing.startFrame,
         timing.durationFrames,
       );
+      // Restore timeline duration if it was changed by auto-extend
+      const targetDuration = isRedo ? action.data.newTimelineDuration : action.data.previousTimelineDuration;
+      if (targetDuration !== undefined && tl.config.durationFrames !== targetDuration) {
+        tl.setDuration(targetDuration);
+      }
       break;
     }
 

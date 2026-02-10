@@ -369,8 +369,16 @@ export function useTimelineHistory() {
       durationFrames: frame.durationFrames,
     };
 
+    // Capture timeline duration before (may change via ensureTimelineContains)
+    const previousTimelineDuration = useTimelineStore.getState().config.durationFrames;
+
     const success = updateContentFrameTimingStore(layerId, frameId, startFrame, durationFrames);
     if (!success) return false;
+
+    // Auto-extend timeline if the frame now extends past the end
+    useTimelineStore.getState().ensureTimelineContains(startFrame + durationFrames - 1);
+
+    const newTimelineDuration = useTimelineStore.getState().config.durationFrames;
 
     const historyAction: ContentFrameTimingHistoryAction = {
       type: 'content_frame_timing',
@@ -381,6 +389,8 @@ export function useTimelineHistory() {
         frameId,
         oldTiming,
         newTiming: { startFrame, durationFrames },
+        previousTimelineDuration,
+        newTimelineDuration,
       },
     };
     pushToHistory(historyAction);

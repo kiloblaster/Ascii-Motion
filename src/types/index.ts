@@ -681,6 +681,8 @@ export interface ContentFrameTimingHistoryAction extends HistoryAction {
     frameId: string;
     oldTiming: { startFrame: number; durationFrames: number };
     newTiming: { startFrame: number; durationFrames: number };
+    previousTimelineDuration?: number;
+    newTimelineDuration?: number;
   };
 }
 

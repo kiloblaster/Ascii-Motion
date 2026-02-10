@@ -449,6 +449,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
     const startX = e.clientX;
     const origStart = contentFrame.startFrame;
     const origDuration = contentFrame.durationFrames;
+    const origTimelineDuration = useTimelineStore.getState().config.durationFrames;
     let lastDuration = origDuration;
     const onMouseMove = (me: MouseEvent) => {
       const newDuration = Math.max(1, origDuration + Math.round((me.clientX - startX) / pxPerFrame));
@@ -464,8 +465,10 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       document.removeEventListener('mouseup', onMouseUp);
       // Record history if timing actually changed
       if (lastDuration !== origDuration) {
-        // Revert to original, then re-apply via history wrapper
+        // Revert frame timing AND timeline duration to original, then re-apply via history wrapper
+        // This ensures the history action captures the correct previousTimelineDuration
         updateContentFrameTiming(layerId, contentFrame.id, origStart, origDuration);
+        useTimelineStore.getState().setDuration(origTimelineDuration);
         updateTimingHistory(layerId, contentFrame.id, origStart, lastDuration);
       }
     };
