@@ -4245,6 +4245,59 @@ Export passes `clip: true` to `compositeLayersAtFrame()`, which applies the canv
 - [ ] Performance maintained with sparse content far from origin
 - [ ] Grid background still renders for export bounds area
 
+### 4.12 Frame Rate Controls
+
+**Purpose:** Add interactive frame rate controls to the timeline footer, allowing users to change the animation playback speed. When changing frame rate, the number of frames is preserved — only the playback speed changes (frames play faster or slower).
+
+**Behavior:** `setFrameRate(newFps, maintainDuration=false)` — changes only the `frameRate` number and recomputes `durationMs`. No content frame rescaling, no keyframe repositioning. The same animation plays at a different speed.
+
+#### 4.12.1 UI Components
+
+**Frame Rate Popup Menu:**
+- Launched by clicking the `frameRate fps` text in the timeline footer
+- Shows common presets: 1, 2, 4, 8, 10, 12, 15, 24, 25, 30, 60 fps
+- Current rate has a checkmark indicator
+- Final item "Custom..." opens a dialog
+- Default: 12 fps
+
+**Custom Frame Rate Dialog:**
+- Shadcn Dialog with numeric input for FPS
+- Live-updating readout: "Each frame = X ms" (computed as `1000 / fps`)
+- Min: 1, Max: 120, Step: 1
+- Apply/Cancel buttons
+
+#### 4.12.2 Integration Points
+
+| System | Impact | Notes |
+|--------|--------|-------|
+| **Playback** (`useOptimizedPlayback`) | Uses `config.frameRate` for `frameDurationMs` | Already reads dynamically — no change needed |
+| **Timeline ruler** | Tick labels show seconds based on frameRate | Already reads from `config.frameRate` — updates automatically |
+| **Timecode display** | MM:SS:FF format uses frameRate for FF calculation | Already reads from `config.frameRate` |
+| **Exports** (Phase 5) | Video/GIF frame timing = `1000/frameRate` per frame | Will read from `config.frameRate` at export time |
+| **Session save/load** | `frameRate` saved in `timeline.frameRate` | Already handled in SessionDataV2 |
+| **Playback overlay** | Frame counter denominator | Uses `useFrameNavigation` which reads from store |
+| **Undo/redo** | `frame_rate_change` history action | Already implemented with before/after snapshots |
+
+#### 4.12.3 Files to Create/Modify
+
+| File | Change |
+|------|--------|
+| `src/components/features/timeline/FrameRateControl.tsx` | NEW — Popup menu + custom dialog |
+| `src/components/features/TimelinePanel.tsx` | MODIFY — Replace static fps text with `<FrameRateControl />` |
+
+#### 4.12.4 Testing Checkpoint
+
+- [ ] Clicking fps text opens popup menu with presets
+- [ ] Selecting a preset changes frame rate immediately
+- [ ] Current rate shows checkmark in menu
+- [ ] "Custom..." opens dialog with FPS input
+- [ ] Dialog shows live "Each frame = X ms" readout
+- [ ] Changing frame rate preserves frame count (no content rescaling)
+- [ ] Playback speed changes when frame rate changes
+- [ ] Undo reverts frame rate change
+- [ ] Timeline ruler second markers update correctly
+- [ ] Timecode display updates correctly
+
 ---
 
 ## Phase 5: Export & Migration

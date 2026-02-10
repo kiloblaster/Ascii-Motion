@@ -21,6 +21,7 @@ import { TimecodeDisplay } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { OnionSkinControls } from './OnionSkinControls';
+import { FrameRateControl } from './timeline/FrameRateControl';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Slider } from '../ui/slider';
 import { Layers, Grid3X3, ZoomIn } from 'lucide-react';
@@ -34,7 +35,6 @@ export const TimelinePanel: React.FC = () => {
   const setZoom = useTimelineStore((s) => s.setZoom);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
-  const frameRate = useTimelineStore((s) => s.config.frameRate);
 
   // Sync vertical scroll between layer list and track area
   const layerListScrollRef = useRef<HTMLDivElement>(null);
@@ -116,8 +116,9 @@ export const TimelinePanel: React.FC = () => {
                 onPointerDown={(e) => e.stopPropagation()}
               >
                 <span className="text-[10px] text-muted-foreground tabular-nums">
-                  {currentFrame + 1} / {durationFrames} · {frameRate} fps
+                  {currentFrame + 1} / {durationFrames} ·{' '}
                 </span>
+                <FrameRateControl />
                 <div className="flex-1" />
                 <ZoomIn className="w-3 h-3 text-muted-foreground" />
                 <Slider
