@@ -1,7 +1,8 @@
 import React from 'react';
 import { PlaybackControls } from './PlaybackControls';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { useAnimationStore } from '../../stores/animationStore';
-import { useAnimationPlayback } from '../../hooks/useAnimationPlayback';
+import { useOptimizedPlayback } from '../../hooks/useOptimizedPlayback';
 import { useFrameNavigation } from '../../hooks/useFrameNavigation';
 
 interface PlaybackOverlayProps {
@@ -9,35 +10,50 @@ interface PlaybackOverlayProps {
 }
 
 /**
- * Floating playback controls overlay for when timeline is collapsed
- * Slides in from bottom of canvas when timeline panel is collapsed
+ * Floating playback controls overlay for when timeline is collapsed.
+ * Dual-mode: drives layer/timeline playback when layers exist,
+ * falls back to legacy frame playback otherwise.
  */
 export const PlaybackOverlay: React.FC<PlaybackOverlayProps> = ({ isVisible }) => {
-  const {
-    frames,
-    currentFrameIndex,
-    isPlaying,
-    looping,
-    setLooping
-  } = useAnimationStore();
+  const layers = useTimelineStore((s) => s.layers);
+  const isLayerMode = layers.length > 0;
+
+  // Dual-mode state
+  const tlIsPlaying = useTimelineStore((s) => s.view.isPlaying);
+  const tlLooping = useTimelineStore((s) => s.view.looping);
+  const legacyIsPlaying = useAnimationStore((s) => s.isPlaying);
+  const legacyLooping = useAnimationStore((s) => s.looping);
+
+  const isPlaying = isLayerMode ? tlIsPlaying : legacyIsPlaying;
+  const looping = isLayerMode ? tlLooping : legacyLooping;
 
   const {
-    startPlayback,
-    pausePlayback,
-    canPlay
-  } = useAnimationPlayback();
+    startOptimizedPlayback,
+    stopOptimizedPlayback,
+    canPlay,
+  } = useOptimizedPlayback();
 
   const {
     navigateNext,
     navigatePrevious,
     navigateFirst,
-    navigateLast
+    navigateLast,
+    currentFrameIndex,
+    totalFrames,
   } = useFrameNavigation();
+
+  const handleToggleLoop = () => {
+    if (isLayerMode) {
+      useTimelineStore.getState().setLooping(!looping);
+    } else {
+      useAnimationStore.getState().setLooping(!looping);
+    }
+  };
 
   if (!isVisible) return null;
 
   return (
-    <div 
+    <div
       className={`
         absolute bottom-16 left-1/2 transform -translate-x-1/2 
         transition-all duration-300 ease-in-out z-10
@@ -49,14 +65,14 @@ export const PlaybackOverlay: React.FC<PlaybackOverlayProps> = ({ isVisible }) =
         isPlaying={isPlaying}
         canPlay={canPlay}
         currentFrame={currentFrameIndex}
-        totalFrames={frames.length}
-        onPlay={startPlayback}
-        onPause={pausePlayback}
+        totalFrames={totalFrames}
+        onPlay={startOptimizedPlayback}
+        onPause={stopOptimizedPlayback}
         onPrevious={navigatePrevious}
         onNext={navigateNext}
         onFirst={navigateFirst}
         onLast={navigateLast}
-        onToggleLoop={() => setLooping(!looping)}
+        onToggleLoop={handleToggleLoop}
         isLooping={looping}
       />
     </div>
