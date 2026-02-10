@@ -148,11 +148,11 @@ export const TimelineRuler: React.FC = () => {
         <div
           className={cn(
             'border-l',
-            isMajor ? 'h-4 border-foreground/40' : 'h-2 border-foreground/20',
+            isMajor ? 'h-2.5 border-foreground/40' : 'h-1.5 border-foreground/20',
           )}
         />
         {isMajor && (
-          <span className="absolute top-3.5 -translate-x-1/2 text-[9px] text-muted-foreground tabular-nums whitespace-nowrap">
+          <span className="absolute top-2.5 -translate-x-1/2 text-[9px] text-muted-foreground tabular-nums whitespace-nowrap">
             {formatFrameLabel(i, frameRate)}
           </span>
         )}
