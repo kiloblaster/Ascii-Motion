@@ -79,6 +79,8 @@ export function useCompositedCanvas() {
       currentFrame,
       canvasWidth,
       canvasHeight,
+      undefined, // cellAspectRatio — use default
+      false,     // clip: false — display mode shows all cells, including outside canvas bounds
     );
   }, [layers, currentFrame, activeLayerId, canvasCells, canvasWidth, canvasHeight, isLayerMode]);
 

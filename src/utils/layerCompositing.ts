@@ -44,6 +44,7 @@ export function compositeLayersAtFrame(
   canvasWidth: number,
   canvasHeight: number,
   cellAspectRatio: number = CELL_ASPECT_RATIO,
+  clip: boolean = true,
 ): Map<string, Cell> {
   const result = new Map<string, Cell>();
 
@@ -116,8 +117,8 @@ export function compositeLayersAtFrame(
         finalY = parseInt(coordKey.substring(commaIdx + 1), 10);
       }
 
-      // Bounds check
-      if (finalX < 0 || finalX >= canvasWidth || finalY < 0 || finalY >= canvasHeight) {
+      // Bounds check (only when clipping for export)
+      if (clip && (finalX < 0 || finalX >= canvasWidth || finalY < 0 || finalY >= canvasHeight)) {
         continue;
       }
 

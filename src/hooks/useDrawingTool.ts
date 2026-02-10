@@ -396,10 +396,8 @@ export const useDrawingTool = () => {
     
     // Draw all the ellipse points
     points.forEach(({ x, y }) => {
-      if (x >= 0 && y >= 0) { // Basic bounds checking
-        const newCell = createCellWithAllAttributes();
-        setCell(x, y, newCell);
-      }
+      const newCell = createCellWithAllAttributes();
+      setCell(x, y, newCell);
     });
   }, [rectangleFilled, setCell, getEllipsePoints, createCellWithAllAttributes, checkActiveLayerEditable]);
 

@@ -85,7 +85,7 @@ export const useCanvasRenderer = () => {
   } = useCanvasStore();
 
   // Layer compositing: provides composited cells from all visible layers
-  const { getCompositedCell, isLayerMode } = useCompositedCanvas();
+  const { getCompositedCell, compositedCells, isLayerMode } = useCompositedCanvas();
   // Use composited cell getter when in layer mode, otherwise use canvasStore directly
   const getCellForRender = isLayerMode ? getCompositedCell : getCell;
 
@@ -279,6 +279,21 @@ export const useCanvasRenderer = () => {
           }
         }
       }
+
+      // Second pass: draw cells outside the canvas grid bounds (unbounded layer content)
+      // Only in layer mode — legacy mode has no content outside bounds
+      if (isLayerMode) {
+        const w = canvasConfig.width;
+        const h = canvasConfig.height;
+        for (const [key, cell] of compositedCells) {
+          const [cx, cy] = key.split(',').map(Number);
+          // Skip cells already drawn in the grid loop above
+          if (cx >= 0 && cx < w && cy >= 0 && cy < h) continue;
+          // Skip cells being moved
+          if (movingCells.has(key)) continue;
+          drawCell(ctx, cx, cy, cell);
+        }
+      }
     }
 
     // Draw moved cells at their new positions
@@ -289,10 +304,7 @@ export const useCanvasRenderer = () => {
         const newX = origX + totalOffset.x;
         const newY = origY + totalOffset.y;
         
-        // Only draw if within bounds
-        if (newX >= 0 && newX < canvasConfig.width && newY >= 0 && newY < canvasConfig.height) {
-          drawCell(ctx, newX, newY, cell);
-        }
+        drawCell(ctx, newX, newY, cell);
       });
     }
 
@@ -576,6 +588,8 @@ export const useCanvasRenderer = () => {
   // Keep these individual dependencies for now
   getCell,
   getCellForRender,
+  compositedCells,
+  isLayerMode,
   drawCell,
   drawGridBackground,
     getTotalOffset,

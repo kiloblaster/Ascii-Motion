@@ -4169,6 +4169,82 @@ const toPixelY = (cellY: number) => cellY * cellHeight * zoom + panOffset.y;
 - [ ] Frame navigation: bounding box updates when playhead moves
 - [ ] Tool switch during drag: committed cleanly
 
+### 4.11 Unbounded Layer Canvas
+
+**Purpose:** Allow drawing outside a layer's original bounds without requiring arbitrarily large canvases. Separates "canvas size" (export dimensions) from "layer extent" (drawable area), enabling essentially unlimited scrollable canvas while maintaining performance.
+
+**Core Concept:**
+- `canvasStore.width/height` becomes the **export viewport** — what gets rendered to PNG/GIF/video
+- Each layer's `Map<string, Cell>` can hold cells at **any integer coordinate** (including negative)
+- The canvas grid renders a **visual viewport** determined by pan/zoom, showing content beyond export bounds
+- Drawing tools write to any coordinate the mouse points to
+
+#### 4.11.1 Clipping Points to Modify
+
+| # | Location | Current Behavior | New Behavior |
+|---|----------|-----------------|-------------|
+| 1 | `canvasStore.setCell()` | Rejects `x < 0 \|\| x >= width` | **Remove bounds check** — allow any coordinate |
+| 2 | `canvasStore.fillArea()` | Clips start + BFS expansion to bounds | BFS expands through occupied cells only; start allowed anywhere |
+| 3 | `getGridCoordinates()` (useCanvasDimensions) | Clamps to `[0, width-1]` | **Remove clamp** — return raw cell coordinate (can be negative/beyond grid) |
+| 4 | `compositeLayersAtFrame()` | Clips composited cells to `canvasWidth × canvasHeight` | **Two modes**: display (no clip) and export (clips to canvas dimensions) |
+| 5 | Renderer loop | Iterates `0..width, 0..height` | **Hybrid**: grid background for canvas area, then overlay composited cells in viewport |
+| 6 | `drawEllipse()` | Partial `x >= 0 && y >= 0` check | Remove this check |
+
+#### 4.11.2 Rendering Strategy (Performance)
+
+**Grid background**: Still drawn for `0..width, 0..height` (shows export bounds as visual reference).
+
+**Cell rendering**: Instead of iterating `width × height` and looking up each cell, iterate the **composited cell Map** and render only cells in the current viewport:
+
+```typescript
+// Viewport bounds in cell coordinates
+const viewMinX = Math.floor(-panOffset.x / effectiveCellWidth);
+const viewMaxX = Math.ceil((canvasPixelWidth - panOffset.x) / effectiveCellWidth);
+const viewMinY = Math.floor(-panOffset.y / effectiveCellHeight);
+const viewMaxY = Math.ceil((canvasPixelHeight - panOffset.y) / effectiveCellHeight);
+
+// Only render cells in viewport
+for (const [key, cell] of compositedCells) {
+  const [x, y] = key.split(',').map(Number);
+  if (x >= viewMinX && x <= viewMaxX && y >= viewMinY && y <= viewMaxY) {
+    drawCell(ctx, x, y, cell);
+  }
+}
+```
+
+This is O(cells in map) not O(canvas area) — more efficient for sparse content.
+
+#### 4.11.3 Fill Tool BFS Changes
+
+BFS expands only through **occupied cells** (cells that exist in the Map). Empty space is never filled beyond the starting region. Non-contiguous fill iterates Map contents only.
+
+#### 4.11.4 Export Clipping
+
+Export passes `clip: true` to `compositeLayersAtFrame()`, which applies the canvas bounds filter. Only cells within `[0, width) × [0, height)` appear in exported output. Content outside this area is visible in the editor but excluded from exports.
+
+#### 4.11.5 Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/stores/canvasStore.ts` | Remove bounds check in `setCell()`, update `fillArea()` BFS |
+| `src/contexts/CanvasContext/useCanvasDimensions.ts` | Remove coordinate clamping |
+| `src/utils/layerCompositing.ts` | Add `clip` parameter to `compositeLayersAtFrame()` |
+| `src/hooks/useCanvasRenderer.ts` | Switch to Map-iteration rendering for cells |
+| `src/hooks/useCompositedCanvas.ts` | Pass `clip: false` for display compositing |
+| `src/hooks/useDrawingTool.ts` | Remove partial bounds check in `drawEllipse()` |
+| `src/utils/exportRenderer.ts` | Ensure `clip: true` for all export paths |
+
+#### 4.11.6 Testing Checkpoint
+
+- [ ] Drawing outside canvas bounds stores cells correctly
+- [ ] Cells at negative coordinates work (draw, erase, select)
+- [ ] Moved/transformed layer content outside bounds is visible
+- [ ] Pan to see content beyond canvas edges
+- [ ] Export clips to canvas dimensions (content outside bounds excluded)
+- [ ] Fill tool BFS doesn't expand infinitely through empty space
+- [ ] Performance maintained with sparse content far from origin
+- [ ] Grid background still renders for export bounds area
+
 ---
 
 ## Phase 5: Export & Migration

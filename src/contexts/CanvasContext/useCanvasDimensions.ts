@@ -14,8 +14,8 @@ export const useCanvasDimensions = () => {
       mouseX: number,
       mouseY: number,
       canvasRect: DOMRect,
-      gridWidth: number,
-      gridHeight: number,
+      _gridWidth: number,
+      _gridHeight: number,
     ) => {
       const relativeX = mouseX - canvasRect.left;
       const relativeY = mouseY - canvasRect.top;
@@ -29,16 +29,16 @@ export const useCanvasDimensions = () => {
       const y = Math.floor(adjustedY / effectiveCellHeight);
 
       return {
-        x: Math.max(0, Math.min(x, gridWidth - 1)),
-        y: Math.max(0, Math.min(y, gridHeight - 1)),
+        x,
+        y,
       };
     },
     getGridCoordinatesWithCenter: (
       mouseX: number,
       mouseY: number,
       canvasRect: DOMRect,
-      gridWidth: number,
-      gridHeight: number,
+      _gridWidth: number,
+      _gridHeight: number,
     ) => {
       const relativeX = mouseX - canvasRect.left;
       const relativeY = mouseY - canvasRect.top;
@@ -52,8 +52,8 @@ export const useCanvasDimensions = () => {
       const y = Math.floor(adjustedY / effectiveCellHeight);
 
       return {
-        x: Math.max(0.5, Math.min(x + 0.5, gridWidth - 0.5)),
-        y: Math.max(0.5, Math.min(y + 0.5, gridHeight - 0.5)),
+        x: x + 0.5,
+        y: y + 0.5,
       };
     },
   };
