@@ -399,8 +399,12 @@ export const TimelineToolbar: React.FC = () => {
       </Tooltip>
       </div>
 
-      {/* Center group: playback controls */}
-      <div className="flex-1 flex items-center justify-center gap-0.5">
+      {/* Center group: playback controls (truly centered) + timecode (grows right) */}
+      <div className="flex-1 grid grid-cols-[1fr_auto_1fr] items-center">
+      {/* Left spacer column */}
+      <div />
+      {/* Center column: playback buttons — always centered regardless of timecode width */}
+      <div className="flex items-center gap-0.5 justify-self-center">
 
       {/* First frame */}
       <Tooltip>
@@ -500,9 +504,12 @@ export const TimelineToolbar: React.FC = () => {
           {looping ? 'Disable loop' : 'Enable loop'}
         </TooltipContent>
       </Tooltip>
+      </div>
 
-      <TimecodeDisplay />
-
+      {/* Right column: timecode — left-aligned, grows right without shifting buttons */}
+      <div className="justify-self-start pl-1">
+        <TimecodeDisplay />
+      </div>
       </div>
 
       {/* Right group: onion skin */}

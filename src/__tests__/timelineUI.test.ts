@@ -37,88 +37,88 @@ describe('formatTimecodeValue', () => {
 
   describe('frames format', () => {
     it('formats frame 0', () => {
-      expect(formatTimecodeValue(0, fps, 'frames')).toBe('F0');
+      expect(formatTimecodeValue(0, fps, 'frames')).toBe('0');
     });
 
     it('formats frame 24', () => {
-      expect(formatTimecodeValue(24, fps, 'frames')).toBe('F24');
+      expect(formatTimecodeValue(24, fps, 'frames')).toBe('24');
     });
 
     it('formats large frame numbers', () => {
-      expect(formatTimecodeValue(1000, fps, 'frames')).toBe('F1000');
+      expect(formatTimecodeValue(1000, fps, 'frames')).toBe('1000');
     });
   });
 
   describe('seconds format', () => {
-    it('formats frame 0 as 0.00s', () => {
-      expect(formatTimecodeValue(0, fps, 'seconds')).toBe('0.00s');
+    it('formats frame 0 as 0.00', () => {
+      expect(formatTimecodeValue(0, fps, 'seconds')).toBe('0.00');
     });
 
-    it('formats 12 frames at 12fps as 1.00s', () => {
-      expect(formatTimecodeValue(12, fps, 'seconds')).toBe('1.00s');
+    it('formats 12 frames at 12fps as 1.00', () => {
+      expect(formatTimecodeValue(12, fps, 'seconds')).toBe('1.00');
     });
 
-    it('formats 6 frames at 12fps as 0.50s', () => {
-      expect(formatTimecodeValue(6, fps, 'seconds')).toBe('0.50s');
+    it('formats 6 frames at 12fps as 0.50', () => {
+      expect(formatTimecodeValue(6, fps, 'seconds')).toBe('0.50');
     });
 
     it('formats at 24fps correctly', () => {
-      expect(formatTimecodeValue(48, 24, 'seconds')).toBe('2.00s');
+      expect(formatTimecodeValue(48, 24, 'seconds')).toBe('2.00');
     });
 
     it('formats fractional seconds', () => {
-      expect(formatTimecodeValue(1, fps, 'seconds')).toBe('0.08s');
+      expect(formatTimecodeValue(1, fps, 'seconds')).toBe('0.08');
     });
   });
 
   describe('milliseconds format', () => {
-    it('formats frame 0 as 0ms', () => {
-      expect(formatTimecodeValue(0, fps, 'milliseconds')).toBe('0ms');
+    it('formats frame 0 as 0', () => {
+      expect(formatTimecodeValue(0, fps, 'milliseconds')).toBe('0');
     });
 
-    it('formats 12 frames at 12fps as 1000ms', () => {
-      expect(formatTimecodeValue(12, fps, 'milliseconds')).toBe('1000ms');
+    it('formats 12 frames at 12fps as 1000', () => {
+      expect(formatTimecodeValue(12, fps, 'milliseconds')).toBe('1000');
     });
 
-    it('formats 1 frame at 12fps as 83ms', () => {
-      expect(formatTimecodeValue(1, fps, 'milliseconds')).toBe('83ms');
+    it('formats 1 frame at 12fps as 83', () => {
+      expect(formatTimecodeValue(1, fps, 'milliseconds')).toBe('83');
     });
 
     it('formats at 30fps correctly', () => {
-      expect(formatTimecodeValue(30, 30, 'milliseconds')).toBe('1000ms');
+      expect(formatTimecodeValue(30, 30, 'milliseconds')).toBe('1000');
     });
   });
 
-  describe('timecode format (MM:SS:FF)', () => {
-    it('formats frame 0 as 00:00:00', () => {
-      expect(formatTimecodeValue(0, fps, 'timecode')).toBe('00:00:00');
+  describe('timecode format (SS:FF)', () => {
+    it('formats frame 0 as 00:00', () => {
+      expect(formatTimecodeValue(0, fps, 'timecode')).toBe('00:00');
     });
 
     it('formats frame 5 at 12fps', () => {
-      expect(formatTimecodeValue(5, fps, 'timecode')).toBe('00:00:05');
+      expect(formatTimecodeValue(5, fps, 'timecode')).toBe('00:05');
     });
 
     it('formats 1 second (12 frames at 12fps)', () => {
-      expect(formatTimecodeValue(12, fps, 'timecode')).toBe('00:01:00');
+      expect(formatTimecodeValue(12, fps, 'timecode')).toBe('01:00');
     });
 
     it('formats 1 second + 3 frames', () => {
-      expect(formatTimecodeValue(15, fps, 'timecode')).toBe('00:01:03');
+      expect(formatTimecodeValue(15, fps, 'timecode')).toBe('01:03');
     });
 
-    it('formats 1 minute', () => {
-      expect(formatTimecodeValue(60 * fps, fps, 'timecode')).toBe('01:00:00');
+    it('formats 60 seconds without rolling to minutes', () => {
+      expect(formatTimecodeValue(60 * fps, fps, 'timecode')).toBe('60:00');
     });
 
-    it('formats 1 minute 30 seconds 6 frames', () => {
+    it('formats 90 seconds + 6 frames without minutes', () => {
       const frame = 90 * fps + 6;
-      expect(formatTimecodeValue(frame, fps, 'timecode')).toBe('01:30:06');
+      expect(formatTimecodeValue(frame, fps, 'timecode')).toBe('90:06');
     });
 
     it('formats at 24fps correctly', () => {
-      expect(formatTimecodeValue(24, 24, 'timecode')).toBe('00:01:00');
-      expect(formatTimecodeValue(48, 24, 'timecode')).toBe('00:02:00');
-      expect(formatTimecodeValue(25, 24, 'timecode')).toBe('00:01:01');
+      expect(formatTimecodeValue(24, 24, 'timecode')).toBe('01:00');
+      expect(formatTimecodeValue(48, 24, 'timecode')).toBe('02:00');
+      expect(formatTimecodeValue(25, 24, 'timecode')).toBe('01:01');
     });
   });
 });

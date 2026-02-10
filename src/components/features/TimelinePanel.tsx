@@ -17,7 +17,7 @@ import { LayerList } from './timeline/LayerList';
 import { TimelineTrackArea } from './timeline/TimelineTrackArea';
 import { TimelineRuler } from './timeline/TimelineRuler';
 import { TimelineToolbar } from './timeline/TimelineToolbar';
-import { TimecodeDisplay } from './timeline/TimecodeDisplay';
+import { TimecodeDisplay, TimelineDurationInput } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { OnionSkinControls } from './OnionSkinControls';
@@ -198,6 +198,7 @@ export const TimelinePanel: React.FC = () => {
                 <span className="text-[10px] text-muted-foreground tabular-nums w-8 text-right">
                   {zoom.toFixed(1)}x
                 </span>
+                <TimelineDurationInput />
               </div>
             </div>
 

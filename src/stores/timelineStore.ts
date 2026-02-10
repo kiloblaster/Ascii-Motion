@@ -206,6 +206,7 @@ export interface TimelineState {
   setWorkAreaEnabled: (enabled: boolean) => void;
   clearWorkArea: () => void;
   trimToWorkArea: () => void;
+  setTimecodeFormat: (format: import('../types/timeline').TimecodeFormat) => void;
 
   // ============================================
   // PROJECT LIFECYCLE
@@ -248,6 +249,7 @@ const INITIAL_VIEW: TimelineViewState = {
   workAreaStart: 0,
   workAreaEnd: 1,
   workAreaEnabled: false,
+  timecodeFormat: 'timecode' as const,
 };
 
 // ============================================
@@ -1088,6 +1090,10 @@ export const useTimelineStore = create<TimelineState>()(
 
     setWorkAreaEnabled: (enabled) => {
       set((state) => ({ view: { ...state.view, workAreaEnabled: enabled } }));
+    },
+
+    setTimecodeFormat: (format) => {
+      set((state) => ({ view: { ...state.view, timecodeFormat: format } }));
     },
 
     clearWorkArea: () => {

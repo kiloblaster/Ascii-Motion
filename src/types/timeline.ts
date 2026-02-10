@@ -364,16 +364,19 @@ export interface TimelineViewState {
   workAreaStart: number;    // Frame (inclusive), default 0
   workAreaEnd: number;      // Frame (exclusive), default durationFrames
   workAreaEnabled: boolean; // Whether playback is constrained to work area
+
+  // Timecode display format (shared between playhead and duration inputs)
+  timecodeFormat: TimecodeFormat;
 }
 
 /**
  * Timecode display format.
  */
 export type TimecodeFormat =
-  | 'frames'           // "Frame 24"
-  | 'seconds'          // "1.5s"
-  | 'timecode'         // "00:01:12" (MM:SS:FF)
-  | 'milliseconds';    // "1500ms"
+  | 'frames'           // "24"
+  | 'seconds'          // "1.50"
+  | 'timecode'         // "01:12" (SS:FF)
+  | 'milliseconds';    // "1500"
 
 // ============================================
 // EFFECTS SYSTEM EXTENSION
