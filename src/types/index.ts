@@ -292,7 +292,8 @@ export type HistoryActionType =
   | 'static_property_change'
   | 'content_frame_reorder'
   | 'timeline_duration_change'
-  | 'trim_to_work_area';
+  | 'trim_to_work_area'
+  | 'apply_transforms';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -861,5 +862,14 @@ export type AnyHistoryAction =
   | StaticPropertyChangeHistoryAction
   | ContentFrameReorderHistoryAction
   | TimelineDurationChangeHistoryAction
-  | TrimToWorkAreaHistoryAction;
+  | TrimToWorkAreaHistoryAction
+  | ApplyTransformsHistoryAction;
 
+export interface ApplyTransformsHistoryAction extends HistoryAction {
+  type: 'apply_transforms';
+  data: {
+    layerId: string;
+    previousLayer: import('../types/timeline').Layer;
+    newLayer: import('../types/timeline').Layer;
+  };
+}

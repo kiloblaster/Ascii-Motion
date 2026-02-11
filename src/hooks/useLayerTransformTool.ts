@@ -65,8 +65,8 @@ export interface TransformBoundingBox {
 
 const ANCHOR_HIT_RADIUS = 1.5; // cells
 const HANDLE_HIT_RADIUS = 2.0; // cells — larger than the visual handle for easier clicking
-const SCALE_MIN = PROPERTY_DEFINITIONS['transform.scale'].min ?? 0.1;
-const SCALE_MAX = PROPERTY_DEFINITIONS['transform.scale'].max ?? 10;
+const SCALE_MIN = PROPERTY_DEFINITIONS['transform.scale.x'].min ?? 0.1;
+const SCALE_MAX = PROPERTY_DEFINITIONS['transform.scale.x'].max ?? 10;
 
 // ============================================
 // Geometry Helpers
@@ -84,8 +84,8 @@ function forwardTransformPoint(
   const relY = localY - transform.anchorPointY;
 
   // 2. Apply scale
-  const scaledX = relX * transform.scale;
-  const scaledY = relY * transform.scale;
+  const scaledX = relX * transform.scaleX;
+  const scaledY = relY * transform.scaleY;
 
   // 3. Apply rotation (with cell aspect ratio compensation)
   const { rotatedX, rotatedY } = applyRotation(scaledX, scaledY, transform.rotation, cellAspectRatio);
@@ -166,7 +166,8 @@ export function useLayerTransformTool() {
   // Keyframeable property bindings — used for reading values and on mouseUp
   const posX = useKeyframeableProperty(activeLayerId, 'transform.position.x');
   const posY = useKeyframeableProperty(activeLayerId, 'transform.position.y');
-  const scale = useKeyframeableProperty(activeLayerId, 'transform.scale');
+  const scaleX = useKeyframeableProperty(activeLayerId, 'transform.scale.x');
+  const scaleY = useKeyframeableProperty(activeLayerId, 'transform.scale.y');
   const rotation = useKeyframeableProperty(activeLayerId, 'transform.rotation');
   const anchorX = useKeyframeableProperty(activeLayerId, 'transform.anchorPoint.x');
   const anchorY = useKeyframeableProperty(activeLayerId, 'transform.anchorPoint.y');
@@ -318,7 +319,8 @@ export function useLayerTransformTool() {
       const startValues = {
         positionX: posX.value,
         positionY: posY.value,
-        scale: scale.value,
+        scaleX: scaleX.value,
+        scaleY: scaleY.value,
         rotation: rotation.value,
         anchorPointX: anchorX.value,
         anchorPointY: anchorY.value,
@@ -341,7 +343,7 @@ export function useLayerTransformTool() {
       if (autoKeyframe && activeLayerId) {
         const propsForMode: Record<TransformDragMode, PropertyPath[]> = {
           move: ['transform.position.x', 'transform.position.y'],
-          scale: ['transform.scale'],
+          scale: ['transform.scale.x', 'transform.scale.y'],
           rotate: ['transform.rotation'],
           anchor: ['transform.anchorPoint.x', 'transform.anchorPoint.y'],
           none: [],
@@ -359,7 +361,8 @@ export function useLayerTransformTool() {
                 const currentValue = startValues[
                   prop === 'transform.position.x' ? 'positionX' :
                   prop === 'transform.position.y' ? 'positionY' :
-                  prop === 'transform.scale' ? 'scale' :
+                  prop === 'transform.scale.x' ? 'scaleX' :
+                  prop === 'transform.scale.y' ? 'scaleY' :
                   prop === 'transform.rotation' ? 'rotation' :
                   prop === 'transform.anchorPoint.x' ? 'anchorPointX' :
                   'anchorPointY'
@@ -371,7 +374,7 @@ export function useLayerTransformTool() {
         }
       }
     },
-    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scale.value, rotation.value, anchorX.value, anchorY.value, autoKeyframe, activeLayerId, addPropertyTrack, addKeyframeHistory],
+    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scaleX.value, scaleY.value, rotation.value, anchorX.value, anchorY.value, autoKeyframe, activeLayerId, addPropertyTrack, addKeyframeHistory],
   );
 
   const handleMouseMove = useCallback(
@@ -430,12 +433,31 @@ export function useLayerTransformTool() {
           const currentDist = dist({ x: cellX, y: cellY }, anchorScreenPos);
 
           if (startDist > 0.01) {
-            const rawScale = startValues.scale * (currentDist / startDist);
-            const clampedScale = Math.max(
-              SCALE_MIN,
-              Math.min(SCALE_MAX, Math.round(rawScale * 10) / 10),
-            );
-            setPropertyDirect('transform.scale', clampedScale);
+            if (shiftKeyDown) {
+              // Shift held: uniform scale
+              const rawScale = startValues.scaleX * (currentDist / startDist);
+              const clampedScale = Math.max(
+                SCALE_MIN,
+                Math.min(SCALE_MAX, Math.round(rawScale * 10) / 10),
+              );
+              setPropertyDirect('transform.scale.x', clampedScale);
+              setPropertyDirect('transform.scale.y', clampedScale);
+            } else {
+              // Non-uniform: horizontal distance controls X, vertical controls Y
+              const startDistX = Math.abs(startMouseCell.x - anchorScreenPos.x);
+              const startDistY = Math.abs(startMouseCell.y - anchorScreenPos.y);
+              const currentDistX = Math.abs(cellX - anchorScreenPos.x);
+              const currentDistY = Math.abs(cellY - anchorScreenPos.y);
+
+              if (startDistX > 0.01) {
+                const rawSX = startValues.scaleX * (currentDistX / startDistX);
+                setPropertyDirect('transform.scale.x', Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.round(rawSX * 10) / 10)));
+              }
+              if (startDistY > 0.01) {
+                const rawSY = startValues.scaleY * (currentDistY / startDistY);
+                setPropertyDirect('transform.scale.y', Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.round(rawSY * 10) / 10)));
+              }
+            }
           }
           break;
         }
@@ -493,7 +515,8 @@ export function useLayerTransformTool() {
       const propertyMap: Array<{ path: PropertyPath; startVal: number; currentGetter: { value: number } }> = [
         { path: 'transform.position.x', startVal: startVals.positionX, currentGetter: posX },
         { path: 'transform.position.y', startVal: startVals.positionY, currentGetter: posY },
-        { path: 'transform.scale', startVal: startVals.scale, currentGetter: scale },
+        { path: 'transform.scale.x', startVal: startVals.scaleX, currentGetter: scaleX },
+        { path: 'transform.scale.y', startVal: startVals.scaleY, currentGetter: scaleY },
         { path: 'transform.rotation', startVal: startVals.rotation, currentGetter: rotation },
         { path: 'transform.anchorPoint.x', startVal: startVals.anchorPointX, currentGetter: anchorX },
         { path: 'transform.anchorPoint.y', startVal: startVals.anchorPointY, currentGetter: anchorY },
@@ -514,7 +537,7 @@ export function useLayerTransformTool() {
     setDragState(null);
     didWriteRef.current = false;
     startSnapshotRef.current = null;
-  }, [dragState, activeLayerId, posX, posY, scale, rotation, anchorX, anchorY, setPropertyDirect]);
+  }, [dragState, activeLayerId, posX, posY, scaleX, scaleY, rotation, anchorX, anchorY, setPropertyDirect]);
 
   // ============================================
   // Cursor Zone  

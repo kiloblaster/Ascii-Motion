@@ -31,7 +31,8 @@ function getActiveInverseTransform(): ((x: number, y: number) => { x: number; y:
   const hasTransform =
     transform.positionX !== 0 ||
     transform.positionY !== 0 ||
-    transform.scale !== 1 ||
+    transform.scaleX !== 1 ||
+    transform.scaleY !== 1 ||
     transform.rotation !== 0 ||
     transform.anchorPointX !== 0 ||
     transform.anchorPointY !== 0;
@@ -81,16 +82,16 @@ export function localToScreen(x: number, y: number): { x: number; y: number } {
   if (!layer) return { x, y };
 
   const transform = getTransformAtFrame(layer, tl.view.currentFrame);
-  const { positionX, positionY, scale, rotation, anchorPointX, anchorPointY } = transform;
+  const { positionX, positionY, scaleX, scaleY, rotation, anchorPointX, anchorPointY } = transform;
   const hasTransform =
-    positionX !== 0 || positionY !== 0 || scale !== 1 ||
+    positionX !== 0 || positionY !== 0 || scaleX !== 1 || scaleY !== 1 ||
     rotation !== 0 || anchorPointX !== 0 || anchorPointY !== 0;
   if (!hasTransform) return { x, y };
 
   const localX = x - anchorPointX;
   const localY = y - anchorPointY;
-  const scaledX = localX * scale;
-  const scaledY = localY * scale;
+  const scaledX = localX * scaleX;
+  const scaledY = localY * scaleY;
   const { rotatedX, rotatedY } = applyRotation(scaledX, scaledY, rotation);
   return {
     x: Math.round(rotatedX + anchorPointX + positionX),
@@ -112,7 +113,7 @@ export function transformCellMapToScreen(cells: Map<string, Cell>): Map<string, 
   const transform = getTransformAtFrame(layer, tl.view.currentFrame);
   const hasTransform =
     transform.positionX !== 0 || transform.positionY !== 0 ||
-    transform.scale !== 1 || transform.rotation !== 0 ||
+    transform.scaleX !== 1 || transform.scaleY !== 1 || transform.rotation !== 0 ||
     transform.anchorPointX !== 0 || transform.anchorPointY !== 0;
   if (!hasTransform) return cells;
 

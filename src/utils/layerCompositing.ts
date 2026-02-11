@@ -66,7 +66,8 @@ export function compositeLayersAtFrame(
     // Get transform values at this frame via keyframe interpolation
     const posX = getPropertyValueAtFrame(layer, 'transform.position.x', frame);
     const posY = getPropertyValueAtFrame(layer, 'transform.position.y', frame);
-    const scale = getPropertyValueAtFrame(layer, 'transform.scale', frame);
+    const scaleX = getPropertyValueAtFrame(layer, 'transform.scale.x', frame);
+    const scaleY = getPropertyValueAtFrame(layer, 'transform.scale.y', frame);
     const rotation = getPropertyValueAtFrame(layer, 'transform.rotation', frame);
     const anchorX = getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', frame);
     const anchorY = getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', frame);
@@ -75,7 +76,8 @@ export function compositeLayersAtFrame(
     const hasTransform =
       posX !== 0 ||
       posY !== 0 ||
-      scale !== 1 ||
+      scaleX !== 1 ||
+      scaleY !== 1 ||
       rotation !== 0 ||
       anchorX !== 0 ||
       anchorY !== 0;
@@ -131,7 +133,7 @@ export function compositeLayersAtFrame(
       screenMaxY += 1;
 
       // Build the transform object for inverseTransformPoint
-      const transform = { positionX: posX, positionY: posY, scale, rotation, anchorPointX: anchorX, anchorPointY: anchorY };
+      const transform = { positionX: posX, positionY: posY, scaleX, scaleY, rotation, anchorPointX: anchorX, anchorPointY: anchorY };
 
       // Iterate every destination cell in the screen-space bounding box
       for (let sy = screenMinY; sy <= screenMaxY; sy++) {
@@ -156,8 +158,8 @@ export function compositeLayersAtFrame(
       function forwardTransform(x: number, y: number): { x: number; y: number } {
         const localX = x - anchorX;
         const localY = y - anchorY;
-        const scaledX = localX * scale;
-        const scaledY = localY * scale;
+        const scaledX = localX * scaleX;
+        const scaledY = localY * scaleY;
         const { rotatedX, rotatedY } = applyRotation(scaledX, scaledY, rotation, cellAspectRatio);
         return {
           x: Math.round(rotatedX + anchorX + posX),
@@ -250,7 +252,8 @@ export function getTransformAtFrame(
 ): {
   positionX: number;
   positionY: number;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   rotation: number;
   anchorPointX: number;
   anchorPointY: number;
@@ -258,7 +261,8 @@ export function getTransformAtFrame(
   return {
     positionX: getPropertyValueAtFrame(layer, 'transform.position.x', frame),
     positionY: getPropertyValueAtFrame(layer, 'transform.position.y', frame),
-    scale: getPropertyValueAtFrame(layer, 'transform.scale', frame),
+    scaleX: getPropertyValueAtFrame(layer, 'transform.scale.x', frame),
+    scaleY: getPropertyValueAtFrame(layer, 'transform.scale.y', frame),
     rotation: getPropertyValueAtFrame(layer, 'transform.rotation', frame),
     anchorPointX: getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', frame),
     anchorPointY: getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', frame),
@@ -349,7 +353,7 @@ export function inverseTransformPoint(
   screenY: number,
   transform: ReturnType<typeof getTransformAtFrame>,
 ): { x: number; y: number } {
-  const { positionX, positionY, scale, rotation, anchorPointX, anchorPointY } = transform;
+  const { positionX, positionY, scaleX, scaleY, rotation, anchorPointX, anchorPointY } = transform;
 
   // 1. Remove position and anchor offset
   const relX = screenX - positionX - anchorPointX;
@@ -360,9 +364,9 @@ export function inverseTransformPoint(
     relX, relY, -rotation,
   );
 
-  // 3. Inverse scale
-  const localX = scale !== 0 ? Math.round(invRotX / scale + anchorPointX) : anchorPointX;
-  const localY = scale !== 0 ? Math.round(invRotY / scale + anchorPointY) : anchorPointY;
+  // 3. Inverse scale (per-axis)
+  const localX = scaleX !== 0 ? Math.round(invRotX / scaleX + anchorPointX) : anchorPointX;
+  const localY = scaleY !== 0 ? Math.round(invRotY / scaleY + anchorPointY) : anchorPointY;
 
   return { x: localX, y: localY };
 }

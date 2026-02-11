@@ -14,17 +14,30 @@ import { useTimelineStore } from '../../../stores/timelineStore';
 import { useCanvasStore } from '../../../stores/canvasStore';
 import { useKeyframeableProperty } from '../../../hooks/useKeyframeableProperty';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
+import { useToolStore } from '../../../stores/toolStore';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
+import { getTransformAtFrame, applyRotation, inverseTransformPoint } from '../../../utils/layerCompositing';
+import { CELL_ASPECT_RATIO } from '../../../utils/fontMetrics';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
-import { Diamond, X, RotateCcw } from 'lucide-react';
-import type { PropertyPath, LayerId } from '../../../types/timeline';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../ui/dialog';
+import { Diamond, X, RotateCcw, CheckCheck } from 'lucide-react';
+import type { PropertyPath, LayerId, ContentFrameId } from '../../../types/timeline';
+import type { Cell } from '../../../types';
 
 /** All transform properties to show in the panel */
 const TRANSFORM_PROPERTIES: PropertyPath[] = [
   'transform.position.x',
   'transform.position.y',
-  'transform.scale',
+  'transform.scale.x',
+  'transform.scale.y',
   'transform.rotation',
   'transform.anchorPoint.x',
   'transform.anchorPoint.y',
@@ -156,6 +169,7 @@ export const LayerPropertiesPanel: React.FC = () => {
   const layers = useTimelineStore((s) => s.layers);
   const setShowLayerProperties = useTimelineStore((s) => s.setShowLayerProperties);
   const activeLayer = layers.find((l) => l.id === activeLayerId);
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
   const {
     addKeyframe: addKeyframeHistory,
     updateKeyframe: updateKeyframeHistory,
@@ -213,7 +227,8 @@ export const LayerPropertiesPanel: React.FC = () => {
             const defaults: Record<string, number> = {
               'transform.position.x': 0,
               'transform.position.y': 0,
-              'transform.scale': 1,
+              'transform.scale.x': 1,
+              'transform.scale.y': 1,
               'transform.rotation': 0,
               'transform.anchorPoint.x': Math.floor(width / 2),
               'transform.anchorPoint.y': Math.floor(height / 2),
@@ -241,7 +256,157 @@ export const LayerPropertiesPanel: React.FC = () => {
           <RotateCcw className="w-3 h-3" />
           Reset Transforms
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full h-6 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+          onClick={() => setShowApplyDialog(true)}
+        >
+          <CheckCheck className="w-3 h-3" />
+          Apply Transforms
+        </Button>
       </div>
+
+      {/* Apply Transforms confirmation dialog */}
+      <Dialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Apply Transforms</DialogTitle>
+            <DialogDescription>
+              Applying transforms will bake the current position, scale, and rotation into the layer's content data and reset all transform values to their defaults.
+              This will <strong>clear all keyframes</strong> on this layer's transform properties.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowApplyDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              if (!activeLayerId || !activeLayer) return;
+
+              const tl = useTimelineStore.getState();
+              const { width, height } = useCanvasStore.getState();
+              const pushToHistory = useToolStore.getState().pushToHistory;
+
+              // Snapshot the full layer before any changes (for undo)
+              const previousLayer = structuredClone(activeLayer);
+
+              // For each content frame, bake the transform at that frame into the cell data
+              for (const cf of activeLayer.contentFrames) {
+                const transform = getTransformAtFrame(activeLayer, cf.startFrame);
+                const { positionX, positionY, scaleX, scaleY, rotation, anchorPointX, anchorPointY } = transform;
+
+                const hasTransform =
+                  positionX !== 0 || positionY !== 0 ||
+                  scaleX !== 1 || scaleY !== 1 ||
+                  rotation !== 0 || anchorPointX !== 0 || anchorPointY !== 0;
+
+                if (!hasTransform) continue;
+
+                // Use inverse mapping (same as compositing) to avoid gaps
+                // 1. Find local-space content bounds
+                let localMinX = Infinity, localMaxX = -Infinity;
+                let localMinY = Infinity, localMaxY = -Infinity;
+                for (const key of cf.data.keys()) {
+                  const [cx, cy] = key.split(',').map(Number);
+                  if (cx < localMinX) localMinX = cx;
+                  if (cx > localMaxX) localMaxX = cx;
+                  if (cy < localMinY) localMinY = cy;
+                  if (cy > localMaxY) localMaxY = cy;
+                }
+                if (localMinX === Infinity) continue;
+
+                // 2. Forward-transform corners to find screen-space AABB
+                const fwd = (lx: number, ly: number) => {
+                  const sx = (lx - anchorPointX) * scaleX;
+                  const sy = (ly - anchorPointY) * scaleY;
+                  const { rotatedX, rotatedY } = applyRotation(sx, sy, rotation, CELL_ASPECT_RATIO);
+                  return {
+                    x: Math.round(rotatedX + anchorPointX + positionX),
+                    y: Math.round(rotatedY + anchorPointY + positionY),
+                  };
+                };
+                const corners = [
+                  fwd(localMinX, localMinY), fwd(localMaxX + 1, localMinY),
+                  fwd(localMinX, localMaxY + 1), fwd(localMaxX + 1, localMaxY + 1),
+                ];
+                let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
+                for (const c of corners) {
+                  if (c.x < sMinX) sMinX = c.x;
+                  if (c.x > sMaxX) sMaxX = c.x;
+                  if (c.y < sMinY) sMinY = c.y;
+                  if (c.y > sMaxY) sMaxY = c.y;
+                }
+                sMinX -= 1; sMinY -= 1; sMaxX += 1; sMaxY += 1;
+
+                // 3. Iterate destination cells, inverse-transform to find source
+                const transformObj = { positionX, positionY, scaleX, scaleY, rotation, anchorPointX, anchorPointY };
+                const newData = new Map<string, Cell>();
+                for (let dy = sMinY; dy <= sMaxY; dy++) {
+                  for (let dx = sMinX; dx <= sMaxX; dx++) {
+                    const src = inverseTransformPoint(dx, dy, transformObj);
+                    const srcKey = `${src.x},${src.y}`;
+                    const cell = cf.data.get(srcKey);
+                    if (cell && cell.char && cell.char !== ' ') {
+                      newData.set(`${dx},${dy}`, cell);
+                    }
+                  }
+                }
+
+                tl.updateContentFrameData(activeLayerId, cf.id, newData);
+              }
+
+              // Remove all property tracks (and their keyframes)
+              for (const track of [...activeLayer.propertyTracks]) {
+                tl.removePropertyTrack(activeLayerId, track.id);
+              }
+
+              // Reset static properties to defaults
+              const defaults: Record<string, number> = {
+                'transform.position.x': 0,
+                'transform.position.y': 0,
+                'transform.scale.x': 1,
+                'transform.scale.y': 1,
+                'transform.rotation': 0,
+                'transform.anchorPoint.x': Math.floor(width / 2),
+                'transform.anchorPoint.y': Math.floor(height / 2),
+              };
+              for (const [path, val] of Object.entries(defaults)) {
+                tl.setStaticProperty(activeLayerId, path, val);
+              }
+
+              // Reload canvas from the updated content frame
+              const currentFrame = tl.view.currentFrame;
+              const updatedLayer = useTimelineStore.getState().layers.find((l) => l.id === activeLayerId);
+              if (updatedLayer) {
+                const cf = updatedLayer.contentFrames.find(
+                  (c) => currentFrame >= c.startFrame && currentFrame < c.startFrame + c.durationFrames,
+                );
+                if (cf) {
+                  useCanvasStore.getState().setCanvasData(new Map(cf.data));
+                }
+              }
+
+              // Record undo with full layer snapshots (includes tracks, keyframes, static props)
+              const newLayer = structuredClone(useTimelineStore.getState().layers.find((l) => l.id === activeLayerId)!);
+              pushToHistory({
+                type: 'apply_transforms',
+                timestamp: Date.now(),
+                description: 'Apply transforms',
+                data: {
+                  layerId: activeLayerId as string,
+                  previousLayer,
+                  newLayer,
+                },
+              });
+
+              setShowApplyDialog(false);
+            }}>
+              Apply
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

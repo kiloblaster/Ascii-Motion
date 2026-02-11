@@ -376,7 +376,8 @@ describe('compositeLayersAtFrame', () => {
       id: 'l1',
       contentFrames: [makeContentFrame('cf1', 0, 10, cells)],
       propertyTracks: [
-        makePropertyTrack('transform.scale', [{ frame: 0, value: 2 }]),
+        makePropertyTrack('transform.scale.x', [{ frame: 0, value: 2 }]),
+        makePropertyTrack('transform.scale.y', [{ frame: 0, value: 2 }]),
       ],
     });
 
@@ -446,7 +447,8 @@ describe('getPropertyValueAtFrame', () => {
 
     expect(getPropertyValueAtFrame(layer, 'transform.position.x', 0)).toBe(0);
     expect(getPropertyValueAtFrame(layer, 'transform.position.y', 0)).toBe(0);
-    expect(getPropertyValueAtFrame(layer, 'transform.scale', 0)).toBe(1);
+    expect(getPropertyValueAtFrame(layer, 'transform.scale.x', 0)).toBe(1);
+    expect(getPropertyValueAtFrame(layer, 'transform.scale.y', 0)).toBe(1);
     expect(getPropertyValueAtFrame(layer, 'transform.rotation', 0)).toBe(0);
     expect(getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', 0)).toBe(0);
     expect(getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', 0)).toBe(0);
@@ -501,7 +503,8 @@ describe('getTransformAtFrame', () => {
     expect(transform).toEqual({
       positionX: 0,
       positionY: 0,
-      scale: 1,
+      scaleX: 1,
+      scaleY: 1,
       rotation: 0,
       anchorPointX: 0,
       anchorPointY: 0,
@@ -520,7 +523,8 @@ describe('getTransformAtFrame', () => {
     const transform = getTransformAtFrame(layer, 0);
     expect(transform.positionX).toBe(10);
     // Others keep defaults
-    expect(transform.scale).toBe(1);
+    expect(transform.scaleX).toBe(1);
+    expect(transform.scaleY).toBe(1);
     expect(transform.rotation).toBe(0);
   });
 });

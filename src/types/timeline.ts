@@ -162,7 +162,8 @@ export type PropertyPath =
   // Transform properties
   | 'transform.position.x'
   | 'transform.position.y'
-  | 'transform.scale'        // Uniform scale (1.0 = 100%)
+  | 'transform.scale.x'       // Horizontal scale (1.0 = 100%)
+  | 'transform.scale.y'       // Vertical scale (1.0 = 100%)
   | 'transform.rotation'     // Degrees (1° increments)
   | 'transform.anchorPoint.x'
   | 'transform.anchorPoint.y'
@@ -206,9 +207,20 @@ export const PROPERTY_DEFINITIONS: Partial<Record<PropertyPath, PropertyDefiniti
     step: 1,
     unit: 'cells',
   },
-  'transform.scale': {
-    path: 'transform.scale',
-    displayName: 'Scale',
+  'transform.scale.x': {
+    path: 'transform.scale.x',
+    displayName: 'Scale X',
+    category: 'transform',
+    valueType: 'number',
+    defaultValue: 1,
+    min: 0.1,
+    max: 10,
+    step: 0.1,
+    unit: 'x',
+  },
+  'transform.scale.y': {
+    path: 'transform.scale.y',
+    displayName: 'Scale Y',
     category: 'transform',
     valueType: 'number',
     defaultValue: 1,

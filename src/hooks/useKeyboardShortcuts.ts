@@ -1077,6 +1077,28 @@ const processHistoryAction = (
       }
       break;
     }
+
+    case 'apply_transforms': {
+      const tl = useTimelineStore.getState();
+      const targetLayer = isRedo ? structuredClone(action.data.newLayer) : structuredClone(action.data.previousLayer);
+      const layerId = action.data.layerId as LayerId;
+      useTimelineStore.setState({
+        layers: tl.layers.map((l) => l.id === layerId ? targetLayer : l),
+      });
+      // Reload canvas if this is the active layer
+      if (tl.view.activeLayerId === layerId) {
+        const cf = targetLayer.contentFrames.find(
+          (c: { startFrame: number; durationFrames: number }) =>
+            tl.view.currentFrame >= c.startFrame && tl.view.currentFrame < c.startFrame + c.durationFrames,
+        );
+        if (cf) {
+          const data = cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data ?? {}));
+          animationStore.setFrameData(animationStore.currentFrameIndex, data);
+          canvasStore.setCanvasData(data);
+        }
+      }
+      break;
+    }
       
     default:
       console.warn('Unknown history action type:', action);
