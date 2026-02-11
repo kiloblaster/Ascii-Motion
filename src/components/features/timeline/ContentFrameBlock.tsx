@@ -25,6 +25,7 @@ interface ContentFrameBlockProps {
   contentFrame: ContentFrame;
   pxPerFrame: number;
   scrollX: number;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 const DRAG_THRESHOLD = 4;
@@ -34,6 +35,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
   contentFrame,
   pxPerFrame,
   scrollX,
+  onContextMenu,
 }) => {
   const updateContentFrameTiming = useTimelineStore((s) => s.updateContentFrameTiming);
   const { updateContentFrameTiming: updateTimingHistory } = useTimelineHistory();
@@ -593,6 +595,8 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       )}
       style={{ left, width }}
       onMouseDown={handleMouseDown}
+      onContextMenu={onContextMenu}
+      data-content-frame="true"
     >
       <div className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize hover:bg-primary/30 rounded-l" onMouseDown={handleResizeLeft} />
       {width > 30 && (

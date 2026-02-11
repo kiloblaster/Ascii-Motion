@@ -210,6 +210,14 @@ export interface TimelineState {
   trimToWorkArea: () => void;
   setTimecodeFormat: (format: import('../types/timeline').TimecodeFormat) => void;
 
+  // Clipboard (for right-click copy/paste of frames and keyframes)
+  copiedFrames: Array<{ durationFrames: number; data: Map<string, import('../types').Cell>; hidden?: boolean }> | null;
+  copiedKeyframes: Array<{ value: number; easing: import('../types/timeline').Keyframe['easing']; frameOffset: number }> | null;
+  copyContentFrames: (layerId: LayerId, frameIds: ContentFrameId[]) => void;
+  pasteContentFrames: (layerId: LayerId, atFrame: number) => void;
+  copyKeyframes: (layerId: LayerId, trackId: PropertyTrackId, keyframeIds: KeyframeId[]) => void;
+  pasteKeyframes: (layerId: LayerId, trackId: PropertyTrackId, atFrame: number) => void;
+
   // ============================================
   // PROJECT LIFECYCLE
   // ============================================
@@ -1113,6 +1121,172 @@ export const useTimelineStore = create<TimelineState>()(
 
     setTimecodeFormat: (format) => {
       set((state) => ({ view: { ...state.view, timecodeFormat: format } }));
+    },
+
+    // ── Clipboard ──
+    copiedFrames: null,
+    copiedKeyframes: null,
+
+    copyContentFrames: (layerId, frameIds) => {
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (!layer) return;
+      const frames = layer.contentFrames
+        .filter((cf) => frameIds.includes(cf.id))
+        .sort((a, b) => a.startFrame - b.startFrame)
+        .map((cf) => ({ durationFrames: cf.durationFrames, data: new Map(cf.data), hidden: cf.hidden }));
+      set({ copiedFrames: frames, copiedKeyframes: null });
+    },
+
+    pasteContentFrames: (layerId, atFrame) => {
+      const { copiedFrames } = get();
+      if (!copiedFrames || copiedFrames.length === 0) return;
+      let cursor = atFrame;
+      for (const cf of copiedFrames) {
+        get().addContentFrame(layerId, cursor, cf.durationFrames, new Map(cf.data));
+        // Set hidden state if applicable
+        if (cf.hidden) {
+          const layer = get().layers.find((l) => l.id === layerId);
+          const added = layer?.contentFrames.find((c) => c.startFrame === cursor && c.durationFrames === cf.durationFrames);
+          if (added) {
+            get().toggleContentFrameHidden(layerId, [added.id], true);
+          }
+        }
+        cursor += cf.durationFrames;
+      }
+    },
+
+    copyKeyframes: (keyframeIds) => {
+      // Collect all selected keyframes across all layers/tracks
+      type Entry = { layerId: string; trackId: string; propertyPath: string; frame: number; value: number; easing: import('../types/timeline').Keyframe['easing'] };
+      const entries: Entry[] = [];
+      for (const layer of get().layers) {
+        for (const track of layer.propertyTracks) {
+          for (const kf of track.keyframes) {
+            if (keyframeIds.includes(kf.id)) {
+              entries.push({
+                layerId: layer.id as string,
+                trackId: track.id as string,
+                propertyPath: track.propertyPath,
+                frame: kf.frame,
+                value: kf.value as number,
+                easing: kf.easing,
+              });
+            }
+          }
+        }
+      }
+      if (entries.length === 0) return;
+
+      // Sort all entries by frame to find the global first frame
+      entries.sort((a, b) => a.frame - b.frame);
+      const firstFrame = entries[0].frame;
+
+      // Assign layer indices by unique layerId (in order of first appearance)
+      const layerOrder: string[] = [];
+      for (const e of entries) {
+        if (!layerOrder.includes(e.layerId)) layerOrder.push(e.layerId);
+      }
+
+      // Assign track indices by unique trackId (in order of first appearance)
+      const trackOrder: string[] = [];
+      for (const e of entries) {
+        if (!trackOrder.includes(e.trackId)) trackOrder.push(e.trackId);
+      }
+
+      const kfs = entries.map((e) => ({
+        sourceLayerId: e.layerId,
+        layerIndex: layerOrder.indexOf(e.layerId),
+        trackIndex: trackOrder.indexOf(e.trackId),
+        propertyPath: e.propertyPath,
+        value: e.value,
+        easing: e.easing,
+        frameOffset: e.frame - firstFrame,
+      }));
+      set({ copiedKeyframes: kfs, copiedFrames: null });
+    },
+
+    pasteKeyframes: (layerId, trackId, atFrame) => {
+      const { copiedKeyframes, layers } = get();
+      if (!copiedKeyframes || copiedKeyframes.length === 0) return;
+
+      const targetLayer = layers.find((l) => l.id === layerId);
+      if (!targetLayer) return;
+      const targetTrack = targetLayer.propertyTracks.find((t) => t.id === trackId);
+      if (!targetTrack) return;
+      const targetPath = targetTrack.propertyPath;
+
+      // Determine how many source layers are in the clipboard
+      const maxLayerIndex = Math.max(...copiedKeyframes.map((kf) => kf.layerIndex));
+      const isMultiLayer = maxLayerIndex > 0;
+
+      // Check if target track matches any copied property path
+      const copiedPaths = [...new Set(copiedKeyframes.map((kf) => kf.propertyPath))];
+      const targetMatchesCopied = copiedPaths.includes(targetPath);
+
+      if (isMultiLayer && targetMatchesCopied) {
+        // Multi-layer paste: try to match original layer IDs first.
+        // If original layers still exist, paste back to them.
+        // Otherwise fall back to index offset from target layer.
+        const sourceLayerIds = [...new Set(copiedKeyframes.map((kf) => kf.sourceLayerId))];
+        const allSourceLayersExist = sourceLayerIds.every((id) => layers.some((l) => (l.id as string) === id));
+
+        for (const entry of copiedKeyframes) {
+          let destLayer: typeof layers[0] | undefined;
+
+          if (allSourceLayersExist) {
+            // Original layers exist — paste back to them
+            destLayer = layers.find((l) => (l.id as string) === entry.sourceLayerId);
+          } else {
+            // Fallback: use index offset from target layer
+            const targetLayerIdx = layers.findIndex((l) => l.id === layerId);
+            const destLayerIdx = targetLayerIdx + entry.layerIndex;
+            if (destLayerIdx >= 0 && destLayerIdx < layers.length) {
+              destLayer = layers[destLayerIdx];
+            }
+          }
+
+          if (!destLayer) continue;
+
+          const destTrack = destLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+          if (!destTrack) continue;
+
+          const targetFrame = atFrame + entry.frameOffset;
+          get().addKeyframe(destLayer.id, destTrack.id, targetFrame, entry.value);
+          const updatedLayer = get().layers.find((l) => l.id === destLayer!.id);
+          const updatedTrack = updatedLayer?.propertyTracks.find((t) => t.id === destTrack.id);
+          const addedKf = updatedTrack?.keyframes.find((kf) => kf.frame === targetFrame);
+          if (addedKf) {
+            get().updateKeyframe(destLayer.id, destTrack.id, addedKf.id, { easing: entry.easing });
+          }
+        }
+      } else if (targetMatchesCopied) {
+        // Single-layer multi-track paste: paste to matching property tracks on target layer
+        for (const entry of copiedKeyframes) {
+          const destTrack = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+          if (!destTrack) continue;
+          const targetFrame = atFrame + entry.frameOffset;
+          get().addKeyframe(layerId, destTrack.id, targetFrame, entry.value);
+          const updatedLayer = get().layers.find((l) => l.id === layerId);
+          const updatedTrack = updatedLayer?.propertyTracks.find((t) => t.id === destTrack.id);
+          const addedKf = updatedTrack?.keyframes.find((kf) => kf.frame === targetFrame);
+          if (addedKf) {
+            get().updateKeyframe(layerId, destTrack.id, addedKf.id, { easing: entry.easing });
+          }
+        }
+      } else {
+        // Unmatched track: paste only trackIndex 0 keyframes from layerIndex 0
+        for (const entry of copiedKeyframes) {
+          if (entry.trackIndex !== 0 || entry.layerIndex !== 0) continue;
+          const targetFrame = atFrame + entry.frameOffset;
+          get().addKeyframe(layerId, trackId, targetFrame, entry.value);
+          const updatedLayer = get().layers.find((l) => l.id === layerId);
+          const updatedTrack = updatedLayer?.propertyTracks.find((t) => t.id === trackId);
+          const addedKf = updatedTrack?.keyframes.find((kf) => kf.frame === targetFrame);
+          if (addedKf) {
+            get().updateKeyframe(layerId, trackId, addedKf.id, { easing: entry.easing });
+          }
+        }
+      }
     },
 
     clearWorkArea: () => {

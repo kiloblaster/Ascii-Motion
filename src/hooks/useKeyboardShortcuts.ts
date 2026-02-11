@@ -1707,6 +1707,32 @@ export const useKeyboardShortcuts = () => {
         navigatePaletteColor('next');
         return;
       }
+
+      // Toggle show all keyframes (expand/collapse all layers with keyframes)
+      if (event.key === 'u') {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          const expanded = tl.view.expandedLayerIds;
+          if (expanded.size > 0) {
+            // Collapse all
+            useTimelineStore.setState({
+              view: { ...tl.view, expandedLayerIds: new Set() },
+            });
+          } else {
+            // Expand all layers that have keyframes
+            const withKfs = new Set(
+              tl.layers
+                .filter((l) => l.propertyTracks.some((t) => t.keyframes.length > 0))
+                .map((l) => l.id),
+            );
+            useTimelineStore.setState({
+              view: { ...tl.view, expandedLayerIds: withKfs },
+            });
+          }
+          return;
+        }
+      }
       
       const targetTool = getToolForHotkey(event.key);
       if (targetTool) {

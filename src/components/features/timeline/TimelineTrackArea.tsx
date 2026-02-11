@@ -16,6 +16,7 @@ import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
+import { TimelineContextMenu, type TimelineContextMenuState } from './TimelineContextMenu';
 import type { KeyframeId } from '../../../types/timeline';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +44,9 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const contentFrameDragPreview = useTimelineStore((s) => s.view.contentFrameDragPreview);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const { addKeyframe } = useTimelineHistory();
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<TimelineContextMenuState | null>(null);
 
   // Playback position for live indicator
   const { isActive: isPlaybackActive, currentFrameIndex: playbackFrame } = usePlaybackOnlySnapshot();
@@ -217,6 +221,15 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 'relative border-b border-border/50 min-h-[32px]',
                 layer.id === activeLayerId && 'bg-accent/20',
               )}
+              onContextMenu={(e) => {
+                // Only trigger if clicking on empty space (not on a content frame)
+                if ((e.target as HTMLElement).closest('[data-content-frame]')) return;
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0);
+                const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+                setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'empty-track', layerId: layer.id, clickFrame } });
+              }}
             >
               {/* Content frame blocks */}
               {layer.contentFrames.map((cf) => (
@@ -226,6 +239,21 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                   contentFrame={cf}
                   pxPerFrame={pxPerFrame}
                   scrollX={scrollX}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // If this frame is selected, use all selected frames; otherwise just this one
+                    const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+                    const frameIds = selectedIds.has(cf.id) && selectedIds.size > 0
+                      ? [...selectedIds]
+                      : [cf.id];
+                    // Calculate the frame position where the user right-clicked
+                    const trackEl = e.currentTarget.parentElement;
+                    const rect = trackEl?.getBoundingClientRect();
+                    const clickX = rect ? e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0) : 0;
+                    const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+                    setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'frame', layerId: layer.id, frameIds, clickFrame } });
+                  }}
                 />
               ))}
 
@@ -338,6 +366,15 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                   key={track.id}
                   className="relative border-b border-border/30 min-h-[24px] bg-muted/10 cursor-crosshair"
                   onDoubleClick={handleTrackClick}
+                  onContextMenu={(e) => {
+                    // Only trigger if clicking on empty space (not on a keyframe)
+                    if ((e.target as HTMLElement).closest('[data-keyframe]')) return;
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0);
+                    const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+                    setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'property-track', layerId: layer.id, trackId: track.id, clickFrame } });
+                  }}
                 >
                   {/* Keyframe diamonds */}
                   {track.keyframes.map((kf) => (
@@ -349,6 +386,15 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                       pxPerFrame={pxPerFrame}
                       scrollX={scrollX}
                       isSelected={selectedKeyframeIds.has(kf.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const selKfIds = useTimelineStore.getState().view.selectedKeyframeIds;
+                        const kfIds = selKfIds.has(kf.id) && selKfIds.size > 0
+                          ? [...selKfIds]
+                          : [kf.id];
+                        setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'keyframe', layerId: layer.id, trackId: track.id, keyframeIds: kfIds } });
+                      }}
                     />
                   ))}
                 </div>
@@ -389,6 +435,11 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
           />
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <TimelineContextMenu menu={contextMenu} onClose={() => setContextMenu(null)} />
+      )}
     </div>
   );
 };

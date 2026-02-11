@@ -102,6 +102,7 @@ const KEYBOARD_SHORTCUTS: ShortcutSection[] = [
       { keys: ['Cmd', '.'], description: 'Set selected frame end to playhead' },
       { keys: ['1'], description: 'Zoom in timeline' },
       { keys: ['2'], description: 'Zoom out timeline' },
+      { keys: ['U'], description: 'Show/hide all keyframes' },
       { keys: ['Shift', 'O'], description: 'Toggle onion skinning' },
     ]
   },

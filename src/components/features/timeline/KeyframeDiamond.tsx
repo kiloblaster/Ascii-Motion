@@ -19,6 +19,7 @@ interface KeyframeDiamondProps {
   pxPerFrame: number;
   scrollX: number;
   isSelected: boolean;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
@@ -28,6 +29,7 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
   pxPerFrame,
   scrollX,
   isSelected,
+  onContextMenu,
 }) => {
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
@@ -229,6 +231,8 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
         style={{ left: left - 5, top: 5 }}
         onClick={handleClick}
         onMouseDown={handleDragStart}
+        onContextMenu={onContextMenu}
+        data-keyframe="true"
         title={`Frame ${keyframe.frame}: ${keyframe.value}`}
       />
     </>
