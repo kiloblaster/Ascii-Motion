@@ -74,6 +74,7 @@ export interface TimelineState {
   setLayerVisible: (layerId: LayerId, visible: boolean) => void;
   setLayerSolo: (layerId: LayerId, solo: boolean) => void;
   setLayerLocked: (layerId: LayerId, locked: boolean) => void;
+  setLayerSyncKeyframes: (layerId: LayerId, sync: boolean) => void;
   setLayerOpacity: (layerId: LayerId, opacity: number) => void;
   setStaticProperty: (layerId: LayerId, propertyPath: string, value: number) => void;
 
@@ -455,6 +456,12 @@ export const useTimelineStore = create<TimelineState>()(
     setLayerLocked: (layerId, locked) => {
       set((state) => ({
         layers: updateLayer(state.layers, layerId, (l) => ({ ...l, locked })),
+      }));
+    },
+
+    setLayerSyncKeyframes: (layerId, sync) => {
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({ ...l, syncKeyframesToFrames: sync })),
       }));
     },
 

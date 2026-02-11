@@ -131,6 +131,9 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
       const isAltDuplicate = e.altKey;
       let didDrag = false;
       let beforeSnapshot: ReturnType<typeof snapshotLayerFrames>[] | null = null;
+      // For keyframe sync: capture original frame starts and keyframes within each frame
+      let syncedKeyframesBefore: { trackId: string; keyframeId: string; frame: number; cfId: string; cfOrigStart: number }[] = [];
+      let keyframeSnapshotBefore: { layerId: string; trackId: string; keyframeId: string; frame: number }[] = [];
       // For Alt+drag duplicate: capture original positions/data of all affected frames
       let altDupEntries: { layerId: LayerId; startFrame: number; durationFrames: number; data: Map<string, import('../../../types').Cell> }[] = [];
 
@@ -145,6 +148,38 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           const allLayers = useTimelineStore.getState().layers;
           beforeSnapshot = allLayers.map((l) => snapshotLayerFrames(l.id));
           didDrag = true;
+
+          // Capture synced keyframes if the layer has sync enabled
+          const srcLayer = allLayers.find((l) => l.id === layerId);
+          if (srcLayer?.syncKeyframesToFrames) {
+            const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+            const isGroupDrag = selectedIds.has(contentFrame.id) && selectedIds.size > 1;
+            const framesToSync = isGroupDrag
+              ? srcLayer.contentFrames.filter((cf) => selectedIds.has(cf.id))
+              : [contentFrame];
+
+            // Snapshot ALL keyframe positions on this layer (for history)
+            keyframeSnapshotBefore = srcLayer.propertyTracks.flatMap((t) =>
+              t.keyframes.map((kf) => ({ layerId: layerId as string, trackId: t.id as string, keyframeId: kf.id as string, frame: kf.frame })),
+            );
+
+            // Identify keyframes within each frame's time range
+            for (const cf of framesToSync) {
+              for (const track of srcLayer.propertyTracks) {
+                for (const kf of track.keyframes) {
+                  if (kf.frame >= cf.startFrame && kf.frame < cf.startFrame + cf.durationFrames) {
+                    syncedKeyframesBefore.push({
+                      trackId: track.id as string,
+                      keyframeId: kf.id as string,
+                      frame: kf.frame,
+                      cfId: cf.id as string,
+                      cfOrigStart: cf.startFrame,
+                    });
+                  }
+                }
+              }
+            }
+          }
 
           // For Alt+drag: capture original data of all frames that will move
           if (isAltDuplicate) {
@@ -417,10 +452,38 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
           }
         }
 
-        // Record history for the entire drag-reorder (+ optional duplicate) operation
+        // Sync keyframes: move keyframes that were within dragged frames by the same delta
+        if (syncedKeyframesBefore.length > 0) {
+          const tl = useTimelineStore.getState();
+          const currentLayer = tl.layers.find((l) => l.id === layerId);
+          if (currentLayer) {
+            for (const entry of syncedKeyframesBefore) {
+              // Find the content frame that this keyframe belonged to and its new position
+              const cf = currentLayer.contentFrames.find((c) => (c.id as string) === entry.cfId);
+              if (!cf) continue;
+              const delta = cf.startFrame - entry.cfOrigStart;
+              if (delta === 0) continue;
+              const newFrame = Math.max(0, entry.frame + delta);
+              tl.moveKeyframe(layerId, entry.trackId as any, entry.keyframeId as any, newFrame);
+            }
+          }
+        }
+
+        // Record history for the entire drag-reorder (+ optional duplicate + keyframe sync) operation
         if (beforeSnapshot) {
           const allLayers = useTimelineStore.getState().layers;
           const afterSnapshot = allLayers.map((l) => snapshotLayerFrames(l.id));
+
+          // Capture keyframe positions after sync
+          let keyframeSnapshotAfter: { layerId: string; trackId: string; keyframeId: string; frame: number }[] | undefined;
+          if (keyframeSnapshotBefore.length > 0) {
+            const srcLayer = allLayers.find((l) => l.id === layerId);
+            if (srcLayer) {
+              keyframeSnapshotAfter = srcLayer.propertyTracks.flatMap((t) =>
+                t.keyframes.map((kf) => ({ layerId: layerId as string, trackId: t.id as string, keyframeId: kf.id as string, frame: kf.frame })),
+              );
+            }
+          }
 
           const historyAction: ContentFrameReorderHistoryAction = {
             type: 'content_frame_reorder',
@@ -429,6 +492,8 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = ({
             data: {
               previousState: beforeSnapshot,
               newState: afterSnapshot,
+              previousKeyframes: keyframeSnapshotBefore.length > 0 ? keyframeSnapshotBefore : undefined,
+              newKeyframes: keyframeSnapshotAfter,
             },
           };
           pushToHistory(historyAction);

@@ -9,7 +9,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond, RectangleEllipsis } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import {
@@ -45,6 +45,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
   const setLayerVisible = useTimelineStore((s) => s.setLayerVisible);
   const setLayerSolo = useTimelineStore((s) => s.setLayerSolo);
   const setLayerLocked = useTimelineStore((s) => s.setLayerLocked);
+  const setLayerSyncKeyframes = useTimelineStore((s) => s.setLayerSyncKeyframes);
   const renameLayer = useTimelineStore((s) => s.renameLayer);
 
   const { removeLayer, duplicateLayer, addKeyframe, removeKeyframe } = useTimelineHistory();
@@ -93,8 +94,6 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
     },
     [handleNameCommit],
   );
-
-  const hasKeyframes = layer.propertyTracks.some((t) => t.keyframes.length > 0);
 
   return (
     <div
@@ -221,10 +220,28 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
           )}
         </div>
 
-        {/* Keyframe indicator */}
-        {hasKeyframes && (
-          <div className="w-2 h-2 rotate-45 bg-yellow-500/70 flex-shrink-0" />
-        )}
+        {/* Sync keyframes to frame drag toggle */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className={cn(
+                'p-0.5 hover:bg-muted rounded flex-shrink-0',
+                layer.syncKeyframesToFrames ? 'text-blue-400' : 'text-muted-foreground/40',
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                setLayerSyncKeyframes(layer.id, !layer.syncKeyframesToFrames);
+              }}
+            >
+              <RectangleEllipsis className="w-3.5 h-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {layer.syncKeyframesToFrames
+              ? 'Keyframes move with frames (click to disable)'
+              : 'Sync keyframes to frame drag (click to enable)'}
+          </TooltipContent>
+        </Tooltip>
 
         {/* Delete button (only if more than 1 layer) */}
         {layers.length > 1 && (

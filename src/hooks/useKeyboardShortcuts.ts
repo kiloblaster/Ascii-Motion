@@ -1015,6 +1015,20 @@ const processHistoryAction = (
           tl.addContentFrame(lid, cf.startFrame, cf.durationFrames, data);
         }
       }
+
+      // Restore keyframe positions if synced keyframes were moved
+      const kfSnapshot = isRedo ? action.data.newKeyframes : action.data.previousKeyframes;
+      if (kfSnapshot && kfSnapshot.length > 0) {
+        const tl2 = useTimelineStore.getState();
+        for (const entry of kfSnapshot) {
+          tl2.moveKeyframe(
+            entry.layerId as LayerId,
+            entry.trackId as PropertyTrackId,
+            entry.keyframeId as KeyframeId,
+            entry.frame,
+          );
+        }
+      }
       break;
     }
 

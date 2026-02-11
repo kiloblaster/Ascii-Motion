@@ -92,6 +92,9 @@ export interface Layer {
   // Layer-level settings
   opacity: number;         // 0-100, default 100
 
+  // When true, keyframes within a content frame's time range move with the frame during drag
+  syncKeyframesToFrames?: boolean;
+
   // Group membership (optional)
   parentGroupId?: LayerGroupId;
 }

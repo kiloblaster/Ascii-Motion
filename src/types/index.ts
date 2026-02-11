@@ -784,6 +784,10 @@ export interface ContentFrameReorderHistoryAction extends HistoryAction {
       layerId: string;
       contentFrames: Array<{ id: string; startFrame: number; durationFrames: number; name: string; data: Map<string, Cell> }>;
     }>;
+    /** Keyframe positions before reorder (for sync-keyframes-to-frames) */
+    previousKeyframes?: Array<{ layerId: string; trackId: string; keyframeId: string; frame: number }>;
+    /** Keyframe positions after reorder */
+    newKeyframes?: Array<{ layerId: string; trackId: string; keyframeId: string; frame: number }>;
   };
 }
 
