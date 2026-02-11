@@ -1,9 +1,9 @@
 # Layer Timeline System Refactor Plan
 
-> **Version:** 3.0.0  
+> **Version:** 3.1.0  
 > **Created:** February 1, 2026  
 > **Last Updated:** February 10, 2026  
-> **Status:** In Progress — Phase 4 complete, UI bug fixing before Phase 5  
+> **Status:** In Progress — Phase 4 complete + extensive UI polish, ready for Phase 5  
 > **Target Completion:** TBD  
 > **Estimated Duration:** 16-22 weeks
 
@@ -5467,6 +5467,110 @@ Keyframes support cubic bezier easing:
 - [ ] MCP `get_layers` returns correct data
 - [ ] MCP guide resource is updated
 - [ ] MCP version is 2.0.0
+- [ ] Media import creates new layer with correct frame count
+- [ ] Imported video frames play back at project frame rate
+- [ ] Import dialog shows import target as "New Layer"
+
+### 6.9 Media Import (Video/Image → Layer)
+
+**Purpose:** Update the existing media import system to work with the layer-based timeline. Imported media always creates a new layer, and video frame counts are preserved regardless of frame rate differences.
+
+> **Added:** 2026-02-10. Not in original plan — discovered during Phase 4 UI polish.
+
+#### 6.9.1 Core Behavior Changes
+
+**Always creates a new layer** (same pattern as generators in §6.3):
+- Imported content creates a new layer named after the source file (e.g., "video.mp4", "photo.png")
+- Layer is inserted above the currently selected layer (or at top if nothing selected)
+- The new layer becomes the active layer after import
+
+**Frame rate handling — preserve frame count, adapt playback speed:**
+
+The import system should NOT resample or drop/duplicate frames to match the project frame rate. Instead:
+
+1. Extract all frames from the source video at its native frame rate
+2. Create one content frame per extracted frame, each with `durationFrames: 1`
+3. Content frames are placed sequentially: `startFrame: 0, 1, 2, ...`
+4. The project's frame rate determines playback speed — a 24fps video imported into a 12fps project plays at half speed (all frames preserved), and into a 30fps project plays slightly faster
+
+This approach:
+- **Preserves all source frames** — no quality loss from frame dropping or duplication
+- **Keeps the math simple** — total frames = source frame count, always
+- **Lets users adjust** — they can change project frame rate or manually delete/retime frames
+- **Matches After Effects behavior** — footage items retain their frame count; composition frame rate controls playback
+
+| Source | Source FPS | Source Frames | Project FPS | Result |
+|--------|-----------|---------------|-------------|--------|
+| 2s video | 24 | 48 | 12 | 48 frames, plays back over 4s at 12fps |
+| 2s video | 24 | 48 | 24 | 48 frames, plays back over 2s at 24fps |
+| 2s video | 24 | 48 | 30 | 48 frames, plays back over 1.6s at 30fps |
+| 5s video | 30 | 150 | 12 | 150 frames, plays back over 12.5s at 12fps |
+
+**Image import** (single frame):
+- Creates a new layer with a single content frame at `startFrame: 0, durationFrames: 1`
+- User can extend the duration by dragging the frame edge
+
+#### 6.9.2 Implementation Changes
+
+**Modify:** `src/components/features/ImportMediaDialog.tsx` (or equivalent import UI)
+
+Current flow:
+1. User selects file → import dialog opens
+2. Character mapping and settings configured
+3. "Import" button processes frames and calls `importFramesOverwrite()` / `importFramesAppend()` on the animation store
+
+New flow:
+1. User selects file → import dialog opens
+2. Character mapping and settings configured
+3. "Import" button processes frames
+4. Creates a new layer via `timelineStore.addLayer(filename)`
+5. Adds each processed frame as a content frame on the new layer
+6. Auto-extends timeline to fit all imported frames
+
+```typescript
+// New import flow (layer mode)
+const handleImport = async (processedFrames: Map<string, Cell>[]) => {
+  const tl = useTimelineStore.getState();
+  
+  // Create new layer named after the source file
+  const layerName = sourceFile.name.replace(/\.[^.]+$/, ''); // Strip extension
+  const newLayerId = tl.addLayer(layerName);
+  if (!newLayerId) return; // Layer limit reached
+  
+  // Add each frame as a content frame
+  for (let i = 0; i < processedFrames.length; i++) {
+    tl.addContentFrame(newLayerId, i, 1, processedFrames[i]);
+  }
+  
+  // Timeline auto-extends via ensureTimelineContains() inside addContentFrame
+  // Set as active layer
+  tl.setActiveLayer(newLayerId);
+};
+```
+
+**Remove:** Import mode toggle (overwrite/append) in layer mode — always creates a new layer.
+
+**Preserve:** Legacy import behavior when `layers.length === 0` (non-layer mode).
+
+#### 6.9.3 Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/components/features/ImportMediaDialog.tsx` | Route import through layer creation in layer mode |
+| `src/stores/animationStoreAdapter.ts` | Update `importFramesOverwrite`/`importFramesAppend` to create layers |
+| `src/hooks/useVideoImport.ts` (if exists) | Adapt frame extraction to not resample |
+
+#### 6.9.4 Testing Checkpoint
+
+- [ ] Video import creates a new layer with correct number of frames
+- [ ] Frame count matches source exactly (no resampling)
+- [ ] Playback speed matches project frame rate (not source fps)
+- [ ] Image import creates single-frame layer
+- [ ] Import mode toggle hidden in layer mode
+- [ ] Layer named after source file
+- [ ] Timeline auto-extends to fit imported frames
+- [ ] Import is undoable (layer add + content frames)
+- [ ] Layer limit enforced on import (shows upgrade prompt if at 5)
 
 ---
 
@@ -5735,6 +5839,8 @@ mergeDown: (layerId: LayerId) => {
 | `src/stores/effectsStore.ts` | 6 | MODIFY | Layer effects |
 | `src/stores/timeEffectsStore.ts` | 6 | MODIFY | Wiggle/wave warp → layer content frames |
 | `src/stores/generatorsStore.ts` | 6 | MODIFY | Generators create layers instead of overwriting frames |
+| `src/components/features/ImportMediaDialog.tsx` | 6 | MODIFY | Media import creates new layer in layer mode (§6.9) |
+| `src/stores/animationStoreAdapter.ts` | 6 | MODIFY | Import functions route through layer creation |
 | `src/hooks/useLayerCanvasSync.ts` | 6 | NEW | Replaces useFrameSynchronization.ts (unidirectional sync) |
 | `src/hooks/useFrameSynchronization.ts` | 6 | DELETE | Replaced by useLayerCanvasSync.ts |
 | `src/hooks/useAnimationHistory.ts` | 1 | MIGRATE | Becomes useTimelineHistory.ts |
@@ -6562,3 +6668,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 2.4.0 | 2026-02-07 | Copilot | **Phase 4: Keyframe System (partial).** Built `useKeyframeableProperty` hook (reactive property→keyframe binding). Built `AnchorPointOverlay` (crosshair + motion path, integrated in CanvasOverlay). Upgraded `useOnionSkinRenderer` for layer-aware compositing. **Transform-aware coordinate system** (major architectural addition): Created `src/utils/layerTransformUtils.ts` with `screenToLocal()`, `localToScreen()`, `transformCellMapToLocal()`, `transformCellMapToScreen()`, `inverseTransformPoint()`. Added `inverseTransformPoint()` to `layerCompositing.ts`. Fixed ALL 9 drawing tools: pencil, eraser, fill, rectangle, ellipse, gradient, bezier, text, ASCII type/box — each applies inverse transform before canvas writes. Fixed brush smoothing gap-fill coordinate mismatch. Fixed all 3 selection tool copy/move/paste operations. Fixed magic wand flood fill BFS. Fixed selection constraint checks (`localToScreen()` in `selectionConstraint.ts`). Fixed gradient preview rendering (`transformCellMapToScreen()`). Added Coordinate Space Architecture section to plan. 297/297 tests. TypeScript clean. |
 | 2.5.0 | 2026-02-08 | Copilot | **Phase 4 continued + Timeline UI polish.** Content frame selection: Cmd/Ctrl+click toggle, Shift+click range select, multi-select group drag (same-layer + cross-layer), ghost with frame dividers showing gaps. Add-frame edge case: last frame of block adds after instead of carving. Ghost snaps to frame positions. Multi-frame cross-layer drag. **Timeline UI overhaul**: Onion skin controls moved to toolbar row (compact inline layout, no container box), timecode next to playback controls, frame counter in footer. Dropdown border color fixed (`border-border/50`). **Keyframe editor compacted**: Frame+Value inline, easing as dropdown menu, custom curve only when selected, narrower panel (w-48). **LayerPropertiesPanel** (§4.6a): New right-side panel showing all 6 transform properties with keyframe diamond toggles and editable inputs. Commit-on-blur/Enter, arrow key increment. Opens on layer click, closes with X. **Static properties system**: Added `staticProperties: Record<string, number>` to Layer type. `getPropertyValueAtFrame()` checks static values before global defaults. `setStaticProperty()` store action. `useKeyframeableProperty.setValue()` auto-writes static when untracked. Default anchor point = canvas center on new layers. **Opacity removed**: Removed `transform.opacity` from PropertyPath, PROPERTY_DEFINITIONS, compositing, getTransformAtFrame, tests. Fixed `propertyTracks.length` guards that blocked static property transforms. **Reset Transforms button** in properties panel. Anchor point overlay shows when properties panel is open. Removed TabsContent focus ring. 297/297 tests. TypeScript clean. |
 | 3.0.0 | 2026-02-09 | Copilot | **Major Phase 4 completion session.** §4.10 Layer Transform Tool: bounding box + corner handles + anchor crosshair overlay, move/scale/rotate/anchor drag modes, auto-keyframe mode toggle, undo batching (revert+re-apply on mouseUp). §4.11 Unbounded Layer Canvas: removed setCell bounds, getGridCoordinates clamping, compositing clip param, renderer out-of-bounds pass, fill BFS bounded by canvas OR content. §4.12 Frame Rate Controls: popup menu with 11 presets + custom dialog with live ms readout. §4.13 Playback Performance: pre-computed composited frames, eliminated React re-renders during playback, fixed timestep for accurate FPS. §4.14 Work Area: green range overlay on ruler with drag, Set Start/End/Trim footer buttons, playback constrained to work area, trim-to-work-area with full undo. Frame Start/End toolbar buttons: operate on selected (not playhead) frame with overlap trimming + canvas sync. **Comprehensive undo/redo**: added processHistoryAction cases for all 19 timeline action types including static_property_change, content_frame_reorder, timeline_duration_change, trim_to_work_area. Drag batching for transform tool, content frame resize, keyframe moves. **Multi-keyframe selection**: marquee drag, Shift+click additive, property name click selects all, batch easing/delete, Alt+drag duplicate with ghost preview, group drag. **UI polish**: collapsed layer keyframe dots, anchor/bounding box visibility controls, playback position indicator (red line via usePlaybackOnlySnapshot), collapsed panel playback overlay updated to dual-mode, frame rate control in footer, default zoom 8.0x, default panel height 314px, ruler tick heights adjusted. 297/297 tests. TypeScript clean. |
+| 3.1.0 | 2026-02-10 | Copilot | **Phase 4 bug fixes and UI fine-tuning session.** Multiple coordinate-space and unbounded-canvas fixes. **Flip tool fixes**: `flipUtils.ts` updated with `calculateContentBounds()`, `calculateAnchorFlipBounds()` for anchor-based flipping of unbounded content. `applyHorizontalFlip`/`applyVerticalFlip` accept optional `screenToLocal` transform for selection-based flips against local-space canvas data. `useFlipUtilities.ts` passes `screenToLocalFn` only for non-moveState path (moveState.originalData uses screen-space keys). **Canvas resize fix**: `useCanvasResize.ts` rewritten with layer-mode branch — shifts all content frames in all layers via `shiftCellMap()` (no bounds clipping for unbounded canvas), reads/writes directly to timelineStore. **Resize dialog input fix**: `CanvasResizeDialog.tsx` uses string state for free text entry, only clamps min 4 on blur/apply. **Layer transform tool off-canvas fix**: `LayerTransformOverlay.tsx` fully rewritten as `pointer-events-auto` interactive overlay with own mouse handling (pixelToCell conversion, global mousemove/mouseup during drag, CSS cursor per zone). Replaces the canvas-element-bound event routing that couldn't reach off-canvas bounding boxes/corners/anchors. **Both transform overlays hidden during playback** via `usePlaybackOnlySnapshot`. **Timecode system rewrite**: `TimecodeDisplay.tsx` rebuilt as editable input + format label dropdown. Format stored in `timelineStore.view.timecodeFormat`. `parseTimecodeInput()` for SS:FF, frames, seconds, milliseconds. `TimelineDurationInput` component added to footer for editable timeline length. Format changed from MM:SS:FF to SS:FF (no minute rollover, unlimited seconds). Auto-sizing inputs via `ch` units. Toolbar layout changed to CSS Grid `grid-cols-[1fr_auto_1fr]` to prevent timecode growth from shifting playback buttons. **New hotkeys**: ⌘N (add frame), ⌘D (duplicate frame), ⌘⌫ (delete frame), ⌘X (split frame), ⌘, (set frame start), ⌘. (set frame end), 1/2 (timeline zoom in/out), ⌘→/← (jump to next/prev visible keyframe). All added to `KeyboardShortcutsDialog.tsx` and toolbar tooltips. Layer-mode handlers override legacy frame handlers. **Per-track keyframe navigation**: ◀ ◆ ▶ buttons on each property track row in `LayerListItem.tsx`. **Content frame selection decoupled from playhead**: clicking a frame no longer moves the playhead. **Alt+drag frame duplicate**: follows keyframe Alt+drag pattern — captures `e.altKey` at mouseDown, creates duplicate at original position on mouseUp. Works for single and multi-selected frames. **Work area clear button** added to footer. **Content frame hide/show toggle**: `hidden?: boolean` on `ContentFrame`, `toggleContentFrameHidden()` store action, eye/eye-off toolbar button, hidden frames skipped in `getContentFrameAtTime()`, distinct visual styling (grey selected, transparent+dashed unselected). **Resize undo includes timeline duration**: `ContentFrameTimingHistoryAction` now stores `previousTimelineDuration`/`newTimelineDuration`, undo handler restores both frame timing and timeline length. Resize right-drag captures `origTimelineDuration` and reverts before history recording. **Sync keyframes to frames feature**: `syncKeyframesToFrames?: boolean` on Layer, `setLayerSyncKeyframes()` action, `RectangleEllipsis` toggle on layer row (replaces old keyframe diamond indicator), drag logic captures keyframes within frame ranges and moves them by the same delta on drop, `ContentFrameReorderHistoryAction` extended with `previousKeyframes`/`newKeyframes` snapshots for proper undo. 297/297 tests. TypeScript clean. |
