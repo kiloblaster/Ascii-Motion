@@ -165,10 +165,12 @@ export const LayerTransformOverlay: React.FC = () => {
   const handleSize = 8; // pixels
 
   // Cursor based on current zone (CSS cursor values, not Tailwind classes)
+  // Rotate uses a custom SVG cursor showing a rotation arrow
+  const rotateCursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M21 3v5h-5' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M21 3v5h-5' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 8 8, crosshair`;
   const cursorMap: Record<string, string> = {
     move: 'move',
     scale: 'nwse-resize',
-    rotate: 'crosshair',
+    rotate: rotateCursor,
     anchor: 'crosshair',
     none: 'default',
   };

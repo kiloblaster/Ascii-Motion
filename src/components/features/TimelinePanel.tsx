@@ -12,6 +12,7 @@
 
 import React, { useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
+import { useToolStore } from '../../stores/toolStore';
 import { AnimationTimeline } from './AnimationTimeline';
 import { LayerList } from './timeline/LayerList';
 import { TimelineTrackArea } from './timeline/TimelineTrackArea';
@@ -34,6 +35,8 @@ export const TimelinePanel: React.FC = () => {
   const setActiveView = useTimelineStore((s) => s.setActiveView);
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
   const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
+  const setShowLayerProperties = useTimelineStore((s) => s.setShowLayerProperties);
+  const activeTool = useToolStore((s) => s.activeTool);
   const zoom = useTimelineStore((s) => s.view.zoom);
   const setZoom = useTimelineStore((s) => s.setZoom);
   const setWorkAreaStart = useTimelineStore((s) => s.setWorkAreaStart);
@@ -43,6 +46,13 @@ export const TimelinePanel: React.FC = () => {
   const { trimToWorkArea } = useTimelineHistory();
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+
+  // Auto-show layer properties panel when transform tool is active
+  useEffect(() => {
+    if (activeTool === 'layertransform') {
+      setShowLayerProperties(true);
+    }
+  }, [activeTool, setShowLayerProperties]);
 
   // Sync vertical scroll between layer list and track area
   const layerListScrollRef = useRef<HTMLDivElement>(null);
