@@ -81,51 +81,104 @@ export function compositeLayersAtFrame(
       anchorY !== 0;
 
     // Apply each cell from the content frame
-    for (const [coordKey, cell] of contentFrame.data) {
-      // Skip empty cells
-      if (!cell.char || cell.char === ' ') continue;
+    if (hasTransform) {
+      // ── Inverse mapping: iterate destination cells, sample source ──
+      // This prevents gaps that forward mapping creates during scale/rotation.
+      // 
+      // 1. Compute the screen-space bounding box by forward-transforming the
+      //    content's local bounding box corners.
+      // 2. For each cell in that screen-space box, inverse-transform to find
+      //    which source cell it maps to.
+      // 3. If the source cell exists, place it at the destination.
 
-      let finalX: number;
-      let finalY: number;
+      // Find local-space content bounds
+      let localMinX = Infinity, localMaxX = -Infinity;
+      let localMinY = Infinity, localMaxY = -Infinity;
+      for (const coordKey of contentFrame.data.keys()) {
+        const commaIdx = coordKey.indexOf(',');
+        const x = parseInt(coordKey.substring(0, commaIdx), 10);
+        const y = parseInt(coordKey.substring(commaIdx + 1), 10);
+        if (x < localMinX) localMinX = x;
+        if (x > localMaxX) localMaxX = x;
+        if (y < localMinY) localMinY = y;
+        if (y > localMaxY) localMaxY = y;
+      }
 
-      if (hasTransform) {
-        const [x, y] = coordKey.split(',').map(Number);
+      if (localMinX === Infinity) continue; // empty content frame
 
-        // Apply anchor point offset
+      // Forward-transform the 4 corners of the local bounding box to screen space
+      const corners = [
+        forwardTransform(localMinX, localMinY),
+        forwardTransform(localMaxX + 1, localMinY),
+        forwardTransform(localMinX, localMaxY + 1),
+        forwardTransform(localMaxX + 1, localMaxY + 1),
+      ];
+
+      // Find the axis-aligned bounding box in screen space
+      let screenMinX = Infinity, screenMaxX = -Infinity;
+      let screenMinY = Infinity, screenMaxY = -Infinity;
+      for (const c of corners) {
+        if (c.x < screenMinX) screenMinX = c.x;
+        if (c.x > screenMaxX) screenMaxX = c.x;
+        if (c.y < screenMinY) screenMinY = c.y;
+        if (c.y > screenMaxY) screenMaxY = c.y;
+      }
+
+      // Add 1-cell padding to avoid edge clipping from rounding
+      screenMinX -= 1;
+      screenMinY -= 1;
+      screenMaxX += 1;
+      screenMaxY += 1;
+
+      // Build the transform object for inverseTransformPoint
+      const transform = { positionX: posX, positionY: posY, scale, rotation, anchorPointX: anchorX, anchorPointY: anchorY };
+
+      // Iterate every destination cell in the screen-space bounding box
+      for (let sy = screenMinY; sy <= screenMaxY; sy++) {
+        for (let sx = screenMinX; sx <= screenMaxX; sx++) {
+          // Bounds check (only when clipping for export)
+          if (clip && (sx < 0 || sx >= canvasWidth || sy < 0 || sy >= canvasHeight)) {
+            continue;
+          }
+
+          // Inverse-transform to find the source cell
+          const source = inverseTransformPoint(sx, sy, transform);
+          const sourceKey = `${source.x},${source.y}`;
+          const cell = contentFrame.data.get(sourceKey);
+
+          if (cell && cell.char && cell.char !== ' ') {
+            result.set(`${sx},${sy}`, cell);
+          }
+        }
+      }
+
+      // Helper: forward-transform a local-space point to screen space
+      function forwardTransform(x: number, y: number): { x: number; y: number } {
         const localX = x - anchorX;
         const localY = y - anchorY;
-
-        // Apply scale (snap to whole cells)
         const scaledX = localX * scale;
         const scaledY = localY * scale;
+        const { rotatedX, rotatedY } = applyRotation(scaledX, scaledY, rotation, cellAspectRatio);
+        return {
+          x: Math.round(rotatedX + anchorX + posX),
+          y: Math.round(rotatedY + anchorY + posY),
+        };
+      }
+    } else {
+      // No transform — use coordinates directly (fast path, forward mapping is fine)
+      for (const [coordKey, cell] of contentFrame.data) {
+        if (!cell.char || cell.char === ' ') continue;
 
-        // Apply rotation
-        const { rotatedX, rotatedY } = applyRotation(
-          scaledX,
-          scaledY,
-          rotation,
-          cellAspectRatio,
-        );
-
-        // Apply position offset and re-add anchor
-        finalX = Math.round(rotatedX + anchorX + posX);
-        finalY = Math.round(rotatedY + anchorY + posY);
-      } else {
-        // No transform — use coordinates directly (fast path)
         const commaIdx = coordKey.indexOf(',');
-        finalX = parseInt(coordKey.substring(0, commaIdx), 10);
-        finalY = parseInt(coordKey.substring(commaIdx + 1), 10);
+        const finalX = parseInt(coordKey.substring(0, commaIdx), 10);
+        const finalY = parseInt(coordKey.substring(commaIdx + 1), 10);
+
+        if (clip && (finalX < 0 || finalX >= canvasWidth || finalY < 0 || finalY >= canvasHeight)) {
+          continue;
+        }
+
+        result.set(coordKey, cell);
       }
-
-      // Bounds check (only when clipping for export)
-      if (clip && (finalX < 0 || finalX >= canvasWidth || finalY < 0 || finalY >= canvasHeight)) {
-        continue;
-      }
-
-      const finalKey = `${finalX},${finalY}`;
-
-      // Top layer's cell wins (we iterate bottom-to-top, so overwrite)
-      result.set(finalKey, cell);
     }
   }
 
