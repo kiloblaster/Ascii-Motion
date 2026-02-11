@@ -1,8 +1,8 @@
 # Layer Timeline System Refactor Plan
 
-> **Version:** 3.1.0  
+> **Version:** 3.2.0  
 > **Created:** February 1, 2026  
-> **Last Updated:** February 10, 2026  
+> **Last Updated:** February 11, 2026  
 > **Status:** In Progress — Phase 4 complete + extensive UI polish, ready for Phase 5  
 > **Target Completion:** TBD  
 > **Estimated Duration:** 16-22 weeks
@@ -430,10 +430,66 @@ Centralized utilities for converting between spaces:
 
 ### Impact on Future Phases
 
-- **Phase 5 (Export)**: Export composites via `compositeLayersAtFrame()` which already handles forward transforms. No inverse transform needed — exports read from composited output.
+- **Phase 5 (Export)**: Export composites via `compositeLayersAtFrame()` which uses inverse mapping for transformed layers. No additional transform logic needed — exports read from the gap-free composited output.
 - **Phase 6 (Effects)**: Layer-scoped effects may need to read cell data. If they read from `canvasStore.cells`, they're in local space. If they need screen-space awareness, use `localToScreen()`.
 - **Phase 6 (Generators)**: Generators create new layers with content frames — data is always in local space (no transform on a new layer's default identity transform). No transform utilities needed.
 - **Phase 7 (Multi-layer drawing)**: If `applyToAllLayers` mode draws to multiple layers simultaneously, each layer has its own transform. The inverse transform must be computed per-layer, not globally.
+
+### Inverse Mapping Compositing (Gap-Free Transforms)
+
+> **Added:** 2026-02-11. Replaces forward mapping to eliminate gaps during scale/rotation.
+
+#### Problem
+
+The original compositing used **forward mapping**: iterate each source cell, compute its transformed destination, and place it. This causes gaps because:
+- **Scale up**: Multiple destination cells map to the same source, but the loop only writes one destination per source cell
+- **Rotation**: Source cells land at non-integer positions and `Math.round()` can skip adjacent destination cells
+- The result: visible holes in the content when a layer is scaled > 1.0 or rotated
+
+#### Solution: Inverse Mapping
+
+`compositeLayersAtFrame()` now uses **inverse mapping** (backward mapping) for layers with transforms:
+
+1. **Compute local bounding box**: Find min/max X/Y from the content frame's cell keys
+2. **Forward-transform corners**: Transform the 4 corners of the local bounding box to screen space to find the axis-aligned screen-space bounding box (with 1-cell padding for rounding safety)
+3. **Iterate destination cells**: For every cell in the screen-space bounding box:
+   - Apply `inverseTransformPoint()` to find which source cell it maps to
+   - If that source cell exists in the content frame data, place it at the destination
+4. **No gaps guarantee**: Every destination cell in the transformed area is checked, so no cell is skipped
+
+```
+Forward mapping (OLD — causes gaps):
+  for each source cell:
+    destination = forwardTransform(source)
+    result[destination] = cell            ← some destinations missed!
+
+Inverse mapping (NEW — gap-free):
+  for each destination cell in screen AABB:
+    source = inverseTransform(destination)
+    if source exists in content:
+      result[destination] = cell          ← every destination checked!
+```
+
+#### Performance Characteristics
+
+| Scenario | Forward Mapping | Inverse Mapping |
+|----------|----------------|-----------------|
+| No transform (identity) | O(content cells) ✅ fast path | O(content cells) ✅ same fast path |
+| Scale = 1, position only | O(content cells) | O(content cells) — AABB = content size |
+| Scale = 2.0 | O(content cells) — gaps! | O(4 × content cells) — AABB is 4× larger |
+| Rotation 45° | O(content cells) — gaps! | O(~1.4 × content cells) — AABB slightly larger |
+
+The no-transform case (most common) uses the original direct-copy fast path with zero overhead.
+
+#### Impact on Phase 5 (Export)
+
+Export functions call `compositeLayersAtFrame()` which now produces gap-free output automatically. No changes needed in any export format — the composited data is already correct.
+
+**Pre-computed playback** (`useOptimizedPlayback`): Pre-computes composited frames at playback start. The inverse mapping runs once per frame during pre-computation, not during playback. Playback performance is unaffected.
+
+#### Impact on Phase 6 (Effects)
+
+Effects that operate on composited output (global effects) receive gap-free data. Effects that operate on local-space data (per-layer effects) are unaffected — they work on raw content frame data before compositing.
 
 ---
 
@@ -6669,3 +6725,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 2.5.0 | 2026-02-08 | Copilot | **Phase 4 continued + Timeline UI polish.** Content frame selection: Cmd/Ctrl+click toggle, Shift+click range select, multi-select group drag (same-layer + cross-layer), ghost with frame dividers showing gaps. Add-frame edge case: last frame of block adds after instead of carving. Ghost snaps to frame positions. Multi-frame cross-layer drag. **Timeline UI overhaul**: Onion skin controls moved to toolbar row (compact inline layout, no container box), timecode next to playback controls, frame counter in footer. Dropdown border color fixed (`border-border/50`). **Keyframe editor compacted**: Frame+Value inline, easing as dropdown menu, custom curve only when selected, narrower panel (w-48). **LayerPropertiesPanel** (§4.6a): New right-side panel showing all 6 transform properties with keyframe diamond toggles and editable inputs. Commit-on-blur/Enter, arrow key increment. Opens on layer click, closes with X. **Static properties system**: Added `staticProperties: Record<string, number>` to Layer type. `getPropertyValueAtFrame()` checks static values before global defaults. `setStaticProperty()` store action. `useKeyframeableProperty.setValue()` auto-writes static when untracked. Default anchor point = canvas center on new layers. **Opacity removed**: Removed `transform.opacity` from PropertyPath, PROPERTY_DEFINITIONS, compositing, getTransformAtFrame, tests. Fixed `propertyTracks.length` guards that blocked static property transforms. **Reset Transforms button** in properties panel. Anchor point overlay shows when properties panel is open. Removed TabsContent focus ring. 297/297 tests. TypeScript clean. |
 | 3.0.0 | 2026-02-09 | Copilot | **Major Phase 4 completion session.** §4.10 Layer Transform Tool: bounding box + corner handles + anchor crosshair overlay, move/scale/rotate/anchor drag modes, auto-keyframe mode toggle, undo batching (revert+re-apply on mouseUp). §4.11 Unbounded Layer Canvas: removed setCell bounds, getGridCoordinates clamping, compositing clip param, renderer out-of-bounds pass, fill BFS bounded by canvas OR content. §4.12 Frame Rate Controls: popup menu with 11 presets + custom dialog with live ms readout. §4.13 Playback Performance: pre-computed composited frames, eliminated React re-renders during playback, fixed timestep for accurate FPS. §4.14 Work Area: green range overlay on ruler with drag, Set Start/End/Trim footer buttons, playback constrained to work area, trim-to-work-area with full undo. Frame Start/End toolbar buttons: operate on selected (not playhead) frame with overlap trimming + canvas sync. **Comprehensive undo/redo**: added processHistoryAction cases for all 19 timeline action types including static_property_change, content_frame_reorder, timeline_duration_change, trim_to_work_area. Drag batching for transform tool, content frame resize, keyframe moves. **Multi-keyframe selection**: marquee drag, Shift+click additive, property name click selects all, batch easing/delete, Alt+drag duplicate with ghost preview, group drag. **UI polish**: collapsed layer keyframe dots, anchor/bounding box visibility controls, playback position indicator (red line via usePlaybackOnlySnapshot), collapsed panel playback overlay updated to dual-mode, frame rate control in footer, default zoom 8.0x, default panel height 314px, ruler tick heights adjusted. 297/297 tests. TypeScript clean. |
 | 3.1.0 | 2026-02-10 | Copilot | **Phase 4 bug fixes and UI fine-tuning session.** Multiple coordinate-space and unbounded-canvas fixes. **Flip tool fixes**: `flipUtils.ts` updated with `calculateContentBounds()`, `calculateAnchorFlipBounds()` for anchor-based flipping of unbounded content. `applyHorizontalFlip`/`applyVerticalFlip` accept optional `screenToLocal` transform for selection-based flips against local-space canvas data. `useFlipUtilities.ts` passes `screenToLocalFn` only for non-moveState path (moveState.originalData uses screen-space keys). **Canvas resize fix**: `useCanvasResize.ts` rewritten with layer-mode branch — shifts all content frames in all layers via `shiftCellMap()` (no bounds clipping for unbounded canvas), reads/writes directly to timelineStore. **Resize dialog input fix**: `CanvasResizeDialog.tsx` uses string state for free text entry, only clamps min 4 on blur/apply. **Layer transform tool off-canvas fix**: `LayerTransformOverlay.tsx` fully rewritten as `pointer-events-auto` interactive overlay with own mouse handling (pixelToCell conversion, global mousemove/mouseup during drag, CSS cursor per zone). Replaces the canvas-element-bound event routing that couldn't reach off-canvas bounding boxes/corners/anchors. **Both transform overlays hidden during playback** via `usePlaybackOnlySnapshot`. **Timecode system rewrite**: `TimecodeDisplay.tsx` rebuilt as editable input + format label dropdown. Format stored in `timelineStore.view.timecodeFormat`. `parseTimecodeInput()` for SS:FF, frames, seconds, milliseconds. `TimelineDurationInput` component added to footer for editable timeline length. Format changed from MM:SS:FF to SS:FF (no minute rollover, unlimited seconds). Auto-sizing inputs via `ch` units. Toolbar layout changed to CSS Grid `grid-cols-[1fr_auto_1fr]` to prevent timecode growth from shifting playback buttons. **New hotkeys**: ⌘N (add frame), ⌘D (duplicate frame), ⌘⌫ (delete frame), ⌘X (split frame), ⌘, (set frame start), ⌘. (set frame end), 1/2 (timeline zoom in/out), ⌘→/← (jump to next/prev visible keyframe). All added to `KeyboardShortcutsDialog.tsx` and toolbar tooltips. Layer-mode handlers override legacy frame handlers. **Per-track keyframe navigation**: ◀ ◆ ▶ buttons on each property track row in `LayerListItem.tsx`. **Content frame selection decoupled from playhead**: clicking a frame no longer moves the playhead. **Alt+drag frame duplicate**: follows keyframe Alt+drag pattern — captures `e.altKey` at mouseDown, creates duplicate at original position on mouseUp. Works for single and multi-selected frames. **Work area clear button** added to footer. **Content frame hide/show toggle**: `hidden?: boolean` on `ContentFrame`, `toggleContentFrameHidden()` store action, eye/eye-off toolbar button, hidden frames skipped in `getContentFrameAtTime()`, distinct visual styling (grey selected, transparent+dashed unselected). **Resize undo includes timeline duration**: `ContentFrameTimingHistoryAction` now stores `previousTimelineDuration`/`newTimelineDuration`, undo handler restores both frame timing and timeline length. Resize right-drag captures `origTimelineDuration` and reverts before history recording. **Sync keyframes to frames feature**: `syncKeyframesToFrames?: boolean` on Layer, `setLayerSyncKeyframes()` action, `RectangleEllipsis` toggle on layer row (replaces old keyframe diamond indicator), drag logic captures keyframes within frame ranges and moves them by the same delta on drop, `ContentFrameReorderHistoryAction` extended with `previousKeyframes`/`newKeyframes` snapshots for proper undo. 297/297 tests. TypeScript clean. |
+| 3.2.0 | 2026-02-11 | Copilot | **Phase 4 continued: context menus, clipboard, inverse mapping.** **Timeline context menus**: New `TimelineContextMenu.tsx` reusable positioned menu with 4 context types (frame, empty-track, property-track, keyframe). Portal-based, auto-edge-corrected, capture-phase close listeners. Frame menu: copy/paste/duplicate/split/hide/delete. Empty track: new frame/paste. Property track: add keyframe/paste. Keyframe: copy/delete. **Timeline clipboard system**: `copiedFrames`/`copiedKeyframes` in timelineStore. Multi-track keyframe copy preserves `layerIndex`, `trackIndex`, `propertyPath`, `sourceLayerId`, `frameOffset`. Paste matches by layer ID first (for same-project paste), falls back to index offset. Multi-layer distribution: keyframes from Layer 1 → Layer 1, Layer 2 → Layer 2. Single-track fallback for unmatched properties. Paste history via `pasteFramesWithHistory` (content_frame_reorder snapshot) and `pasteKeyframesWithHistory` (individual keyframe_add entries). **Show All Keyframes hotkey** (U): toggles expand all layers with keyframes / collapse all. **Inverse mapping compositing**: `compositeLayersAtFrame()` rewritten for transformed layers. Forward mapping replaced with inverse mapping — iterates every destination cell in the screen-space AABB, applies `inverseTransformPoint()` to find source cell. Eliminates gaps during scale-up and rotation. No-transform fast path unchanged. Added "Inverse Mapping Compositing" architecture section to plan with performance table and phase impact notes. §6.9 Media Import added to Phase 6 plan. TypeScript clean. |
