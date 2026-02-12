@@ -99,17 +99,19 @@ export function detectSessionVersion(data: unknown): '1.0.0' | '2.0.0' | 'unknow
 const DEFAULT_FRAME_DURATION_MS = 100;
 
 /**
- * Default frame rate for v1 projects that don't specify one.
+ * Minimum and maximum frame rates for the derived-from-content calculation.
  */
-const DEFAULT_FRAME_RATE = 12;
+const MIN_FRAME_RATE = 1;
+const MAX_FRAME_RATE = 60;
 
 /**
  * Migrate a v1.0.0 session to v2.0.0 format.
  * 
  * Converts the frame-based animation model to a single-layer composition:
- * - Each v1 frame becomes a content frame on "Layer 1"
- * - Frame durations are converted from milliseconds to frame counts
- * - The original frame rate is preserved
+ * - Each v1 frame becomes a content frame (frame block) on "Layer 1"
+ * - Frame rate is derived from the shortest frame duration in the v1 project,
+ *   ensuring the fastest frame maps to ~1 timeline frame
+ * - Longer frames get proportionally more timeline frames (rounded up)
  * - All non-animation data (tools, palettes, typography) is passed through
  * 
  * @param v1Data - Raw v1 session data (parsed from JSON)
@@ -118,17 +120,40 @@ const DEFAULT_FRAME_RATE = 12;
 export function migrateV1ToV2(v1Data: unknown): SessionDataV2 {
   const v1 = v1Data as V1SessionData;
 
-  const frameRate = v1.animation?.frameRate ?? DEFAULT_FRAME_RATE;
+  const frames = v1.animation?.frames ?? [];
+
+  // Derive frame rate from the shortest frame duration in the project.
+  // This ensures the fastest frame maps to approximately 1 timeline frame,
+  // and longer frames get proportionally more frames (rounded up).
+  let shortestDurationMs = DEFAULT_FRAME_DURATION_MS;
+  if (frames.length > 0) {
+    shortestDurationMs = Infinity;
+    for (const frame of frames) {
+      const dur = frame.duration ?? DEFAULT_FRAME_DURATION_MS;
+      if (dur > 0 && dur < shortestDurationMs) {
+        shortestDurationMs = dur;
+      }
+    }
+    // Safety: if all durations were 0 or negative, fall back
+    if (!isFinite(shortestDurationMs) || shortestDurationMs <= 0) {
+      shortestDurationMs = DEFAULT_FRAME_DURATION_MS;
+    }
+  }
+
+  const frameRate = Math.max(
+    MIN_FRAME_RATE,
+    Math.min(MAX_FRAME_RATE, Math.round(1000 / shortestDurationMs)),
+  );
   const msPerFrame = 1000 / frameRate;
 
   // Convert v1 frames to content frames
   const contentFrames: SessionContentFrameV2[] = [];
   let currentFrame = 0;
 
-  for (const frame of v1.animation?.frames ?? []) {
-    // Convert duration from ms to frames, minimum 1
+  for (const frame of frames) {
+    // Convert duration from ms to frames, rounded UP so no frame loses time
     const durationMs = frame.duration ?? DEFAULT_FRAME_DURATION_MS;
-    const durationFrames = Math.max(1, Math.round(durationMs / msPerFrame));
+    const durationFrames = Math.max(1, Math.ceil(durationMs / msPerFrame));
 
     contentFrames.push({
       id: frame.id || `cf-migrated-${contentFrames.length + 1}`,

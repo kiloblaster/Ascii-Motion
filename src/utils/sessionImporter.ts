@@ -108,11 +108,15 @@ export class SessionImporter {
             }
             SessionImporter.restoreSessionDataV2(repairedData, typographyCallbacks);
           } else if (version === '1.0.0') {
-            // V1: Validate and restore using legacy path
-            if (!SessionImporter.validateSessionData(rawData)) {
-              throw new Error('Invalid v1 session file format');
+            // V1: Migrate to v2 format and load into timeline
+            // All projects are forced into timeline mode (no legacy frame path)
+            console.log('Migrating v1 session to v2 timeline format...');
+            const migrated = migrateV1ToV2(rawData);
+            const { data: repairedData, repairs } = validateAndRepairV2(migrated);
+            if (repairs.length > 0) {
+              console.warn(`Session v1→v2 migration: ${repairs.length} repairs applied:`, repairs);
             }
-            SessionImporter.restoreSessionData(rawData, typographyCallbacks);
+            SessionImporter.restoreSessionDataV2(repairedData, typographyCallbacks);
           } else {
             // Unknown: Attempt v1→v2 migration as fallback
             try {

@@ -151,8 +151,9 @@ describe('migrateV1ToV2', () => {
   });
 
   it('converts duration from ms to frame counts', () => {
-    // At 12fps: 100ms ≈ 1.2 frames → rounds to 1
-    // At 12fps: 200ms ≈ 2.4 frames → rounds to 2
+    // Shortest frame = 100ms → frameRate = round(1000/100) = 10 fps
+    // Frame 1: 100ms → ceil(100 * 10 / 1000) = 1 frame
+    // Frame 2: 200ms → ceil(200 * 10 / 1000) = 2 frames
     const result = migrateV1ToV2(makeV1Session());
     const frames = result.layers[0].contentFrames;
     expect(frames[0].durationFrames).toBe(1);
@@ -166,9 +167,52 @@ describe('migrateV1ToV2', () => {
     expect(frames[1].startFrame).toBe(1); // After first frame (duration=1)
   });
 
-  it('preserves frame rate', () => {
+  it('derives frame rate from shortest frame duration', () => {
+    // Fixture has 100ms and 200ms frames → shortest = 100ms → fps = 10
     const result = migrateV1ToV2(makeV1Session());
+    expect(result.timeline.frameRate).toBe(10);
+  });
+
+  it('derives frame rate from varied durations', () => {
+    const v1 = makeV1Session();
+    const animation = v1.animation as Record<string, unknown>;
+    animation.frames = [
+      { id: 'f1', name: 'Fast', duration: 50, data: {} },     // shortest → 20fps
+      { id: 'f2', name: 'Medium', duration: 200, data: {} },  // 4 frames at 20fps
+      { id: 'f3', name: 'Slow', duration: 500, data: {} },    // 10 frames at 20fps
+    ];
+    const result = migrateV1ToV2(v1);
+    expect(result.timeline.frameRate).toBe(20);
+    const frames = result.layers[0].contentFrames;
+    expect(frames[0].durationFrames).toBe(1);  // 50ms at 20fps
+    expect(frames[1].durationFrames).toBe(4);  // 200ms at 20fps
+    expect(frames[2].durationFrames).toBe(10); // 500ms at 20fps
+  });
+
+  it('caps frame rate at 60 fps', () => {
+    const v1 = makeV1Session();
+    const animation = v1.animation as Record<string, unknown>;
+    animation.frames = [
+      { id: 'f1', name: 'Ultra Fast', duration: 5, data: {} }, // 1000/5 = 200 → capped to 60
+    ];
+    const result = migrateV1ToV2(v1);
+    expect(result.timeline.frameRate).toBe(60);
+  });
+
+  it('rounds up frame durations so no frame loses time', () => {
+    const v1 = makeV1Session();
+    const animation = v1.animation as Record<string, unknown>;
+    // 83ms → 1000/83 = 12.05 → fps = 12, msPerFrame = 83.33ms
+    // Frame at 83ms: ceil(83 / 83.33) = ceil(0.996) = 1
+    // Frame at 150ms: ceil(150 / 83.33) = ceil(1.8) = 2
+    animation.frames = [
+      { id: 'f1', name: 'A', duration: 83, data: {} },
+      { id: 'f2', name: 'B', duration: 150, data: {} },
+    ];
+    const result = migrateV1ToV2(v1);
     expect(result.timeline.frameRate).toBe(12);
+    expect(result.layers[0].contentFrames[0].durationFrames).toBe(1);
+    expect(result.layers[0].contentFrames[1].durationFrames).toBe(2);
   });
 
   it('preserves looping setting', () => {
@@ -188,11 +232,12 @@ describe('migrateV1ToV2', () => {
     expect(data['0,0']).toEqual({ char: 'H', color: '#fff', bgColor: '#000' });
   });
 
-  it('uses defaults when frameRate is missing', () => {
+  it('uses default 100ms when frameRate field is missing', () => {
     const v1 = makeV1Session();
     (v1.animation as Record<string, unknown>).frameRate = undefined;
     const result = migrateV1ToV2(v1);
-    expect(result.timeline.frameRate).toBe(12);
+    // Frames are 100ms and 200ms. Shortest=100ms → fps=10. Same regardless of v1 frameRate.
+    expect(result.timeline.frameRate).toBe(10);
   });
 
   it('handles empty animation frames', () => {
@@ -200,16 +245,19 @@ describe('migrateV1ToV2', () => {
     (v1.animation as Record<string, unknown>).frames = [];
     const result = migrateV1ToV2(v1);
     expect(result.layers[0].contentFrames).toHaveLength(0);
-    // Duration should fall back to frameRate (1 second)
-    expect(result.timeline.durationFrames).toBe(12);
+    // With no frames, default 100ms → fps=10, duration falls back to frameRate (1 second)
+    expect(result.timeline.frameRate).toBe(10);
+    expect(result.timeline.durationFrames).toBe(10);
   });
 
   it('handles missing frame duration', () => {
     const v1 = makeV1Session();
     const frames = ((v1.animation as Record<string, unknown>).frames as Array<Record<string, unknown>>);
     delete frames[0].duration;
+    // Frame 1 now uses default 100ms, Frame 2 is 200ms.
+    // Shortest = 100ms → fps = 10
+    // Frame 1: 100ms → 1 frame, Frame 2: 200ms → 2 frames
     const result = migrateV1ToV2(v1);
-    // Should use default 100ms → 1 frame at 12fps
     expect(result.layers[0].contentFrames[0].durationFrames).toBe(1);
   });
 
