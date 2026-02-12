@@ -516,6 +516,10 @@ const processHistoryAction = (
             generatorAction.data.newFrames,
             generatorAction.data.newCurrentFrame || 0
           );
+          // Sync canvas to show the restored frame
+          const idx = generatorAction.data.newCurrentFrame || 0;
+          const data = animationStore.getFrameData(idx);
+          if (data) canvasStore.setCanvasData(data);
           console.log(`✅ Redo: Applied ${generatorAction.data.generatorId} generator (${generatorAction.data.frameCount} frames)`);
         }
       } else {
@@ -524,6 +528,10 @@ const processHistoryAction = (
             generatorAction.data.previousFrames,
             generatorAction.data.previousCurrentFrame || 0
           );
+          // Sync canvas to show the restored frame
+          const idx = generatorAction.data.previousCurrentFrame || 0;
+          const data = animationStore.getFrameData(idx);
+          if (data) canvasStore.setCanvasData(data);
           console.log(`✅ Undo: Restored ${generatorAction.data.previousFrames.length} frame(s) before ${generatorAction.data.generatorId} generator`);
         }
       }

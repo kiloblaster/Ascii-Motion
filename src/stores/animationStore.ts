@@ -380,22 +380,30 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
   // Bulk import
   // ─────────────────────────────────────────
 
-  importFramesOverwrite: (frames, startIndex) => {
+  importFramesOverwrite: (frames, _startIndex) => {
     const layer = getActiveLayer();
     const tl = useTimelineStore.getState();
     if (!layer) return;
 
     set({ isImportingSession: true });
 
+    // Clear ALL existing content frames on the active layer
+    for (const cf of [...layer.contentFrames]) {
+      tl.removeContentFrame(layer.id, cf.id);
+    }
+
+    // Create new content frames from the imported data
     const fps = tl.config.frameRate;
-    for (let i = 0; i < frames.length; i++) {
-      const targetIdx = startIndex + i;
-      const cf = layer.contentFrames[targetIdx];
-      if (cf) {
-        tl.updateContentFrameData(layer.id, cf.id, frames[i].data);
-        const durationFrames = Math.max(1, Math.round(frames[i].duration / (1000 / fps)));
-        tl.updateContentFrameTiming(layer.id, cf.id, cf.startFrame, durationFrames);
-      }
+    let startFrame = 0;
+    for (const frame of frames) {
+      const durationFrames = Math.max(1, Math.round(frame.duration / (1000 / fps)));
+      tl.addContentFrame(layer.id, startFrame, durationFrames, frame.data);
+      startFrame += durationFrames;
+    }
+
+    // Auto-extend timeline if needed
+    if (startFrame > tl.config.durationFrames) {
+      tl.setDuration(startFrame);
     }
 
     set({ isImportingSession: false });

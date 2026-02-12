@@ -721,11 +721,19 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
       
       useToolStore.getState().pushToHistory(historyAction);
       
-      // Sync canvas with the new current frame
-      const currentFrame = useAnimationStore.getState().frames[newCurrentFrame];
-      if (currentFrame) {
-        useCanvasStore.getState().setCanvasData(currentFrame.data);
+      // Sync canvas with the current frame's content
+      // Read directly from timelineStore for immediate accuracy
+      const { useTimelineStore } = await import('./timelineStore');
+      const tl = useTimelineStore.getState();
+      const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+      if (activeLayer && activeLayer.contentFrames.length > 0) {
+        const currentCf = activeLayer.contentFrames[0]; // After overwrite, first frame
+        if (currentCf) {
+          useCanvasStore.getState().setCanvasData(currentCf.data);
+        }
       }
+      // Also navigate to frame 0 to ensure sync
+      useAnimationStore.getState().setCurrentFrame(0);
       
       // Close panel on success
       get().closeGenerator();
