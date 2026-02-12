@@ -38,9 +38,14 @@ export function useCloudProjectActions() {
    */
   const createSessionData = useCallback((data: ExportDataBundle): SessionData => {
     if (data.sessionDataV2) {
-      // V2 format: preserve full layer structure
-      // sessionDataV2 already contains canvas/timeline/layers from getSessionData()
-      // We add the shared tool/palette/typography state here
+      // V2 format: preserve full layer structure + include pre-composited frames.
+      //
+      // sessionDataV2 contains canvas/timeline/layers from getSessionData().
+      // data.frames contains composited flat frames from ExportDataCollector
+      // (generated via compositeLayersAtFrame with full transform support).
+      //
+      // The composited animation.frames[] is a READ-ONLY playback cache used by
+      // the community gallery. The raw layers[] / timeline are used for re-editing.
       return {
         ...data.sessionDataV2,
         name: data.name,
@@ -48,6 +53,19 @@ export function useCloudProjectActions() {
         metadata: {
           exportedAt: new Date().toISOString(),
           exportVersion: '2.0.0',
+        },
+        // Pre-composited frames for gallery playback and publishing previews.
+        // These are regenerated every save from the layer data.
+        animation: {
+          frames: data.frames.map((frame) => ({
+            id: frame.id,
+            name: frame.name,
+            duration: frame.duration,
+            data: Object.fromEntries(frame.data.entries()),
+          })),
+          currentFrameIndex: data.currentFrameIndex,
+          frameRate: data.frameRate,
+          looping: data.looping,
         },
         tools: {
           activeTool: data.toolState.activeTool,
@@ -178,9 +196,10 @@ export function useCloudProjectActions() {
           if (isUpdatingPublished) {
             console.log('[CloudActions] Regenerating preview image for published project');
             try {
-              // Get current frame
+              // Get current frame from composited animation frames
               const frameIndex = exportData.currentFrameIndex || 0;
-              const frame = sessionData.animation.frames[frameIndex];
+              const frames = sessionData.animation?.frames;
+              const frame = frames?.[frameIndex];
               
               if (!frame) {
                 throw new Error('Selected frame not found');
