@@ -19,9 +19,11 @@ type GradientPropertyKey = 'character' | 'textColor' | 'backgroundColor';
 export const CanvasOverlay: React.FC = () => {
   // Create a separate canvas ref for overlay
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Dedicated canvas for hover preview (decoupled from main overlay for performance)
+  const hoverCanvasRef = useRef<HTMLCanvasElement>(null);
   
   // Canvas context and state  
-  const { canvasRef, pasteMode, cellWidth, cellHeight, zoom, panOffset, fontMetrics, hoverPreview, selectionPreview, hoveredCell } = useCanvasContext();
+  const { canvasRef, pasteMode, cellWidth, cellHeight, zoom, panOffset, fontMetrics, selectionPreview, hoveredCell, hoverPreviewRef, registerHoverRender } = useCanvasContext();
   const {
     moveState,
     getTotalOffset,
@@ -44,7 +46,11 @@ export const CanvasOverlay: React.FC = () => {
   // Only subscribe to bezier preview cells, not the entire store
   const bezierPreview = useBezierStore((state) => state.previewCells);
   const bezierRemountKey = useBezierStore((state) => state.remountKey);
-  const { canvasBackgroundColor, width, height } = useCanvasStore();
+  // Only subscribe to the specific values needed — NOT the entire store,
+  // since subscribing to the full store causes re-renders on every cell edit during drawing
+  const canvasBackgroundColor = useCanvasStore((s) => s.canvasBackgroundColor);
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
   const { theme } = useTheme();
 
   // Calculate effective dimensions with zoom and aspect ratio
@@ -766,94 +772,7 @@ export const CanvasOverlay: React.FC = () => {
       ctx.globalAlpha = 1.0;
     }
     
-    // Draw hover cell outline (subtle outline for current cell under cursor)
-    if (hoveredCell && hoveredCell.x >= 0 && hoveredCell.x < width && hoveredCell.y >= 0 && hoveredCell.y < height) {
-      ctx.strokeStyle = 'rgba(168, 85, 247, 0.5)'; // 50% opacity purple outline
-      ctx.lineWidth = 2;
-      ctx.setLineDash([]);
-      ctx.strokeRect(
-        hoveredCell.x * effectiveCellWidth + panOffset.x,
-        hoveredCell.y * effectiveCellHeight + panOffset.y,
-        effectiveCellWidth,
-        effectiveCellHeight
-      );
-    }
-    
-    // Draw hover preview (for brush and other tool-specific previews)
-    // Rendered last so it appears on top of all other overlays
-    if (hoverPreview.active && hoverPreview.cells.length > 0) {
-      // Visual style based on preview mode
-      const getPreviewStyle = (mode: string) => {
-        switch (mode) {
-          case 'brush':
-            return {
-              fillStyle: 'rgba(168, 85, 247, 0.15)', // Subtle purple fill
-              strokeStyle: 'rgba(168, 85, 247, 0.5)', // Purple outline
-              lineWidth: 1
-            };
-          case 'eraser-brush':
-            return {
-              fillStyle: 'rgba(248, 250, 252, 0.15)', // Soft neutral fill
-              strokeStyle: 'rgba(226, 232, 240, 0.1)', // Light gray outline
-              lineWidth: 1,
-              lineDash: [4, 2] as [number, number]
-            };
-          case 'eraser-brush-active':
-            return {
-              fillStyle: 'rgba(248, 250, 252, 0.01)', // Much dimmer fill while erasing
-              strokeStyle: 'rgba(226, 232, 240, 0.05)', // Much dimmer outline while erasing
-              lineWidth: 1,
-              lineDash: [4, 2] as [number, number]
-            };
-          // Future modes can have different visual styles
-          case 'rectangle':
-          case 'ellipse':
-            return {
-              fillStyle: 'rgba(59, 130, 246, 0.15)', // Blue fill
-              strokeStyle: 'rgba(59, 130, 246, 0.5)', // Blue outline
-              lineWidth: 1
-            };
-          default:
-            return {
-              fillStyle: 'rgba(255, 255, 255, 0.1)', // White fill
-              strokeStyle: 'rgba(255, 255, 255, 0.3)', // White outline
-              lineWidth: 1
-            };
-        }
-      };
-      
-      const style = getPreviewStyle(hoverPreview.mode);
-      ctx.fillStyle = style.fillStyle;
-      ctx.strokeStyle = style.strokeStyle;
-      ctx.lineWidth = style.lineWidth;
-      if ('lineDash' in style && style.lineDash) {
-        ctx.setLineDash(style.lineDash);
-      } else {
-        ctx.setLineDash([]);
-      }
-      
-      // Draw each cell in the preview pattern
-      hoverPreview.cells.forEach(({ x, y }) => {
-        const pixelX = x * effectiveCellWidth + panOffset.x;
-        const pixelY = y * effectiveCellHeight + panOffset.y;
-        
-        // Fill cell with semi-transparent color
-        ctx.fillRect(
-          pixelX,
-          pixelY,
-          effectiveCellWidth,
-          effectiveCellHeight
-        );
-        
-        // Outline cell for better visibility
-        ctx.strokeRect(
-          pixelX,
-          pixelY,
-          effectiveCellWidth,
-          effectiveCellHeight
-        );
-      });
-    }
+    // Hover preview rendering moved to separate canvas (hoverCanvasRef) for performance
   }, [
     selection,
     lassoSelection,
@@ -878,8 +797,7 @@ export const CanvasOverlay: React.FC = () => {
     boxDrawnCells,
     boxRectanglePreview,
     bezierPreview,
-    hoverPreview,
-    hoveredCell,
+    // hoverPreview and hoveredCell removed — rendered on separate canvas for performance
     canvasBackgroundColor,
     fontMetrics,
     width,
@@ -912,6 +830,102 @@ export const CanvasOverlay: React.FC = () => {
     };
   }, [renderOverlay]);
 
+  // ─── Zero-latency hover preview rendering ───
+  // Renders directly via callback from CanvasContext (bypasses React render cycle).
+  // The useHoverPreview hook writes to hoverPreviewRef and calls the registered
+  // render callback immediately — no useState, no re-render, no useEffect delay.
+  
+  // Store current render params in refs so the render callback can access them
+  const renderParamsRef = useRef({ effectiveCellWidth, effectiveCellHeight, panOffset, width, height });
+  renderParamsRef.current = { effectiveCellWidth, effectiveCellHeight, panOffset, width, height };
+  // Keep hoveredCell in a ref too
+  const hoveredCellRef = useRef(hoveredCell);
+  hoveredCellRef.current = hoveredCell;
+  
+  useEffect(() => {
+    const renderHover = () => {
+      const hoverCanvas = hoverCanvasRef.current;
+      const mainCanvas = canvasRef.current;
+      if (!hoverCanvas || !mainCanvas) return;
+
+      const ctx = hoverCanvas.getContext('2d');
+      if (!ctx) return;
+
+      // Match canvas size
+      if (hoverCanvas.width !== mainCanvas.width || hoverCanvas.height !== mainCanvas.height) {
+        hoverCanvas.width = mainCanvas.width;
+        hoverCanvas.height = mainCanvas.height;
+        hoverCanvas.style.width = mainCanvas.style.width;
+        hoverCanvas.style.height = mainCanvas.style.height;
+        const dpr = window.devicePixelRatio || 1;
+        ctx.scale(dpr, dpr);
+      }
+
+      const { effectiveCellWidth: ecw, effectiveCellHeight: ech, panOffset: po, width: w, height: h } = renderParamsRef.current;
+      const hc = hoveredCellRef.current;
+      const hp = hoverPreviewRef.current;
+
+      // Clear
+      ctx.clearRect(0, 0, hoverCanvas.width / (window.devicePixelRatio || 1), hoverCanvas.height / (window.devicePixelRatio || 1));
+
+      // Draw hover cell outline — only when brush preview is NOT active
+      const hasBrushPreview = hp.active && hp.cells.length > 0;
+      if (!hasBrushPreview && hc && hc.x >= 0 && hc.x < w && hc.y >= 0 && hc.y < h) {
+        ctx.strokeStyle = 'rgba(168, 85, 247, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.strokeRect(hc.x * ecw + po.x, hc.y * ech + po.y, ecw, ech);
+      }
+
+      // Draw brush/tool hover preview
+      if (hp.active && hp.cells.length > 0) {
+        const getStyle = (mode: string) => {
+          switch (mode) {
+            case 'brush':
+              return { fill: 'rgba(168, 85, 247, 0.15)', stroke: 'rgba(168, 85, 247, 0.5)', lw: 1, dash: [] as number[] };
+            case 'eraser-brush':
+              return { fill: 'rgba(248, 250, 252, 0.15)', stroke: 'rgba(226, 232, 240, 0.1)', lw: 1, dash: [4, 2] };
+            case 'eraser-brush-active':
+              return { fill: 'rgba(248, 250, 252, 0.01)', stroke: 'rgba(226, 232, 240, 0.05)', lw: 1, dash: [4, 2] };
+            case 'rectangle': case 'ellipse':
+              return { fill: 'rgba(59, 130, 246, 0.15)', stroke: 'rgba(59, 130, 246, 0.5)', lw: 1, dash: [] as number[] };
+            default:
+              return { fill: 'rgba(255, 255, 255, 0.1)', stroke: 'rgba(255, 255, 255, 0.3)', lw: 1, dash: [] as number[] };
+          }
+        };
+        const s = getStyle(hp.mode);
+        ctx.fillStyle = s.fill;
+        ctx.strokeStyle = s.stroke;
+        ctx.lineWidth = s.lw;
+        ctx.setLineDash(s.dash);
+        for (const { x, y } of hp.cells) {
+          const px = x * ecw + po.x;
+          const py = y * ech + po.y;
+          ctx.fillRect(px, py, ecw, ech);
+          ctx.strokeRect(px, py, ecw, ech);
+        }
+      }
+    };
+    
+    // Register the render callback — useHoverPreview will call this directly
+    registerHoverRender(renderHover);
+    hoverRenderFnRef.current = renderHover;
+    
+    // Initial render
+    renderHover();
+    
+    return () => {
+      registerHoverRender(null);
+      hoverRenderFnRef.current = null;
+    };
+  }, [canvasRef, registerHoverRender, hoverPreviewRef]);
+  
+  // Re-render hover canvas when hoveredCell changes (for single-cell outline on non-brush tools)
+  const hoverRenderFnRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    hoverRenderFnRef.current?.();
+  }, [hoveredCell]);
+
   return (
     <>
       <canvas
@@ -919,6 +933,13 @@ export const CanvasOverlay: React.FC = () => {
         className="absolute inset-0 pointer-events-none"
         style={{
           zIndex: 10, // Ensure overlay appears above main canvas
+        }}
+      />
+      <canvas
+        ref={hoverCanvasRef}
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          zIndex: 11, // Above main overlay
         }}
       />
       <InteractiveGradientOverlay />

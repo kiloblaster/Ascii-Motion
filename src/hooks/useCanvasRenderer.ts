@@ -264,8 +264,8 @@ export const useCanvasRenderer = () => {
       ctx.save();
       ctx.globalAlpha = 0.5;
     }
-    if (true) { // Always draw static cells (even during preview, at reduced opacity)
-      for (let y = 0; y < canvasConfig.height; y++) {
+    // Draw all static cells (during preview, at reduced opacity)
+    for (let y = 0; y < canvasConfig.height; y++) {
         for (let x = 0; x < canvasConfig.width; x++) {
           const key = `${x},${y}`;
           
@@ -299,7 +299,6 @@ export const useCanvasRenderer = () => {
           drawCell(ctx, cx, cy, cell);
         }
       }
-    }
     if (isEffectPreviewMode) {
       ctx.restore();
     }

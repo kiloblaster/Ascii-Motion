@@ -631,16 +631,55 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
 
 // ─────────────────────────────────────────────
 // Sync: timelineStore → adapter
-// Re-derive legacy state whenever the timeline changes.
+// Only re-derive legacy state when STRUCTURAL changes occur
+// (layer add/remove, frame add/remove, frame rate change, navigation).
+// Do NOT re-derive on every cell data update (drawing) — that causes
+// expensive Map copies and 43-component re-renders on every mouse move.
+// Consumers that need live cell data use canvasStore or useCompositedCanvas.
 // ─────────────────────────────────────────────
 
+let prevLayerCount = -1;
+let prevActiveLayerId: unknown = null;
+let prevContentFrameCount = -1;
+let prevCurrentFrame = -1;
+let prevPlaying = false;
+let prevFrameRate = -1;
+let prevLooping = true;
+
 useTimelineStore.subscribe((state) => {
+  const { layers, view, config } = state;
+  
+  // Compute lightweight structural fingerprint (no cell data inspection)
+  const activeLayer = layers.find((l) => l.id === view.activeLayerId);
+  const cfCount = activeLayer?.contentFrames.length ?? 0;
+  
+  // Only sync on structural changes, not cell data edits
+  if (
+    layers.length === prevLayerCount &&
+    view.activeLayerId === prevActiveLayerId &&
+    cfCount === prevContentFrameCount &&
+    view.currentFrame === prevCurrentFrame &&
+    view.isPlaying === prevPlaying &&
+    config.frameRate === prevFrameRate &&
+    view.looping === prevLooping
+  ) {
+    return; // Cell data change only — skip expensive derivation
+  }
+
+  prevLayerCount = layers.length;
+  prevActiveLayerId = view.activeLayerId;
+  prevContentFrameCount = cfCount;
+  prevCurrentFrame = view.currentFrame;
+  prevPlaying = view.isPlaying;
+  prevFrameRate = config.frameRate;
+  prevLooping = view.looping;
+
   useAnimationStore.setState({
     frames: deriveLegacyFrames(),
-    currentFrameIndex: state.view.currentFrame,
-    isPlaying: state.view.isPlaying,
-    frameRate: state.config.frameRate,
-    looping: state.view.looping,
+    currentFrameIndex: view.currentFrame,
+    isPlaying: view.isPlaying,
+    frameRate: config.frameRate,
+    looping: view.looping,
     totalDuration: useAnimationStore.getState().calculateTotalDuration(),
   });
 });

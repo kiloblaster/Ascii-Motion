@@ -54,7 +54,31 @@ export function useCompositedCanvas() {
       return canvasCells;
     }
 
-    // Build a modified layers array where the active layer uses canvasStore cells
+    // Fast path: single layer with NO transforms — skip compositing entirely
+    // This handles the common case of editing with one layer and no keyframes
+    if (layers.length === 1 && layers[0].id === activeLayerId) {
+      const layer = layers[0];
+      // Only fast-path if no property tracks and no static transform offsets
+      const hasTransforms = layer.propertyTracks.length > 0 ||
+        Object.keys(layer.staticProperties).some(k => {
+          const v = layer.staticProperties[k];
+          // Check if any transform value differs from identity
+          if (k === 'transform.scale.x' || k === 'transform.scale.y') return v !== 1;
+          return v !== 0;
+        });
+      
+      if (!hasTransforms) {
+        const activeContentFrame = getContentFrameAtTime(layer, currentFrame);
+        if (activeContentFrame) {
+          // Active layer uses canvasStore cells (the working copy)
+          return canvasCells;
+        }
+        // Gap in content — empty canvas
+        return new Map<string, Cell>();
+      }
+    }
+
+    // Multi-layer path: build modified layers and composite
     const layersForCompositing: Layer[] = layers.map((layer) => {
       if (layer.id === activeLayerId) {
         // The active layer's content frame uses canvasStore cells (the working copy)

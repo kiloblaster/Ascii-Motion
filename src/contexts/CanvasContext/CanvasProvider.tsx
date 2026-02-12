@@ -77,34 +77,40 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     cells: [],
   });
   
-  // Optimized setter that only updates if preview actually changed
+  // Ref-based hover preview for zero-latency rendering
+  const hoverPreviewRef = useRef<CanvasContextValue['hoverPreview']>({
+    active: false,
+    mode: 'none',
+    cells: [],
+  });
+  const hoverRenderCallbackRef = useRef<(() => void) | null>(null);
+  
+  const registerHoverRender = useCallback((cb: (() => void) | null) => {
+    hoverRenderCallbackRef.current = cb;
+  }, []);
+  
+  // Optimized setter: writes to ref + calls direct render, skips React state entirely
   const setHoverPreviewOptimized = useCallback((preview: CanvasContextValue['hoverPreview']) => {
-    setHoverPreview((prev) => {
-      // If active state changed, always update
-      if (prev.active !== preview.active) return preview;
-      
-      // If mode changed, always update
-      if (prev.mode !== preview.mode) return preview;
-      
-      // If both inactive, no need to update
-      if (!prev.active && !preview.active) return prev;
-      
-      // Check if cells array actually changed (length or content)
-      if (prev.cells.length !== preview.cells.length) return preview;
-      
-      // For active previews, check if cell coordinates changed
-      if (prev.active && preview.active && prev.cells.length > 0 && preview.cells.length > 0) {
-        // Quick check: compare first and last cell only (optimization)
-        const firstChanged = prev.cells[0].x !== preview.cells[0].x || prev.cells[0].y !== preview.cells[0].y;
-        const lastChanged = prev.cells[prev.cells.length - 1].x !== preview.cells[preview.cells.length - 1].x || 
-                           prev.cells[prev.cells.length - 1].y !== preview.cells[preview.cells.length - 1].y;
-        
-        if (firstChanged || lastChanged) return preview;
+    const prev = hoverPreviewRef.current;
+    
+    // Quick check: no meaningful change?
+    if (prev.active === preview.active && prev.mode === preview.mode) {
+      if (!prev.active && !preview.active) return;
+      if (prev.cells.length === preview.cells.length && prev.cells.length > 0) {
+        const firstSame = prev.cells[0].x === preview.cells[0].x && prev.cells[0].y === preview.cells[0].y;
+        const lastSame = prev.cells[prev.cells.length - 1].x === preview.cells[preview.cells.length - 1].x &&
+                         prev.cells[prev.cells.length - 1].y === preview.cells[preview.cells.length - 1].y;
+        if (firstSame && lastSame) return;
       }
-      
-      // No meaningful change, return previous reference
-      return prev;
-    });
+    }
+    
+    // Write to ref (immediate, no React)
+    hoverPreviewRef.current = preview;
+    
+    // Call direct render callback (bypasses React render cycle entirely)
+    if (hoverRenderCallbackRef.current) {
+      hoverRenderCallbackRef.current();
+    }
   }, []);
 
   const [moveState, setMoveState] = useState<CanvasContextValue['moveState']>(null);
@@ -231,6 +237,8 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     setJustCommittedMove,
     setHoveredCell: setHoveredCellOptimized,
     setHoverPreview: setHoverPreviewOptimized,
+    hoverPreviewRef,
+    registerHoverRender,
     setMoveState,
     startPasteMode,
     updatePastePosition,

@@ -452,7 +452,23 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       
       // Update preview store with processed cells if successful
       if (result.success && result.processedCells) {
-        previewStore.setPreviewData(result.processedCells);
+        // Transform preview cells to screen space if layer has transforms
+        // so the preview aligns with the rendered canvas content
+        let previewCells = result.processedCells;
+        try {
+          const { useTimelineStore } = await import('./timelineStore');
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+            if (activeLayer) {
+              const { transformCellMapToScreen } = await import('../utils/layerTransformUtils');
+              previewCells = transformCellMapToScreen(previewCells);
+            }
+          }
+        } catch {
+          // If transform utils not available, use local-space cells
+        }
+        previewStore.setPreviewData(previewCells);
       } else {
         console.error('Preview processing failed:', result);
         previewStore.clearPreview();

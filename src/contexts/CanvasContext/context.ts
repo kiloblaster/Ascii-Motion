@@ -86,6 +86,11 @@ export interface CanvasActions {
     cells: Array<{ x: number; y: number }>;
   }) => void;
 
+  // Ref-based hover preview for zero-latency rendering (bypasses React state)
+  hoverPreviewRef: React.MutableRefObject<CanvasState['hoverPreview']>;
+  // Register a callback to be called directly when hover preview changes (no React render)
+  registerHoverRender: (callback: (() => void) | null) => void;
+
   setMoveState: (state: CanvasState['moveState']) => void;
 
   startPasteMode: (position: { x: number; y: number }) => boolean;
