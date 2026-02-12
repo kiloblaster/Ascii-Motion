@@ -12,9 +12,10 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
+import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
-import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
+import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER } from '../../../types/timeline';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import { TimelineContextMenu, type TimelineContextMenuState } from './TimelineContextMenu';
 import type { KeyframeId } from '../../../types/timeline';
@@ -344,7 +345,13 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
             </div>
 
             {/* Property track rows (only when layer is expanded) */}
-            {expandedLayerIds.has(layer.id) && layer.propertyTracks.map((track) => {
+            {expandedLayerIds.has(layer.id) && [...layer.propertyTracks]
+              .sort((a, b) => {
+                const idxA = PROPERTY_DISPLAY_ORDER.indexOf(a.propertyPath);
+                const idxB = PROPERTY_DISPLAY_ORDER.indexOf(b.propertyPath);
+                return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+              })
+              .map((track) => {
               const definition = PROPERTY_DEFINITIONS[track.propertyPath];
               const defaultValue = (definition?.defaultValue as number) ?? 0;
 
@@ -353,7 +360,8 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 const clickX = e.clientX - rect.left;
                 const frame = Math.round(clickX / pxPerFrame);
                 if (frame >= 0) {
-                  const kfId = addKeyframe(layer.id, track.id, frame, defaultValue);
+                  const currentValue = getPropertyValueAtFrame(layer, track.propertyPath, frame);
+                  const kfId = addKeyframe(layer.id, track.id, frame, currentValue);
                   if (kfId) {
                     selectKeyframes([kfId]);
                     setEditingKeyframe(kfId);

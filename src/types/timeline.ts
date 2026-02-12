@@ -171,6 +171,20 @@ export type PropertyPath =
   | `effect.${string}.${string}`;
 
 /**
+ * Canonical display order for property tracks in the UI.
+ * Tracks are always shown in this order regardless of creation order.
+ */
+export const PROPERTY_DISPLAY_ORDER: PropertyPath[] = [
+  'transform.position.x',
+  'transform.position.y',
+  'transform.scale.x',
+  'transform.scale.y',
+  'transform.rotation',
+  'transform.anchorPoint.x',
+  'transform.anchorPoint.y',
+];
+
+/**
  * Property metadata for UI display and validation.
  */
 export interface PropertyDefinition {

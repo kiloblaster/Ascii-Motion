@@ -29,7 +29,7 @@ import {
   Diamond,
 } from 'lucide-react';
 import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../../../types/timeline';
-import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
+import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
 import type { ContentFrameReorderHistoryAction } from '../../../types';
 
 // ============================================
@@ -359,10 +359,11 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
               label="Add keyframe here"
               onClick={() => act(() => {
                 const layer = layers.find((l) => l.id === ctx.layerId);
-                const track = layer?.propertyTracks.find((t) => t.id === ctx.trackId);
-                const def = track ? PROPERTY_DEFINITIONS[track.propertyPath] : null;
-                const defaultValue = (def?.defaultValue as number) ?? 0;
-                addKeyframe(ctx.layerId, ctx.trackId, ctx.clickFrame, defaultValue);
+                if (!layer) return;
+                const track = layer.propertyTracks.find((t) => t.id === ctx.trackId);
+                if (!track) return;
+                const currentValue = getPropertyValueAtFrame(layer, track.propertyPath, ctx.clickFrame);
+                addKeyframe(ctx.layerId, ctx.trackId, ctx.clickFrame, currentValue);
               })}
             />
             <MenuItem

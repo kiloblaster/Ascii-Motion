@@ -8,6 +8,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
+import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
 import { cn } from '@/lib/utils';
 import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond, RectangleEllipsis } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
@@ -19,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
 import type { Layer, PropertyPath } from '../../../types/timeline';
-import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
+import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER } from '../../../types/timeline';
 
 interface LayerListItemProps {
   layer: Layer;
@@ -267,9 +268,16 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
       {/* Expanded: property track labels + Add Property menu */}
       {isExpanded && (
         <div className="ml-5 border-t border-border/30">
-          {layer.propertyTracks.map((track) => {
+          {[...layer.propertyTracks]
+            .sort((a, b) => {
+              const idxA = PROPERTY_DISPLAY_ORDER.indexOf(a.propertyPath);
+              const idxB = PROPERTY_DISPLAY_ORDER.indexOf(b.propertyPath);
+              return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+            })
+            .map((track) => {
             const def = PROPERTY_DEFINITIONS[track.propertyPath];
             const defaultValue = (def?.defaultValue as number) ?? 0;
+            const currentValue = getPropertyValueAtFrame(layer, track.propertyPath, currentFrame);
             const existingKf = track.keyframes.find((kf) => kf.frame === currentFrame);
             return (
               <div
@@ -326,7 +334,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
                           removeKeyframe(layer.id, track.id, existingKf.id);
                           setEditingKeyframe(null);
                         } else {
-                          const kfId = addKeyframe(layer.id, track.id, currentFrame, defaultValue);
+                          const kfId = addKeyframe(layer.id, track.id, currentFrame, currentValue);
                           if (kfId) {
                             selectKeyframes([kfId]);
                             setEditingKeyframe(kfId);
