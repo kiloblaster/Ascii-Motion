@@ -1,6 +1,7 @@
 import type { Frame, Cell, Tool } from './index';
 import type { FontMetrics } from '../utils/fontMetrics';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from './palette';
+import type { SessionDataV2 } from './timeline';
 
 // Export format identifiers
 export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react' | 'ink' | 'opentui' | 'bubbletea';
@@ -186,6 +187,10 @@ export interface ExportDataBundle {
 
   // Character palette state
   characterPaletteState: CharacterPaletteExportState;
+
+  // Layer data (v2 session data for session exports — raw layer structure)
+  // Present when layers exist; session export uses this instead of composited frames
+  sessionDataV2?: SessionDataV2;
 }
 
 // Export result from exporters

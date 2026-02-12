@@ -227,6 +227,9 @@ export interface TimelineState {
 
   /** Load state from session data (used by session importer) */
   loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>) => void;
+
+  /** Serialize current state to SessionDataV2 format (used by session exporter) */
+  getSessionData: () => SessionDataV2;
 }
 
 // ============================================
@@ -1390,6 +1393,80 @@ export const useTimelineStore = create<TimelineState>()(
           ...viewState,
         },
       });
+    },
+
+    getSessionData: () => {
+      const { config, layers, layerGroups, view } = get();
+      const canvasState = useCanvasStore.getState();
+
+      return {
+        version: '2.0.0' as const,
+        canvas: {
+          width: canvasState.width,
+          height: canvasState.height,
+          canvasBackgroundColor: canvasState.canvasBackgroundColor,
+          showGrid: canvasState.showGrid,
+        },
+        timeline: {
+          frameRate: config.frameRate,
+          durationFrames: config.durationFrames,
+          looping: view.looping,
+        },
+        layers: layers.map((layer) => ({
+          id: layer.id as string,
+          name: layer.name,
+          visible: layer.visible,
+          solo: layer.solo,
+          locked: layer.locked,
+          opacity: layer.opacity,
+          parentGroupId: layer.parentGroupId as string | undefined,
+          contentFrames: layer.contentFrames.map((cf) => ({
+            id: cf.id as string,
+            name: cf.name,
+            startFrame: cf.startFrame,
+            durationFrames: cf.durationFrames,
+            data: Object.fromEntries(cf.data),
+            hidden: cf.hidden || undefined,
+          })),
+          propertyTracks: layer.propertyTracks.map((track) => ({
+            id: track.id as string,
+            propertyPath: track.propertyPath,
+            loopKeyframes: track.loopKeyframes,
+            keyframes: track.keyframes.map((kf) => ({
+              id: kf.id as string,
+              frame: kf.frame,
+              value: kf.value,
+              easing: kf.easing,
+            })),
+          })),
+          staticProperties: Object.keys(layer.staticProperties).length > 0
+            ? { ...layer.staticProperties }
+            : undefined,
+          syncKeyframesToFrames: layer.syncKeyframesToFrames || undefined,
+        })),
+        layerGroups: layerGroups.length > 0
+          ? layerGroups.map((group) => ({
+              id: group.id as string,
+              name: group.name,
+              childLayerIds: group.childLayerIds.map((id) => id as string),
+              visible: group.visible,
+              solo: group.solo,
+              locked: group.locked,
+              collapsed: group.collapsed,
+              propertyTracks: group.propertyTracks.map((track) => ({
+                id: track.id as string,
+                propertyPath: track.propertyPath,
+                loopKeyframes: track.loopKeyframes,
+                keyframes: track.keyframes.map((kf) => ({
+                  id: kf.id as string,
+                  frame: kf.frame,
+                  value: kf.value,
+                  easing: kf.easing,
+                })),
+              })),
+            }))
+          : undefined,
+      };
     },
   })),
 );

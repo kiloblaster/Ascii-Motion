@@ -327,7 +327,11 @@ export class ExportRenderer {
   }
 
   /**
-   * Export complete session as JSON file
+  /**
+   * Export complete session as JSON file.
+   * When layer data is available (v2), writes SessionDataV2 format
+   * preserving full layer structure, keyframes, and transforms.
+   * Otherwise falls back to v1 flat-frame format.
    */
   async exportSession(
     data: ExportDataBundle, 
@@ -339,33 +343,8 @@ export class ExportRenderer {
     try {
       this.updateProgress('Serializing data...', 30);
 
-      // Create session data structure
-      const sessionData = {
-        version: '1.0.0',
-        name: data.metadata.projectName || data.name || 'Untitled Project',
-        description: data.metadata.projectDescription || data.description,
-        metadata: settings.includeMetadata ? {
-          exportedAt: new Date().toISOString(),
-          exportVersion: '1.0.0',
-          userAgent: navigator.userAgent
-        } : undefined,
-        canvas: {
-          width: data.canvasDimensions.width,
-          height: data.canvasDimensions.height,
-          canvasBackgroundColor: data.canvasBackgroundColor,
-          showGrid: data.showGrid
-        },
-        animation: {
-          frames: data.frames.map(frame => ({
-            id: frame.id,
-            name: frame.name,
-            duration: frame.duration,
-            data: Object.fromEntries(frame.data.entries())
-          })),
-          currentFrameIndex: data.currentFrameIndex,
-          frameRate: data.frameRate,
-          looping: data.looping
-        },
+      // Shared tool/palette/typography/UI state for both v1 and v2
+      const sharedState = {
         tools: {
           activeTool: data.toolState.activeTool,
           selectedCharacter: data.toolState.selectedCharacter,
@@ -402,6 +381,55 @@ export class ExportRenderer {
           characterSpacing: data.characterPaletteState.characterSpacing
         } : undefined
       };
+
+      let sessionData: Record<string, unknown>;
+
+      if (data.sessionDataV2) {
+        // ─── V2 FORMAT: Full layer structure with keyframes ───
+        sessionData = {
+          ...data.sessionDataV2,
+          // Enrich with project name/description
+          name: data.metadata.projectName || data.name || 'Untitled Project',
+          description: data.metadata.projectDescription || data.description,
+          metadata: settings.includeMetadata ? {
+            exportedAt: new Date().toISOString(),
+            exportVersion: '2.0.0',
+            userAgent: navigator.userAgent
+          } : undefined,
+          // Attach shared state that the timeline store doesn't track
+          ...sharedState,
+        };
+      } else {
+        // ─── V1 FORMAT: Flat frames (legacy / no layers) ───
+        sessionData = {
+          version: '1.0.0',
+          name: data.metadata.projectName || data.name || 'Untitled Project',
+          description: data.metadata.projectDescription || data.description,
+          metadata: settings.includeMetadata ? {
+            exportedAt: new Date().toISOString(),
+            exportVersion: '1.0.0',
+            userAgent: navigator.userAgent
+          } : undefined,
+          canvas: {
+            width: data.canvasDimensions.width,
+            height: data.canvasDimensions.height,
+            canvasBackgroundColor: data.canvasBackgroundColor,
+            showGrid: data.showGrid
+          },
+          animation: {
+            frames: data.frames.map(frame => ({
+              id: frame.id,
+              name: frame.name,
+              duration: frame.duration,
+              data: Object.fromEntries(frame.data.entries())
+            })),
+            currentFrameIndex: data.currentFrameIndex,
+            frameRate: data.frameRate,
+            looping: data.looping
+          },
+          ...sharedState,
+        };
+      }
 
       this.updateProgress('Converting to JSON...', 70);
 

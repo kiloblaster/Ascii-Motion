@@ -8,6 +8,46 @@ import { usePaletteStore } from '../stores/paletteStore';
 import { VERSION, BUILD_DATE, BUILD_HASH } from '../constants/version';
 import { useCharacterPaletteStore } from '../stores/characterPaletteStore';
 import { useProjectMetadataStore } from '../stores/projectMetadataStore';
+import { useTimelineStore } from '../stores/timelineStore';
+import { compositeLayersAtFrame } from './layerCompositing';
+import type { Frame } from '../types';
+import type { FrameId } from '../types';
+
+/**
+ * Compute composited frames from all layers at each timeline frame.
+ * Used for visual exports (image, video, HTML, text, JSON, code-gen).
+ * 
+ * Each frame composites all visible layers at that point in time,
+ * applying transforms, visibility, and solo mode via layerCompositing.
+ */
+function computeCompositedFrames(
+  width: number,
+  height: number,
+): Frame[] {
+  const { layers, config } = useTimelineStore.getState();
+  const frames: Frame[] = [];
+  const frameDurationMs = 1000 / config.frameRate;
+
+  for (let f = 0; f < config.durationFrames; f++) {
+    const compositedCells = compositeLayersAtFrame(
+      layers,
+      f,
+      width,
+      height,
+      undefined, // cellAspectRatio — use default
+      true,      // clip to canvas bounds for export
+    );
+
+    frames.push({
+      id: `composited-${f}` as FrameId,
+      name: `Frame ${f + 1}`,
+      duration: frameDurationMs,
+      data: compositedCells,
+    });
+  }
+
+  return frames;
+}
 
 /**
  * Collects all data needed for export operations
@@ -71,6 +111,34 @@ export class ExportDataCollector {
       projectDescription
     } = projectMetadataStore;
 
+    // Check if we're in layer mode
+    const timelineState = useTimelineStore.getState();
+    const isLayerMode = timelineState.layers.length > 0;
+
+    // Compute frames: layer-composited or legacy
+    let exportFrames: Frame[];
+    let exportFrameRate: number;
+    let exportLooping: boolean;
+    let exportCurrentFrameIndex: number;
+
+    if (isLayerMode) {
+      exportFrames = computeCompositedFrames(width, height);
+      exportFrameRate = timelineState.config.frameRate;
+      exportLooping = timelineState.view.looping;
+      exportCurrentFrameIndex = Math.min(
+        timelineState.view.currentFrame,
+        Math.max(0, exportFrames.length - 1),
+      );
+    } else {
+      exportFrames = frames.map(frame => ({
+        ...frame,
+        data: new Map(frame.data),
+      }));
+      exportFrameRate = frameRate;
+      exportLooping = looping;
+      exportCurrentFrameIndex = currentFrameIndex;
+    }
+
     // Get UI context data (we'll need to pass this in since we can't use hooks here)
     // This will be handled by the calling component
 
@@ -85,14 +153,11 @@ export class ExportDataCollector {
         projectDescription
       },
       
-      // Animation data
-      frames: frames.map(frame => ({
-        ...frame,
-        data: new Map(frame.data) // Deep copy frame data
-      })),
-      currentFrameIndex,
-      frameRate,
-      looping,
+      // Animation data (composited from layers when in layer mode)
+      frames: exportFrames,
+      currentFrameIndex: exportCurrentFrameIndex,
+      frameRate: exportFrameRate,
+      looping: exportLooping,
       
       // Canvas data
       canvasData: new Map(cells), // Deep copy current canvas
@@ -152,7 +217,10 @@ export class ExportDataCollector {
         mappingMethod,
         invertDensity,
         characterSpacing
-      }
+      },
+
+      // Layer data for session exports (raw structure, not composited)
+      sessionDataV2: isLayerMode ? timelineState.getSessionData() : undefined,
     };
   }
 }
@@ -203,6 +271,36 @@ export const useExportDataCollector = (): ExportDataBundle => {
   const projectName = useProjectMetadataStore(state => state.projectName);
   const projectDescription = useProjectMetadataStore(state => state.projectDescription);
 
+  // Check if we're in layer mode
+  const timelineLayers = useTimelineStore(state => state.layers);
+  const timelineConfig = useTimelineStore(state => state.config);
+  const timelineView = useTimelineStore(state => state.view);
+  const isLayerMode = timelineLayers.length > 0;
+
+  // Compute frames: layer-composited or legacy
+  let exportFrames: Frame[];
+  let exportFrameRate: number;
+  let exportLooping: boolean;
+  let exportCurrentFrameIndex: number;
+
+  if (isLayerMode) {
+    exportFrames = computeCompositedFrames(width, height);
+    exportFrameRate = timelineConfig.frameRate;
+    exportLooping = timelineView.looping;
+    exportCurrentFrameIndex = Math.min(
+      timelineView.currentFrame,
+      Math.max(0, exportFrames.length - 1),
+    );
+  } else {
+    exportFrames = frames.map(frame => ({
+      ...frame,
+      data: new Map(frame.data),
+    }));
+    exportFrameRate = frameRate;
+    exportLooping = looping;
+    exportCurrentFrameIndex = currentFrameIndex;
+  }
+
   // Get canvas context data
   const {
     zoom,
@@ -232,14 +330,11 @@ export const useExportDataCollector = (): ExportDataBundle => {
       projectDescription
     },
     
-    // Animation data
-    frames: frames.map(frame => ({
-      ...frame,
-      data: new Map(frame.data) // Deep copy frame data
-    })),
-    currentFrameIndex,
-    frameRate,
-    looping,
+    // Animation data (composited from layers when in layer mode)
+    frames: exportFrames,
+    currentFrameIndex: exportCurrentFrameIndex,
+    frameRate: exportFrameRate,
+    looping: exportLooping,
     
     // Canvas data
     canvasData: new Map(cells), // Deep copy current canvas
@@ -291,7 +386,10 @@ export const useExportDataCollector = (): ExportDataBundle => {
       mappingMethod: characterMappingMethod,
       invertDensity: invertCharacterDensity,
       characterSpacing: characterSpacingSetting
-    }
+    },
+
+    // Layer data for session exports (raw structure, not composited)
+    sessionDataV2: isLayerMode ? useTimelineStore.getState().getSessionData() : undefined,
   };
 };
 

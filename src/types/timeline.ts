@@ -502,6 +502,12 @@ export interface SessionLayerV2 {
 
   // Property tracks (serialized)
   propertyTracks: SessionPropertyTrackV2[];
+
+  // Static property values (non-keyframed layer defaults)
+  staticProperties?: Record<string, number>;
+
+  // When true, keyframes within a content frame's time range move with the frame during drag
+  syncKeyframesToFrames?: boolean;
 }
 
 /**
@@ -513,6 +519,7 @@ export interface SessionContentFrameV2 {
   startFrame: number;
   durationFrames: number;
   data: Record<string, Cell>;  // Object form for JSON serialization
+  hidden?: boolean;            // Hidden frames are skipped during playback/export
 }
 
 /**

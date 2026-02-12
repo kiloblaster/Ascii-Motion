@@ -279,8 +279,8 @@ describe('timeline store view state (Phase 3)', () => {
   });
 
   describe('panelHeight', () => {
-    it('defaults to 314', () => {
-      expect(useTimelineStore.getState().view.panelHeight).toBe(314);
+    it('defaults to 364', () => {
+      expect(useTimelineStore.getState().view.panelHeight).toBe(364);
     });
 
     it('setPanelHeight changes height', () => {

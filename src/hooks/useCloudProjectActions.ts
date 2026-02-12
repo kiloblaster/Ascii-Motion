@@ -32,9 +32,49 @@ export function useCloudProjectActions() {
   const { importSession } = useSessionImporter();
 
   /**
-   * Convert export data to SessionData format
+   * Convert export data to SessionData format.
+   * Uses v2 format (with layers) when sessionDataV2 is available.
+   * Falls back to v1 format for legacy projects without layers.
    */
   const createSessionData = useCallback((data: ExportDataBundle): SessionData => {
+    if (data.sessionDataV2) {
+      // V2 format: preserve full layer structure
+      // sessionDataV2 already contains canvas/timeline/layers from getSessionData()
+      // We add the shared tool/palette/typography state here
+      return {
+        ...data.sessionDataV2,
+        name: data.name,
+        description: data.description,
+        metadata: {
+          exportedAt: new Date().toISOString(),
+          exportVersion: '2.0.0',
+        },
+        tools: {
+          activeTool: data.toolState.activeTool,
+          selectedCharacter: data.toolState.selectedCharacter,
+          selectedColor: data.toolState.selectedColor,
+          selectedBgColor: data.toolState.selectedBgColor,
+          paintBucketContiguous: data.toolState.paintBucketContiguous,
+          rectangleFilled: data.toolState.rectangleFilled,
+        },
+        ui: {
+          theme: data.uiState.theme,
+          zoom: data.uiState.zoom,
+          panOffset: data.uiState.panOffset,
+          fontMetrics: data.fontMetrics,
+        },
+        typography: {
+          fontSize: data.typography.fontSize,
+          characterSpacing: data.typography.characterSpacing,
+          lineSpacing: data.typography.lineSpacing,
+          selectedFontId: data.typography.selectedFontId,
+        },
+        palettes: data.paletteState,
+        characterPalettes: data.characterPaletteState,
+      } as unknown as SessionData; // SessionData type from premium needs v2 awareness
+    }
+
+    // V1 format: flat frames (legacy)
     return {
       version: '1.0.0',
       name: data.name,
@@ -248,31 +288,14 @@ export function useCloudProjectActions() {
 
   /**
    * Download cloud project as .asciimtn file
-   * Uses the same export format as local session export for consistency
+   * Preserves the original format (v1 or v2) from cloud storage
    */
   const handleDownloadProject = useCallback(
     async (_projectId: string, projectName: string, sessionData: unknown) => {
       try {
-        const typedSessionData = sessionData as SessionData;
-        
-        // Use the same export structure as exportRenderer.exportSession
-        // This ensures consistency between local exports and cloud downloads
-        const exportData = {
-          version: '1.0.0',
-          name: typedSessionData.name || projectName,
-          description: typedSessionData.description,
-          metadata: typedSessionData.metadata,
-          canvas: typedSessionData.canvas,
-          animation: typedSessionData.animation,
-          tools: typedSessionData.tools,
-          ui: typedSessionData.ui,
-          typography: typedSessionData.typography,
-          palettes: typedSessionData.palettes,
-          characterPalettes: typedSessionData.characterPalettes,
-        };
-        
-        // Create blob and download with consistent formatting
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        // Pass through the session data as-is — it may be v1 or v2 format
+        // The version field is already set correctly from cloud storage
+        const blob = new Blob([JSON.stringify(sessionData, null, 2)], {
           type: 'application/json',
         });
         saveAs(blob, `${projectName}.asciimtn`);
