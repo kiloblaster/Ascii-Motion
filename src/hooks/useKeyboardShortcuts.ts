@@ -231,11 +231,24 @@ const processHistoryAction = (
       if (isRedo) {
         // Redo: Restore the "after" state (following the forward snapshot pattern)
         if (effectAction.data.applyToTimeline) {
-          // Restore all affected frames to their post-effect state
           if (effectAction.data.newFramesData) {
-            effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
-              animationStore.setFrameData(frameIndex, data);
-            });
+            // Write directly to content frames by array index
+            const tl = useTimelineStore.getState();
+            const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+            if (activeLayer) {
+              effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
+                const cf = activeLayer.contentFrames[frameIndex];
+                if (cf) {
+                  tl.updateContentFrameData(activeLayer.id, cf.id, data);
+                }
+              });
+            }
+            // Sync canvas to show the current frame's restored data
+            const currentIdx = animationStore.currentFrameIndex;
+            const currentData = animationStore.getFrameData(currentIdx);
+            if (currentData) {
+              canvasStore.setCanvasData(currentData);
+            }
             console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${effectAction.data.newFramesData.length} frames`);
           } else {
             console.warn(`⚠️ Redo for ${effectAction.data.effectType} effect: newFramesData missing (legacy entry)`);
@@ -252,11 +265,24 @@ const processHistoryAction = (
       } else {
         // Undo: Restore previous data
         if (effectAction.data.applyToTimeline) {
-          // Restore all affected frames
           if (effectAction.data.previousFramesData) {
-            effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
-              animationStore.setFrameData(frameIndex, data);
-            });
+            // Write directly to content frames by array index
+            const tl = useTimelineStore.getState();
+            const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+            if (activeLayer) {
+              effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
+                const cf = activeLayer.contentFrames[frameIndex];
+                if (cf) {
+                  tl.updateContentFrameData(activeLayer.id, cf.id, data);
+                }
+              });
+            }
+            // Sync canvas to show the current frame's restored data
+            const currentIdx = animationStore.currentFrameIndex;
+            const currentData = animationStore.getFrameData(currentIdx);
+            if (currentData) {
+              canvasStore.setCanvasData(currentData);
+            }
             console.log(`✅ Undo: Restored ${effectAction.data.previousFramesData.length} frames from ${effectAction.data.effectType} effect`);
           }
         } else {

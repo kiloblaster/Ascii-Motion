@@ -501,21 +501,32 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       const { processEffect, processEffectOnFrames } = await import('../utils/effectsProcessing');
 
       if (state.applyToTimeline) {
-        // Apply to entire timeline
+        // Apply effect to ALL content frame blocks on the active layer
         const { useAnimationStore } = await import('./animationStore');
         const animationStore = useAnimationStore.getState();
+        const { useTimelineStore } = await import('./timelineStore');
+        const tl = useTimelineStore.getState();
         
         // Get canvas background color for blend operations
         const { useCanvasStore } = await import('./canvasStore');
         const canvasBackgroundColor = useCanvasStore.getState().canvasBackgroundColor;
         
+        // Get the active layer's content frames directly (not via timeline position)
+        const activeLayerId = tl.view.activeLayerId;
+        const activeLayer = tl.layers.find(l => l.id === activeLayerId);
+        if (!activeLayer) {
+          set({ lastError: 'No active layer' });
+          return;
+        }
+        
+        // Build legacy frames from ALL content frame blocks
+        const legacyFrames = animationStore.frames;
+        
         const result = await processEffectOnFrames(
           effect,
-          animationStore.frames,
+          legacyFrames,
           settings,
-          () => {
-            // Progress tracking could be added here if needed
-          },
+          () => {},
           canvasBackgroundColor
         );
 
@@ -523,20 +534,20 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
           console.warn('Effect processing had errors:', result.errors);
         }
 
-        // Update animation store with processed frames
-        // Use the set function directly to update frames
-        useAnimationStore.setState((state) => ({
-          ...state,
-          frames: result.processedFrames
-        }));
+        // Write processed frames back to content frame blocks by index
+        // This correctly handles gaps between blocks and varying durations
+        for (let i = 0; i < result.processedFrames.length && i < activeLayer.contentFrames.length; i++) {
+          const processedFrame = result.processedFrames[i];
+          const contentFrame = activeLayer.contentFrames[i];
+          tl.updateContentFrameData(activeLayer.id, contentFrame.id, processedFrame.data);
+        }
 
-        // Sync the canvas with the processed current frame
-        const updatedAnimationStore = useAnimationStore.getState();
-        const currentFrame = updatedAnimationStore.frames[updatedAnimationStore.currentFrameIndex];
-        if (currentFrame) {
-          const { useCanvasStore } = await import('./canvasStore');
-          const canvasStore = useCanvasStore.getState();
-          canvasStore.setCanvasData(currentFrame.data);
+        // Sync the canvas with the current frame's data
+        const currentIdx = animationStore.currentFrameIndex;
+        const currentData = animationStore.getFrameData(currentIdx);
+        if (currentData) {
+          const { useCanvasStore: cs } = await import('./canvasStore');
+          cs.getState().setCanvasData(currentData);
         }
 
       } else {

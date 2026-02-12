@@ -1,9 +1,9 @@
 # Layer Timeline System Refactor Plan
 
-> **Version:** 3.3.0  
+> **Version:** 3.4.0  
 > **Created:** February 1, 2026  
 > **Last Updated:** February 11, 2026  
-> **Status:** In Progress — Phase 5 complete, ready for Phase 6  
+> **Status:** In Progress — Phase 6 substantially complete (MCP server deferred), ready for Phase 7  
 > **Target Completion:** TBD  
 > **Estimated Duration:** 16-22 weeks
 
@@ -6180,12 +6180,18 @@ Each phase testing checkpoint (§X.Y) should include:
 - [x] Published v2 projects play back in community gallery
 
 #### Phase 6
-- [ ] Add effect to layer
-- [ ] Toggle effect scope
-- [ ] Verify effect render order
-- [ ] MCP add_layer works
-- [ ] MCP add_keyframe works
-- [ ] MCP get_layers returns data
+- [x] Adapter wiring: all 43 consumers use adapter → timelineStore
+- [x] Effects "apply to timeline" writes to layer content frames
+- [x] Generators work via adapter (importFramesOverwrite/Append)
+- [x] Time effects work via adapter (frames/currentFrameIndex)
+- [x] Media import works via adapter
+- [x] JSON import works via adapter
+- [x] MCP client works via adapter for active layer
+- [ ] MCP server add_layer tool (deferred — independent codebase)
+- [ ] MCP server add_keyframe tool (deferred)
+- [ ] MCP server get_layers tool (deferred)
+- [ ] Layer-scoped effects with scope toggle (deferred)
+- [ ] Generators create new layers instead of overwriting (deferred)
 
 #### Phase 7
 - [ ] Test "apply to all layers" drawing mode
@@ -6619,7 +6625,24 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | TypeScript verification | — | ✅ DONE | `npx tsc --noEmit` passes cleanly. Premium `npm run build` clean. |
 | Test suite | — | ✅ DONE | 324/324 tests passing (297 + 24 Phase 5 + 3 updated migration). |
 
-### Phase 6-7: Not yet started
+### Phase 6: Integration (Partial)
+
+| Task | File(s) | Status | Notes |
+|------|---------|--------|-------|
+| §6 Adapter wiring | `src/stores/animationStore.ts`, `animationStoreLegacy.ts` | ✅ DONE | Renamed original `animationStore.ts` → `animationStoreLegacy.ts`, adapter → `animationStore.ts`. All 43 consumer files now import the adapter which delegates to `timelineStore`. Zero import changes needed. |
+| §6.1 Effects "apply to timeline" fix | `src/stores/effectsStore.ts` | ✅ DONE | Replaced `useAnimationStore.setState({ frames })` hack (line 528) with per-frame `setFrameData()` calls through the adapter. Ensures processed frames write to active layer's content frames. |
+| §6.3 Generators via adapter | (no code change) | ✅ DONE (via adapter) | `importFramesOverwrite`/`importFramesAppend` on adapter properly convert ms→frames durations and write to active layer content frames. Generators work in layer mode without code changes. |
+| §6.4b Time effects via adapter | (no code change) | ✅ DONE (via adapter) | `frames` and `currentFrameIndex` access via adapter returns active layer content. Wave warp/wiggle preview works in layer mode. |
+| §6.4a useFrameSynchronization | (no code change needed) | ✅ ALREADY DONE (Phase 3) | Already layer-aware with `isLayerMode` detection. No rewrite needed. |
+| §6.9 Media import via adapter | (no code change) | ✅ DONE (via adapter) | `importFramesOverwrite`/`importFramesAppend` from MediaImportPanel route through adapter. |
+| JSON import via adapter | (no code change) | ✅ DONE (via adapter) | `importSessionFrames` from jsonImporter routes through adapter. |
+| MCP client via adapter | (no code change) | ✅ DONE (via adapter) | All `addFrame`, `removeFrame`, `goToFrame`, `setFrameData` calls in `src/mcp/client.ts` route through adapter to active layer. |
+| §6.5 MCP server v2 protocol | `ascii-motion-mcp/` | ⬜ DEFERRED | Independent codebase (900-line state model + 470-line animation tools). Existing tools work on single-layer via client adapter. Full layer-aware MCP tools deferred until app-side is stable. |
+| Phase 6 integration tests | `src/__tests__/phase6Integration.test.ts` | ✅ DONE | 19 tests: adapter wiring (5), write methods (7), effects integration (2), multi-layer behavior (2), duration conversion (2), performance (1). |
+| TypeScript verification | — | ✅ DONE | `npx tsc --noEmit` zero errors. |
+| Test suite | — | ✅ DONE | 343/343 tests passing (324 + 19 Phase 6 integration). |
+
+### Phase 7: Not yet started
 
 ### Phase 4: Keyframe System (Partial)
 
@@ -6766,3 +6789,4 @@ All export formats continue to work by using `computeFramesFromLayers()` to gene
 | 3.1.0 | 2026-02-10 | Copilot | **Phase 4 bug fixes and UI fine-tuning session.** Multiple coordinate-space and unbounded-canvas fixes. **Flip tool fixes**: `flipUtils.ts` updated with `calculateContentBounds()`, `calculateAnchorFlipBounds()` for anchor-based flipping of unbounded content. `applyHorizontalFlip`/`applyVerticalFlip` accept optional `screenToLocal` transform for selection-based flips against local-space canvas data. `useFlipUtilities.ts` passes `screenToLocalFn` only for non-moveState path (moveState.originalData uses screen-space keys). **Canvas resize fix**: `useCanvasResize.ts` rewritten with layer-mode branch — shifts all content frames in all layers via `shiftCellMap()` (no bounds clipping for unbounded canvas), reads/writes directly to timelineStore. **Resize dialog input fix**: `CanvasResizeDialog.tsx` uses string state for free text entry, only clamps min 4 on blur/apply. **Layer transform tool off-canvas fix**: `LayerTransformOverlay.tsx` fully rewritten as `pointer-events-auto` interactive overlay with own mouse handling (pixelToCell conversion, global mousemove/mouseup during drag, CSS cursor per zone). Replaces the canvas-element-bound event routing that couldn't reach off-canvas bounding boxes/corners/anchors. **Both transform overlays hidden during playback** via `usePlaybackOnlySnapshot`. **Timecode system rewrite**: `TimecodeDisplay.tsx` rebuilt as editable input + format label dropdown. Format stored in `timelineStore.view.timecodeFormat`. `parseTimecodeInput()` for SS:FF, frames, seconds, milliseconds. `TimelineDurationInput` component added to footer for editable timeline length. Format changed from MM:SS:FF to SS:FF (no minute rollover, unlimited seconds). Auto-sizing inputs via `ch` units. Toolbar layout changed to CSS Grid `grid-cols-[1fr_auto_1fr]` to prevent timecode growth from shifting playback buttons. **New hotkeys**: ⌘N (add frame), ⌘D (duplicate frame), ⌘⌫ (delete frame), ⌘X (split frame), ⌘, (set frame start), ⌘. (set frame end), 1/2 (timeline zoom in/out), ⌘→/← (jump to next/prev visible keyframe). All added to `KeyboardShortcutsDialog.tsx` and toolbar tooltips. Layer-mode handlers override legacy frame handlers. **Per-track keyframe navigation**: ◀ ◆ ▶ buttons on each property track row in `LayerListItem.tsx`. **Content frame selection decoupled from playhead**: clicking a frame no longer moves the playhead. **Alt+drag frame duplicate**: follows keyframe Alt+drag pattern — captures `e.altKey` at mouseDown, creates duplicate at original position on mouseUp. Works for single and multi-selected frames. **Work area clear button** added to footer. **Content frame hide/show toggle**: `hidden?: boolean` on `ContentFrame`, `toggleContentFrameHidden()` store action, eye/eye-off toolbar button, hidden frames skipped in `getContentFrameAtTime()`, distinct visual styling (grey selected, transparent+dashed unselected). **Resize undo includes timeline duration**: `ContentFrameTimingHistoryAction` now stores `previousTimelineDuration`/`newTimelineDuration`, undo handler restores both frame timing and timeline length. Resize right-drag captures `origTimelineDuration` and reverts before history recording. **Sync keyframes to frames feature**: `syncKeyframesToFrames?: boolean` on Layer, `setLayerSyncKeyframes()` action, `RectangleEllipsis` toggle on layer row (replaces old keyframe diamond indicator), drag logic captures keyframes within frame ranges and moves them by the same delta on drop, `ContentFrameReorderHistoryAction` extended with `previousKeyframes`/`newKeyframes` snapshots for proper undo. 297/297 tests. TypeScript clean. |
 | 3.2.0 | 2026-02-11 | Copilot | **Phase 4 continued: context menus, clipboard, inverse mapping, scale split.** **Timeline context menus**: New `TimelineContextMenu.tsx` reusable positioned menu with 4 context types (frame, empty-track, property-track, keyframe). Portal-based, auto-edge-corrected, capture-phase close listeners. Frame menu: copy/paste at playhead/paste here/duplicate/split/hide/delete. Empty track: new frame/paste. Property track: add keyframe/paste. Keyframe: copy/delete. **Timeline clipboard system**: `copiedFrames`/`copiedKeyframes` in timelineStore. Multi-track keyframe copy preserves `layerIndex`, `trackIndex`, `propertyPath`, `sourceLayerId`, `frameOffset`. Paste matches by layer ID first (for same-project paste), falls back to index offset. Multi-layer distribution: keyframes from Layer 1 → Layer 1, Layer 2 → Layer 2. Single-track fallback for unmatched properties. Paste history via `pasteFramesWithHistory` (content_frame_reorder snapshot) and `pasteKeyframesWithHistory` (individual keyframe_add entries). **Show All Keyframes hotkey** (U): toggles expand all layers with keyframes / collapse all. **Inverse mapping compositing**: `compositeLayersAtFrame()` rewritten for transformed layers — eliminates gaps during scale/rotation. Added architecture section to plan. §6.9 Media Import added to Phase 6 plan. **Scale X/Y split**: `transform.scale` → `transform.scale.x` + `transform.scale.y` for non-uniform scaling. Updated across 6 files. Transform tool: non-uniform drag (default), Shift+drag for uniform. Scale link button removed (Shift+drag sufficient). **Apply Transforms**: New button in LayerPropertiesPanel — bakes current transforms into cell data using inverse mapping (gap-free), removes all property tracks/keyframes, resets static properties. Confirmation dialog warns about keyframe loss. Full undo via `apply_transforms` history type with complete layer snapshot. **Auto-expand layer properties** when layertransform tool activates. **Custom rotation cursor** (16×16 SVG, black fill, white outline). **New keyframes use current interpolated value** instead of PROPERTY_DEFINITIONS default — applies to layer list diamond button, timeline double-click, and context menu "Add keyframe here". **Property track display order**: `PROPERTY_DISPLAY_ORDER` constant ensures tracks always show in canonical order (Position X/Y, Scale X/Y, Rotation, Anchor X/Y) regardless of creation order. Default panel height 364px. 297/297 tests. TypeScript clean. |
 | 3.3.0 | 2026-02-11 | Copilot | **Phase 5: Export & Migration complete.** All export formats now composite layers via `compositeLayersAtFrame()`. Session save writes v2.0.0 format preserving full layer structure alongside pre-composited frames for gallery playback. Session import auto-detects v1/v2 — v1 files migrate via `migrateV1ToV2()` with frame-rate derived from shortest frame duration (`round(1000/shortestMs)`, capped 1–60fps, durations rounded up). All v1 imports now route through v2 timeline (legacy animationStore path retired for import). Cloud save includes both raw `layers[]` and composited `animation.frames[]`. `getSessionData()` added to timelineStore for serialization. `SessionDataV2` types extended with `staticProperties`, `syncKeyframesToFrames`, `hidden` on content frames. `ExportDataBundle` extended with optional `sessionDataV2` field. My Projects dialog updated for v2 frame counts and canvas previews. Premium package types and serializer updated for v2 compatibility (details in premium docs). Community showcase publishing and playback verified with v2 projects including animation cache invalidation on republish. 24 new tests (Phase 5 export/migration). Total: 324/324 tests passing. TypeScript clean. |
+| 3.4.0 | 2026-02-11 | Copilot | **Phase 6: Integration substantially complete.** Major change: renamed original `animationStore.ts` → `animationStoreLegacy.ts` and promoted `animationStoreAdapter.ts` → `animationStore.ts`. All 43 consumer files across generators, effects, time effects, media import, JSON import, and MCP client now route through the adapter to `timelineStore` with zero import changes. Fixed `effectsStore.ts` "apply to timeline" path — replaced raw `setState({ frames })` hack with per-frame `setFrameData()` calls through adapter. `useFrameSynchronization` already layer-aware from Phase 3 (no rewrite needed). MCP server v2 protocol deferred (independent 900-line codebase, works on single layer via client adapter). 19 new integration tests validating adapter wiring, write methods, multi-layer isolation, duration conversion, effects integration, and performance. Total: 343/343 tests passing. TypeScript clean. |

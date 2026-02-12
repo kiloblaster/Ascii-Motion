@@ -258,8 +258,13 @@ export const useCanvasRenderer = () => {
     }
 
     // Draw static cells (excluding cells being moved)
-    // Skip drawing original cells if time effects preview OR effects preview is active (preview will render all cells)
-    if (!isTimeEffectPreviewActive && !isEffectPreviewActive) {
+    // When effect preview is active, draw at 50% opacity so other layers remain visible
+    const isEffectPreviewMode = isTimeEffectPreviewActive || isEffectPreviewActive;
+    if (isEffectPreviewMode) {
+      ctx.save();
+      ctx.globalAlpha = 0.5;
+    }
+    if (true) { // Always draw static cells (even during preview, at reduced opacity)
       for (let y = 0; y < canvasConfig.height; y++) {
         for (let x = 0; x < canvasConfig.width; x++) {
           const key = `${x},${y}`;
@@ -294,6 +299,9 @@ export const useCanvasRenderer = () => {
           drawCell(ctx, cx, cy, cell);
         }
       }
+    }
+    if (isEffectPreviewMode) {
+      ctx.restore();
     }
 
     // Draw moved cells at their new positions
@@ -502,31 +510,17 @@ export const useCanvasRenderer = () => {
       const previewAlpha = isEffectsPreview ? 1.0 : 0.8; // Effects: full opacity, others: semi-transparent
       
       if (isEffectsPreview) {
-        // For effects previews, render the ENTIRE canvas using preview data
-        // This ensures we show empty cells where content was removed (like scatter effect)
+        // For effects previews, render preview cells on top of the dimmed layers
+        // (other layers are already drawn at 50% opacity above)
         ctx.save();
         ctx.globalAlpha = previewAlpha;
         
-        for (let y = 0; y < canvasConfig.height; y++) {
-          for (let x = 0; x < canvasConfig.width; x++) {
-            const key = `${x},${y}`;
-            const previewCell = previewData.get(key);
-            
-            if (previewCell) {
-              // Draw the preview cell
-              drawCell(ctx, x, y, previewCell);
-            } else {
-              // Draw empty cell with canvas background (shows where cells were removed)
-              const pixelX = Math.round(x * effectiveCellWidth + panOffset.x);
-              const pixelY = Math.round(y * effectiveCellHeight + panOffset.y);
-              const cellWidth = Math.round(effectiveCellWidth);
-              const cellHeight = Math.round(effectiveCellHeight);
-              
-              ctx.fillStyle = canvasBackgroundColor;
-              ctx.fillRect(pixelX, pixelY, cellWidth, cellHeight);
-            }
+        previewData.forEach((cell, key) => {
+          const [x, y] = key.split(',').map(Number);
+          if (x >= 0 && x < canvasConfig.width && y >= 0 && y < canvasConfig.height) {
+            drawCell(ctx, x, y, cell);
           }
-        }
+        });
         
         ctx.restore();
       } else {

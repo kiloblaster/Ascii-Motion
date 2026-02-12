@@ -4,6 +4,7 @@ import { Copy, Clipboard, Undo2, Redo2, Trash2 } from 'lucide-react';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useToolStore } from '@/stores/toolStore';
 import { useAnimationStore } from '@/stores/animationStore';
+import { useTimelineStore } from '@/stores/timelineStore';
 import { useBezierStore } from '@/stores/bezierStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import type { 
@@ -239,43 +240,59 @@ export const CanvasActionButtons: React.FC = () => {
       case 'apply_effect': {
         const effectAction = action as ApplyEffectHistoryAction;
         if (isRedo) {
-          // Redo: Restore the "after" state (following the forward snapshot pattern)
           if (effectAction.data.applyToTimeline) {
-            // Restore all affected frames to their post-effect state
             const { newFramesData } = effectAction.data;
             if (newFramesData) {
-              newFramesData.forEach(({ frameIndex, data }) => {
-                animationStore.setFrameData(frameIndex, data);
-              });
+              // Write directly to content frames by array index
+              const tl = useTimelineStore.getState();
+              const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+              if (activeLayer) {
+                newFramesData.forEach(({ frameIndex, data }) => {
+                  const cf = activeLayer.contentFrames[frameIndex];
+                  if (cf) {
+                    tl.updateContentFrameData(activeLayer.id, cf.id, data);
+                  }
+                });
+              }
+              // Sync canvas
+              const currentIdx = animationStore.currentFrameIndex;
+              const currentData = animationStore.getFrameData(currentIdx);
+              if (currentData) {
+                setCanvasData(currentData);
+              }
               console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${newFramesData.length} frames`);
-            } else {
-              console.warn(`⚠️ Redo for ${effectAction.data.effectType} effect: newFramesData missing (legacy entry)`);
             }
           } else {
-            // Restore single canvas to its post-effect state
             if (effectAction.data.newCanvasData) {
               setCanvasData(effectAction.data.newCanvasData);
-              console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to canvas`);
-            } else {
-              console.warn(`⚠️ Redo for ${effectAction.data.effectType} effect: newCanvasData missing (legacy entry)`);
             }
           }
         } else {
-          // Undo: Restore previous data
           if (effectAction.data.applyToTimeline) {
-            // Restore all affected frames
             const { previousFramesData } = effectAction.data;
             if (previousFramesData) {
-              previousFramesData.forEach(({ frameIndex, data }) => {
-                animationStore.setFrameData(frameIndex, data);
-              });
+              // Write directly to content frames by array index
+              const tl = useTimelineStore.getState();
+              const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+              if (activeLayer) {
+                previousFramesData.forEach(({ frameIndex, data }) => {
+                  const cf = activeLayer.contentFrames[frameIndex];
+                  if (cf) {
+                    tl.updateContentFrameData(activeLayer.id, cf.id, data);
+                  }
+                });
+              }
+              // Sync canvas
+              const currentIdx = animationStore.currentFrameIndex;
+              const currentData = animationStore.getFrameData(currentIdx);
+              if (currentData) {
+                setCanvasData(currentData);
+              }
               console.log(`✅ Undo: Restored ${previousFramesData.length} frames from ${effectAction.data.effectType} effect`);
             }
           } else {
-            // Restore single canvas
             if (effectAction.data.previousCanvasData) {
               setCanvasData(effectAction.data.previousCanvasData);
-              console.log(`✅ Undo: Restored canvas from ${effectAction.data.effectType} effect`);
             }
           }
         }
