@@ -182,13 +182,20 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
     (e: React.MouseEvent) => {
       // Only handle left button clicks on the background (not on diamonds or content frames)
       if (e.button !== 0) return;
-      clearContentFrameSelection();
 
       const el = internalRef.current;
       if (!el) return;
 
-      // Get position relative to the scrollable content
+      // BUGFIX: Don't deselect frames when clicking the scrollbar.
+      // The scrollbar area is outside the clientWidth/clientHeight but inside the element bounds.
       const rect = el.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      if (clickX > el.clientWidth || clickY > el.clientHeight) {
+        return; // Click is on the scrollbar — don't deselect
+      }
+
+      clearContentFrameSelection();
       const startX = e.clientX - rect.left + el.scrollLeft;
       const startY = e.clientY - rect.top + el.scrollTop;
 

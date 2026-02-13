@@ -201,6 +201,7 @@ export interface TimelineState {
   clearKeyframeDuplicateGhosts: () => void;
   setShowLayerProperties: (show: boolean) => void;
   toggleLayerExpanded: (layerId: LayerId) => void;
+  setExpandedLayerIds: (ids: Set<LayerId>) => void;
 
   // Work area
   setWorkAreaStart: (frame: number) => void;
@@ -1104,6 +1105,12 @@ export const useTimelineStore = create<TimelineState>()(
         }
         return { view: { ...state.view, expandedLayerIds: next } };
       });
+    },
+
+    setExpandedLayerIds: (ids) => {
+      set((state) => ({
+        view: { ...state.view, expandedLayerIds: ids },
+      }));
     },
 
     // ============================================

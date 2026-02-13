@@ -1514,6 +1514,7 @@ export const useKeyboardShortcuts = () => {
       } else {
         // Block tool hotkeys and other single-key shortcuts that conflict with typing
         // This includes letters (b, p, e, etc.), numbers, AND spacebar for text input
+        if (event.key === 'u') console.log('[DEBUG] U blocked by focused input:', activeElement.tagName, activeElement.className);
         return;
       }
     }
@@ -1715,12 +1716,12 @@ export const useKeyboardShortcuts = () => {
         return;
       }
 
-      // Handle timeline zoom hotkeys (1 = zoom in, 2 = zoom out)
+      // Handle timeline zoom hotkeys (1 = zoom out, 2 = zoom in)
       if (event.key === '1') {
         const tl = useTimelineStore.getState();
         if (tl.layers.length > 0) {
           event.preventDefault();
-          tl.setZoom(Math.min(16, tl.view.zoom + 0.5));
+          tl.setZoom(Math.max(0.5, tl.view.zoom - 0.5));
           return;
         }
       }
@@ -1728,7 +1729,7 @@ export const useKeyboardShortcuts = () => {
         const tl = useTimelineStore.getState();
         if (tl.layers.length > 0) {
           event.preventDefault();
-          tl.setZoom(Math.max(0.5, tl.view.zoom - 0.5));
+          tl.setZoom(Math.min(16, tl.view.zoom + 0.5));
           return;
         }
       }
@@ -1768,27 +1769,27 @@ export const useKeyboardShortcuts = () => {
       }
 
       // Toggle show all keyframes (expand/collapse all layers with keyframes)
-      if (event.key === 'u') {
+      if (event.key === 'u' && !event.repeat) {
         const tl = useTimelineStore.getState();
         if (tl.layers.length > 0) {
           event.preventDefault();
-          const expanded = tl.view.expandedLayerIds;
-          if (expanded.size > 0) {
-            // Collapse all
-            useTimelineStore.setState({
-              view: { ...tl.view, expandedLayerIds: new Set() },
-            });
-          } else {
-            // Expand all layers that have keyframes
-            const withKfs = new Set(
-              tl.layers
-                .filter((l) => l.propertyTracks.some((t) => t.keyframes.length > 0))
-                .map((l) => l.id),
-            );
-            useTimelineStore.setState({
-              view: { ...tl.view, expandedLayerIds: withKfs },
-            });
-          }
+          // Capture the current state NOW (before any async delay)
+          const shouldExpand = tl.view.expandedLayerIds.size === 0;
+          // Use setTimeout to escape the keyboard event handler's execution context.
+          setTimeout(() => {
+            const current = useTimelineStore.getState();
+            if (shouldExpand) {
+              // Expand layers with keyframes; if none, expand all
+              const withKfs = current.layers.filter((l) =>
+                l.propertyTracks.some((t) => t.keyframes.length > 0)
+              );
+              const toExpand = withKfs.length > 0 ? withKfs : current.layers;
+              current.setExpandedLayerIds(new Set(toExpand.map((l) => l.id)));
+            } else {
+              // Collapse all
+              current.setExpandedLayerIds(new Set());
+            }
+          }, 0);
           return;
         }
       }
