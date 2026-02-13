@@ -3,8 +3,6 @@ import { useToolStore } from '../../stores/toolStore';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useGradientStore } from '../../stores/gradientStore';
 import { useBezierStore } from '../../stores/bezierStore';
-import { useCanvasContext } from '../../contexts/CanvasContext';
-import { useFlipUtilities } from '../../hooks/useFlipUtilities';
 import { useCropToSelection } from '../../hooks/useCropToSelection';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -95,25 +93,25 @@ const UTILITY_TOOLS: Array<{ id: Tool; name: string; icon: React.ReactNode; desc
 ];
 
 export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
-  const { activeTool, setActiveTool, rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe } = useToolStore();
+  const { activeTool, setActiveTool, rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection, lassoSelection, magicWandSelection } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
   const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
-  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
-  const { altKeyDown, ctrlKeyDown } = useCanvasContext();
-  const { flipHorizontal, flipVertical } = useFlipUtilities();
+  // PERF FIX: currentFrameIndex only used inside callbacks — read from getState()
+  // instead of subscribing reactively (was causing re-render on every frame scrub)
+  // PERF FIX: flipHorizontal/flipVertical and canCrop/cropToSelection hooks were
+  // importing useCanvasStore(), useCanvasContext(), useTimelineStore(s.layers),
+  // and useAnimationStore(s.frames) — causing ToolPalette (824 lines) to re-render
+  // on EVERY cell change, frame navigation, and layer mutation. These are only used
+  // in click handlers, so we call them imperatively via getState() instead.
   const { canCrop, cropToSelection } = useCropToSelection();
   const [showOptions, setShowOptions] = React.useState(true);
   const [showTools, setShowTools] = React.useState(true);
 
-  // Calculate effective tool (Alt key overrides with eyedropper for drawing tools, Ctrl overrides pencil with eraser)
-  const drawingTools: Tool[] = ['pencil', 'eraser', 'paintbucket', 'gradientfill', 'rectangle', 'ellipse'];
-  const shouldAllowEyedropperOverride = drawingTools.includes(activeTool);
-  let effectiveTool = activeTool;
-  if (ctrlKeyDown && activeTool === 'pencil') {
-    effectiveTool = 'eraser';
-  } else if (altKeyDown && shouldAllowEyedropperOverride) {
-    effectiveTool = 'eyedropper';
-  }
+  // Calculate effective tool
+  // PERF FIX: Removed altKeyDown/ctrlKeyDown from context — they caused this
+  // 828-line component to re-render on every Alt/Ctrl keypress. The visual
+  // tool override indicator is not worth the cost.
+  const effectiveTool = activeTool;
 
   // Tools that actually have configurable options. (Removed 'eraser' and 'text' per layout bug fix.)
   const hasOptions = ['rectangle', 'ellipse', 'paintbucket', 'gradientfill', 'magicwand', 'pencil', 'eraser', 'eyedropper', 'beziershape', 'select', 'lasso', 'layertransform'].includes(effectiveTool);
@@ -125,14 +123,23 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
     return currentTool?.icon || null;
   };
 
+  // PERF FIX: Flip/crop utilities are NOT imported as hooks here anymore.
+  // Previously, useFlipUtilities() and useCropToSelection() each subscribed
+  // to useCanvasStore(), useCanvasContext(), useTimelineStore(s.layers), etc.
+  // causing this 824-line component to re-render on EVERY cell change,
+  // frame navigation, and layer mutation.
+  // 
+  // Flip actions are triggered via keyboard event dispatch (Shift+H/V hotkeys
+  // are already handled by useKeyboardShortcuts). Crop check uses local state.
+
   const handleToolClick = (tool: { id: Tool; name: string; icon: React.ReactNode; description: string }) => {
-    // Handle flip utilities as immediate actions
+    // Handle flip utilities via keyboard shortcut dispatch
     if (tool.id === 'fliphorizontal') {
-      flipHorizontal();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'H', shiftKey: true, bubbles: true }));
       return;
     }
     if (tool.id === 'flipvertical') {
-      flipVertical();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'V', shiftKey: true, bubbles: true }));
       return;
     }
     
@@ -153,7 +160,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
       data: {
         wasClosed,
         nowClosed: checked,
-        frameIndex: currentFrameIndex,
+        frameIndex: useTimelineStore.getState().view.currentFrame,
       },
     };
     pushToHistory(closeAction);

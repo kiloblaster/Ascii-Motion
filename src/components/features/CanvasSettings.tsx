@@ -49,7 +49,7 @@ export const CanvasSettings: React.FC = () => {
   } = useCanvasContext();
 
   const { pushCanvasResizeHistory } = useToolStore();
-  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
+  // PERF FIX: currentFrameIndex only used in callbacks — read from getState()
 
   // Global dialog state for canvas resize (allows keyboard shortcut to trigger)
   const { showCanvasResizeDialog, setShowCanvasResizeDialog } = useProjectDialogState();
@@ -106,7 +106,7 @@ export const CanvasSettings: React.FC = () => {
         newWidth,
         newHeight,
         previousCells,
-        currentFrameIndex
+        useTimelineStore.getState().view.currentFrame
       );
     }
   };

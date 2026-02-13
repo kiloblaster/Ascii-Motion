@@ -208,7 +208,10 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     detectFont();
   }, [selectedFontId]);
 
-  const contextValue: CanvasContextValue = {
+  // PERF FIX: Memoize context value to prevent cascading re-renders.
+  // Without this, every CanvasProvider re-render creates a new object reference,
+  // which forces ALL context consumers to re-render even if no values changed.
+  const contextValue: CanvasContextValue = useMemo(() => ({
     cellSize,
     zoom,
     panOffset,
@@ -266,7 +269,23 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     commitPaste,
     setSelectionPreview,
     canvasRef,
-  };
+  }), [
+    cellSize, zoom, panOffset, characterSpacing, lineSpacing,
+    selectedFontId, actualFont, isFontDetecting, isFontLoading, fontLoadError,
+    fontMetrics, cellWidth, cellHeight,
+    isDrawing, mouseButtonDown, shiftKeyDown, altKeyDown, ctrlKeyDown,
+    selectionMode, pendingSelectionStart, justCommittedMove,
+    hoverPreview, moveState, pasteMode, selectionPreviewState,
+    // All setters are stable useCallback refs — they don't change
+    setCellSize, setZoom, setPanOffset, setCharacterSpacing, setLineSpacing,
+    setSelectedFontId, setIsDrawing, setMouseButtonDown,
+    setShiftKeyDown, setAltKeyDown, setCtrlKeyDown,
+    setSelectionMode, setPendingSelectionStart, setJustCommittedMove,
+    setHoveredCellOptimized, setHoverPreviewOptimized,
+    setMoveState,
+    startPasteMode, updatePastePosition, startPasteDrag, stopPasteDrag,
+    cancelPasteMode, commitPaste, setSelectionPreview,
+  ]);
 
   return <CanvasContext.Provider value={contextValue}>{children}</CanvasContext.Provider>;
 };
