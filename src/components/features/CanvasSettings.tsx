@@ -12,7 +12,7 @@ import { useCanvasStore } from '@/stores/canvasStore';
 import { useCanvasContext } from '@/contexts/CanvasContext';
 import { ZoomControls } from './ZoomControls';
 import { useToolStore } from '@/stores/toolStore';
-import { useAnimationStore } from '@/stores/animationStore';
+import { useTimelineStore } from '@/stores/timelineStore';
 import { useProjectDialogState } from '@/hooks/useProjectDialogState';
 import { MONOSPACE_FONTS, DEFAULT_FONT_ID } from '@/constants/fonts';
 import { getFontFallbackMessage } from '@/utils/fontDetection';
@@ -49,7 +49,7 @@ export const CanvasSettings: React.FC = () => {
   } = useCanvasContext();
 
   const { pushCanvasResizeHistory } = useToolStore();
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
 
   // Global dialog state for canvas resize (allows keyboard shortcut to trigger)
   const { showCanvasResizeDialog, setShowCanvasResizeDialog } = useProjectDialogState();

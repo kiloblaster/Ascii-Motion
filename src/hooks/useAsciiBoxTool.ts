@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { useAsciiBoxStore } from '../stores/asciiBoxStore';
 import { useToolStore } from '../stores/toolStore';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { transformCellMapToLocal } from '../utils/layerTransformUtils';
 import { BOX_DRAWING_STYLES } from '../constants/boxDrawingStyles';
@@ -67,7 +67,7 @@ export const useAsciiBoxTool = () => {
   
   const { shiftKeyDown } = useCanvasContext();
   
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   
   // Get current style definition
   const currentStyle = BOX_DRAWING_STYLES.find(s => s.id === selectedStyleId) 

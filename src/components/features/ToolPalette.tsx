@@ -1,8 +1,8 @@
 import React from 'react';
 import { useToolStore } from '../../stores/toolStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { useGradientStore } from '../../stores/gradientStore';
 import { useBezierStore } from '../../stores/bezierStore';
-import { useAnimationStore } from '../../stores/animationStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { useFlipUtilities } from '../../hooks/useFlipUtilities';
 import { useCropToSelection } from '../../hooks/useCropToSelection';
@@ -98,7 +98,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
   const { activeTool, setActiveTool, rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
   const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   const { altKeyDown, ctrlKeyDown } = useCanvasContext();
   const { flipHorizontal, flipVertical } = useFlipUtilities();
   const { canCrop, cropToSelection } = useCropToSelection();

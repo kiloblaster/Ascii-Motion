@@ -2,9 +2,9 @@ import { useCallback, useRef } from 'react';
 import { useCanvasContext, useCanvasDimensions } from '../contexts/CanvasContext';
 import { useCanvasState } from './useCanvasState';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
 import { screenToLocal } from '../utils/layerTransformUtils';
 import type { Cell } from '../types';
@@ -31,7 +31,7 @@ export const useCanvasSelection = () => {
   } = useCanvasState();
   
   const { width, height, cells, getCell } = useCanvasStore();
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   const { 
     selection, 
     startSelection, 

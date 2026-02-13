@@ -13,7 +13,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useAsciiTypeTool } from './useAsciiTypeTool';
 import { useAsciiTypeStore } from '../stores/asciiTypeStore';
 import { useAsciiBoxTool } from './useAsciiBoxTool';
-import { useLayerTransformTool } from './useLayerTransformTool';
+import { layerTransformHandlersRef } from './useLayerTransformTool';
 import type { Tool } from '../types';
 
 export interface MouseHandlers {
@@ -47,7 +47,9 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
   const textToolHandlers = useTextTool();
   const gradientFillHandlers = useGradientFillTool();
   const asciiBoxHandlers = useAsciiBoxTool();
-  const layerTransformHandlers = useLayerTransformTool();
+  // PERF FIX: Don't call useLayerTransformTool() here — it adds ~49 React hooks
+  // to every CanvasGrid render even when the tool isn't active. Instead, read
+  // from a shared ref that LayerTransformOverlay populates when mounted.
   const {
     previewGrid: asciiPreviewGrid,
     previewDimensions: asciiPreviewDimensions,
@@ -245,7 +247,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
       }
       case 'layertransform': {
         const transformCoords = getGridCoordinatesFromEvent(event);
-        layerTransformHandlers.handleMouseDown(transformCoords.x, transformCoords.y);
+        layerTransformHandlersRef.current.handleMouseDown(transformCoords.x, transformCoords.y);
         break;
       }
       case 'asciitype': {
@@ -308,7 +310,6 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     textToolHandlers,
     gradientFillHandlers,
     asciiBoxHandlers,
-    layerTransformHandlers,
     asciiPreviewGrid,
     asciiPreviewDimensions,
     asciiIsPreviewPlaced,
@@ -387,7 +388,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
       }
       case 'layertransform': {
         const transformCoords = getGridCoordinatesFromEvent(event);
-        layerTransformHandlers.handleMouseMove(transformCoords.x, transformCoords.y);
+        layerTransformHandlersRef.current.handleMouseMove(transformCoords.x, transformCoords.y);
         break;
       }
       case 'asciitype':
@@ -429,7 +430,6 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     clampAsciiOrigin,
     updateAsciiDrag,
     asciiBoxHandlers,
-    layerTransformHandlers,
   ]);
 
   // Route mouse up to appropriate tool handler
@@ -466,7 +466,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         asciiBoxHandlers.handleMouseUp();
         break;
       case 'layertransform':
-        layerTransformHandlers.handleMouseUp();
+        layerTransformHandlersRef.current.handleMouseUp();
         break;
       case 'asciitype':
         // End drag if we're dragging
@@ -507,7 +507,6 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     asciiDragState,
     endAsciiDrag,
     asciiBoxHandlers,
-    layerTransformHandlers,
   ]);
 
   return {

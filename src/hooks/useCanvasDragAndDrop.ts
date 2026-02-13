@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 import { useCanvasContext, useCanvasDimensions } from '../contexts/CanvasContext';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useDrawingTool } from './useDrawingTool';
 import { calculateBrushCells } from '../utils/brushUtils';
 import { screenToLocal } from '../utils/layerTransformUtils';
@@ -15,7 +15,7 @@ export const useCanvasDragAndDrop = () => {
   const { canvasRef, isDrawing, setIsDrawing, setMouseButtonDown, shiftKeyDown, cellWidth, cellHeight, fontMetrics } = useCanvasContext();
   const { getGridCoordinates } = useCanvasDimensions();
   const { width, height, cells } = useCanvasStore();
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   const { 
     shapePreview,
     startShapePreview,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useToolStore } from '../stores/toolStore';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { screenToLocal } from '../utils/layerTransformUtils';
 
 /**
@@ -19,7 +19,7 @@ import { screenToLocal } from '../utils/layerTransformUtils';
 export const useTextTool = () => {
   const { textToolState, startTyping, stopTyping, setCursorPosition, setCursorVisible, setTextBuffer, commitWord, pushCanvasHistory, finalizeCanvasHistory } = useToolStore();
   const { width, height, setCell, getCell, cells } = useCanvasStore();
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   const { selectedColor, selectedBgColor } = useToolStore();
   
   const blinkTimerRef = useRef<NodeJS.Timeout | null>(null);

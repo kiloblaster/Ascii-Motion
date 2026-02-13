@@ -1,11 +1,11 @@
 /**
- * Timeline Panel — the new layer-aware timeline interface.
+ * Timeline Panel — the layer-aware timeline interface.
  * 
- * Contains tabs for switching between:
- * - "Timeline" view: Layer list + content frame blocks + keyframe diamonds
- * - "Frames (Simple)" view: The existing AnimationTimeline (frame thumbnails)
+ * Renders the timeline view with:
+ * - Layer list + content frame blocks + keyframe diamonds
+ * - Toolbar with playback controls, frame operations
+ * - Ruler, zoom, frame rate controls
  * 
- * Replaces AnimationTimeline as the bottom panel content when layers are active.
  * Part of the Layer Timeline Refactor (Phase 3)
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §3.2
  */
@@ -13,7 +13,6 @@
 import React, { useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useToolStore } from '../../stores/toolStore';
-import { AnimationTimeline } from './AnimationTimeline';
 import { LayerList } from './timeline/LayerList';
 import { TimelineTrackArea } from './timeline/TimelineTrackArea';
 import { TimelineRuler } from './timeline/TimelineRuler';
@@ -23,16 +22,13 @@ import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { OnionSkinControls } from './OnionSkinControls';
 import { FrameRateControl } from './timeline/FrameRateControl';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Slider } from '../ui/slider';
-import { Layers, Grid3X3, ZoomIn, CornerDownLeft, CornerDownRight, Scissors, X } from 'lucide-react';
+import { ZoomIn, CornerDownLeft, CornerDownRight, Scissors, X } from 'lucide-react';
 import { useTimelineHistory } from '../../hooks/useTimelineHistory';
 
 export const TimelinePanel: React.FC = () => {
-  const activeView = useTimelineStore((s) => s.view.activeView);
-  const setActiveView = useTimelineStore((s) => s.setActiveView);
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
   const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
   const setShowLayerProperties = useTimelineStore((s) => s.setShowLayerProperties);
@@ -88,45 +84,19 @@ export const TimelinePanel: React.FC = () => {
   }, []);
 
   return (
-    <Tabs
-      value={activeView}
-      onValueChange={(v) => setActiveView(v as 'frames' | 'layers')}
-      className="h-full flex flex-col"
-    >
-      {/* Tab bar */}
-      <div className="flex-shrink-0 flex items-center justify-between border-b border-border/50 px-2 py-1">
-        <TabsList className="h-7">
-          <TabsTrigger value="layers" className="text-xs gap-1 px-2 py-0.5">
-            <Layers className="w-3.5 h-3.5" />
-            Timeline
-          </TabsTrigger>
-          <TabsTrigger value="frames" className="text-xs gap-1 px-2 py-0.5">
-            <Grid3X3 className="w-3.5 h-3.5" />
-            Frames
-          </TabsTrigger>
-        </TabsList>
-      </div>
+    <div className="h-full flex flex-col">
+      {/* Toolbar row */}
+      <TimelineToolbar />
+      
+      {/* Main timeline area */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Left: Layer list */}
+        <LayerList scrollRef={layerListScrollRef} />
 
-      {/* Frames (Simple) tab — shows the existing AnimationTimeline */}
-      <TabsContent value="frames" className="flex-1 mt-0 overflow-hidden">
-        <AnimationTimeline />
-      </TabsContent>
-
-      {/* Timeline (Layers) tab */}
-      <TabsContent value="layers" className="flex-1 mt-0 overflow-hidden">
-        <div className="h-full flex flex-col">
-          {/* Toolbar row */}
-          <TimelineToolbar />
-          
-          {/* Main timeline area */}
-          <div className="flex-1 flex overflow-hidden min-h-0">
-            {/* Left: Layer list */}
-            <LayerList scrollRef={layerListScrollRef} />
-
-            {/* Center: Timeline ruler + content frame blocks + keyframe tracks */}
-            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-              <TimelineRuler />
-              <TimelineTrackArea scrollRef={trackAreaScrollRef} />
+        {/* Center: Timeline ruler + content frame blocks + keyframe tracks */}
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          <TimelineRuler />
+          <TimelineTrackArea scrollRef={trackAreaScrollRef} />
               {/* Footer: frame info + zoom controls */}
               <div
                 className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 flex items-center gap-2 h-[34px]"
@@ -216,7 +186,5 @@ export const TimelinePanel: React.FC = () => {
             {editingKeyframeId ? <KeyframeEditorPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : null}
           </div>
         </div>
-      </TabsContent>
-    </Tabs>
   );
 };

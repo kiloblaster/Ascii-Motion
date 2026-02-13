@@ -3,7 +3,7 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { useGradientStore, initializeGradientWithCurrentValues } from '../stores/gradientStore';
 import { useToolStore } from '../stores/toolStore';
-import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { calculateGradientCells } from '../utils/gradientEngine';
 import { getGradientFillArea } from '../utils/fillArea';
 import { transformCellMapToLocal, screenToLocal } from '../utils/layerTransformUtils';
@@ -24,7 +24,7 @@ export const useGradientFillTool = () => {
   
   const { cellWidth, cellHeight } = useCanvasContext();
   
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   
   const { 
     activeTool,

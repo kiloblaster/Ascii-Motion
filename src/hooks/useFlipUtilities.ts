@@ -6,7 +6,6 @@
 import { useCallback, useMemo } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
-import { useAnimationStore } from '../stores/animationStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { 
   applyHorizontalFlip, 
@@ -24,7 +23,7 @@ import { screenToLocal as screenToLocalFn } from '../utils/layerTransformUtils';
  */
 export const useFlipUtilities = () => {
   const { cells, width, height, setCanvasData } = useCanvasStore();
-  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   const { moveState, setMoveState } = useCanvasContext();
   const { 
     pushCanvasHistory, 

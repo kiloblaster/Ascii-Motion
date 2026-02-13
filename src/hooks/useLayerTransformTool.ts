@@ -589,3 +589,27 @@ export function useLayerTransformTool() {
     activeLayer,
   };
 }
+
+// ============================================
+// Shared handler ref for mouse event routing
+// ============================================
+// PERF FIX: useCanvasMouseHandlers previously called useLayerTransformTool()
+// unconditionally, adding ~49 React hooks to every CanvasGrid render even
+// when the transform tool wasn't active. Now useCanvasMouseHandlers reads
+// from this ref instead, and only LayerTransformOverlay (which is conditionally
+// mounted) writes to it.
+
+export interface LayerTransformMouseHandlers {
+  handleMouseDown: (cellX: number, cellY: number) => void;
+  handleMouseMove: (cellX: number, cellY: number) => void;
+  handleMouseUp: () => void;
+}
+
+const NOOP_HANDLERS: LayerTransformMouseHandlers = {
+  handleMouseDown: () => {},
+  handleMouseMove: () => {},
+  handleMouseUp: () => {},
+};
+
+/** Shared ref — written by LayerTransformOverlay, read by useCanvasMouseHandlers */
+export const layerTransformHandlersRef = { current: NOOP_HANDLERS };

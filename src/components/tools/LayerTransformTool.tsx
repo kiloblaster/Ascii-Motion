@@ -10,11 +10,12 @@
  */
 
 import React from 'react';
-import { useLayerTransformTool } from '../../hooks/useLayerTransformTool';
+import { useToolStore } from '../../stores/toolStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 
 /**
  * LayerTransformTool — Behavior component (renders nothing).
- * All logic is in useLayerTransformTool hook, invoked via useCanvasMouseHandlers.
+ * All logic is in useLayerTransformTool hook, invoked via LayerTransformOverlay.
  */
 export const LayerTransformTool: React.FC = () => {
   return null;
@@ -22,11 +23,15 @@ export const LayerTransformTool: React.FC = () => {
 
 /**
  * LayerTransformToolStatus — Status bar display showing current mode.
+ * Uses lightweight store reads instead of useLayerTransformTool() to avoid
+ * adding ~49 hooks to the CanvasGrid render path.
  */
 export const LayerTransformToolStatus: React.FC = () => {
-  const { dragState, isDisabled, isLocked, boundingBox, cursorZone } = useLayerTransformTool();
+  const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
+  const layers = useTimelineStore((s) => s.layers);
+  const activeLayer = layers.find((l) => l.id === activeLayerId);
 
-  if (isDisabled) {
+  if (!activeLayer) {
     return (
       <span className="text-muted-foreground">
         Layer Transform: No active layer
@@ -34,7 +39,7 @@ export const LayerTransformToolStatus: React.FC = () => {
     );
   }
 
-  if (isLocked) {
+  if (activeLayer.locked) {
     return (
       <span className="text-muted-foreground">
         Layer Transform: Layer is locked
@@ -42,31 +47,9 @@ export const LayerTransformToolStatus: React.FC = () => {
     );
   }
 
-  if (dragState) {
-    const modeLabels: Record<string, string> = {
-      move: 'Moving layer (Shift to constrain axis)',
-      scale: 'Scaling layer',
-      rotate: 'Rotating layer',
-      anchor: 'Moving anchor point (Pan Behind)',
-    };
-    return (
-      <span className="text-purple-500">
-        {modeLabels[dragState.mode] ?? 'Transforming...'}
-      </span>
-    );
-  }
-
-  const hintLabels: Record<string, string> = {
-    move: 'Drag to move',
-    scale: 'Drag corner to scale',
-    rotate: 'Drag to rotate',
-    anchor: 'Drag anchor point',
-    none: boundingBox ? 'Click inside box to move, corner to scale, outside to rotate' : 'Only anchor point available (no content)',
-  };
-
   return (
-    <span className="text-purple-500">
-      Layer Transform: {hintLabels[cursorZone] ?? hintLabels.none}
+    <span className="text-purple-600">
+      Layer Transform: Click inside to move, corners to scale, outside to rotate
     </span>
   );
 };

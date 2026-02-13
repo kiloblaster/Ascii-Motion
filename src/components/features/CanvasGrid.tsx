@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useToolStore } from '../../stores/toolStore';
 import { useCanvasStore } from '../../stores/canvasStore';
-import { useAnimationStore } from '../../stores/animationStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { useCanvasState } from '../../hooks/useCanvasState';
 import { useCanvasMouseHandlers } from '../../hooks/useCanvasMouseHandlers';
@@ -26,7 +26,7 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
   
   // Get active tool and tool behavior
   const { activeTool, textToolState, isPlaybackMode } = useToolStore();
-  const isPlaying = useAnimationStore((s) => s.isPlaying);
+  const isPlaying = useTimelineStore((s) => s.view.isPlaying);
   const { getToolCursor } = useToolBehavior();
   
   // Track previous tool for cleanup on tool changes

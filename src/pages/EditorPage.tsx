@@ -10,7 +10,6 @@ import { MainCharacterPaletteSection } from '../components/features/MainCharacte
 import { ColorPicker } from '../components/features/ColorPicker'
 import { ActiveStyleSection } from '../components/features/ActiveStyleSection'
 import { CanvasSettings } from '../components/features/CanvasSettings'
-import { AnimationTimeline } from '../components/features/AnimationTimeline'
 import { TimelinePanel } from '../components/features/TimelinePanel'
 import { TimelineResizeHandle } from '../components/features/timeline/TimelineResizeHandle'
 import { PlaybackOverlay } from '../components/features/PlaybackOverlay'

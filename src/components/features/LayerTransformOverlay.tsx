@@ -21,7 +21,7 @@ import { useTimelineStore } from '../../stores/timelineStore';
 import { useToolStore } from '../../stores/toolStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { getPropertyValueAtFrame } from '../../utils/layerCompositing';
-import { useLayerTransformTool } from '../../hooks/useLayerTransformTool';
+import { useLayerTransformTool, layerTransformHandlersRef } from '../../hooks/useLayerTransformTool';
 import { usePlaybackOnlySnapshot } from '../../hooks/usePlaybackOnlySnapshot';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +43,16 @@ export const LayerTransformOverlay: React.FC = () => {
     handleMouseUp,
     cursorZone,
   } = useLayerTransformTool();
+
+  // PERF FIX: Expose handlers to useCanvasMouseHandlers via shared ref
+  // so it doesn't need to call useLayerTransformTool() itself.
+  // This eliminates ~49 React hooks from the CanvasGrid render path.
+  useEffect(() => {
+    layerTransformHandlersRef.current = { handleMouseDown, handleMouseMove, handleMouseUp };
+    return () => {
+      layerTransformHandlersRef.current = { handleMouseDown: () => {}, handleMouseMove: () => {}, handleMouseUp: () => {} };
+    };
+  }, [handleMouseDown, handleMouseMove, handleMouseUp]);
 
   const isDraggingRef = useRef(false);
 

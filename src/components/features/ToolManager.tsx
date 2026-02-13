@@ -22,7 +22,7 @@ import { LayerTransformTool } from '../tools/LayerTransformTool';
  * Tool Manager Component
  * Renders the appropriate tool component based on the active tool
  */
-export const ToolManager: React.FC = () => {
+export const ToolManager: React.FC = React.memo(() => {
   const { activeTool } = useToolStore();
 
   // Render the appropriate tool component
@@ -61,4 +61,6 @@ export const ToolManager: React.FC = () => {
     default:
       return null;
   }
-};
+});
+
+ToolManager.displayName = 'ToolManager';

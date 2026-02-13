@@ -16,7 +16,7 @@ import { transformCellMapToScreen } from '../../utils/layerTransformUtils';
 
 type GradientPropertyKey = 'character' | 'textColor' | 'backgroundColor';
 
-export const CanvasOverlay: React.FC = () => {
+export const CanvasOverlay: React.FC = React.memo(() => {
   // Create a separate canvas ref for overlay
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   // Dedicated canvas for hover preview (decoupled from main overlay for performance)
@@ -949,4 +949,6 @@ export const CanvasOverlay: React.FC = () => {
       {activeTool === 'layertransform' ? <LayerTransformOverlay /> : <AnchorPointOverlay />}
     </>
   );
-};
+});
+
+CanvasOverlay.displayName = 'CanvasOverlay';
