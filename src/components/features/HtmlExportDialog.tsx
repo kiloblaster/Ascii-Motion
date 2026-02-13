@@ -28,12 +28,11 @@ export const HtmlExportDialog: React.FC = () => {
   const setIsExporting = useExportStore(state => state.setIsExporting);
   const isExporting = useExportStore(state => state.isExporting);
   
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'html';
+  const exportData = useExportDataCollector(isOpen);
   const projectName = useProjectMetadataStore((state) => state.projectName);
 
   const [filename, setFilename] = useState(projectName || 'ascii-motion-animation');
-
-  const isOpen = showExportModal && activeFormat === 'html';
 
   // Sync filename with project name when dialog opens
   useEffect(() => {

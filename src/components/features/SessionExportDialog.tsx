@@ -26,12 +26,11 @@ export const SessionExportDialog: React.FC = () => {
   const setIsExporting = useExportStore(state => state.setIsExporting);
   const isExporting = useExportStore(state => state.isExporting);
   
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'session';
+  const exportData = useExportDataCollector(isOpen);
   const projectName = useProjectMetadataStore((state) => state.projectName);
 
   const [filename, setFilename] = useState(projectName || 'ascii-motion-project');
-
-  const isOpen = showExportModal && activeFormat === 'session';
 
   // Sync filename with project name when dialog opens
   useEffect(() => {

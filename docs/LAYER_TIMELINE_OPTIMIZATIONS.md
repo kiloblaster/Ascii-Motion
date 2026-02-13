@@ -626,11 +626,9 @@ const exportData = useExportDataCollector(isOpen);  // null when closed
 | `ImageExportDialog.tsx` | Pass `isOpen` to `useExportDataCollector(isOpen)` |
 | `SaveToCloudDialog.tsx` | Pass `open` prop to `useExportDataCollector(open)` |
 | `PublishToGalleryDialogWrapper.tsx` | Pass `isOpen` prop to `useExportDataCollector(isOpen)` |
+| `HtmlExportDialog.tsx` | Pass `isOpen` to `useExportDataCollector(isOpen)` |
+| `SessionExportDialog.tsx` | Pass `isOpen` to `useExportDataCollector(isOpen)` |
 | `useOnionSkinRenderer.ts` | `layers`, `durationFrames` → ref-based reads (Fix 26) |
 
 ### Remaining to investigate:
-- **Large project slowdown** (90 separate content frames with full content) — different bottleneck, likely related to total data size rather than frame count scaling. User will provide flame graphs for diagnosis.
-}, [triggerSilentSave, ...]);
-```
-
-**Impact:** Eliminates 71ms+ of compositing work per mouse move during drawing. This was THE primary bottleneck — 51.6% of CPU self-time per interaction frame.
+- **Large project slowdown** (90 separate content frames with full content) — remaining bottleneck after export dialogs fixed, likely related to total data size and GC pressure. Flame graph shows `new Map(state.cells)` in `setCell` and Minor/Major GC as significant contributors.
