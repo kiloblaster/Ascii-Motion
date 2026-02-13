@@ -28,18 +28,20 @@ export const useCanvasMagicWandSelection = () => {
   } = useCanvasState();
   
   const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
-  const { width, height, cells, getCell } = useCanvasStore();
-  const { 
-    magicWandSelection, 
-    magicWandContiguous,
-    startMagicWandSelection,
-    clearMagicWandSelection,
-    pushCanvasHistory,
-    magicMatchChar,
-    magicMatchColor,
-    magicMatchBgColor,
-    setMagicWandSelectionFromMask
-  } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const magicWandContiguous = useToolStore((s) => s.magicWandContiguous);
+  const startMagicWandSelection = useToolStore((s) => s.startMagicWandSelection);
+  const clearMagicWandSelection = useToolStore((s) => s.clearMagicWandSelection);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const magicMatchChar = useToolStore((s) => s.magicMatchChar);
+  const magicMatchColor = useToolStore((s) => s.magicMatchColor);
+  const magicMatchBgColor = useToolStore((s) => s.magicMatchBgColor);
+  const setMagicWandSelectionFromMask = useToolStore((s) => s.setMagicWandSelectionFromMask);
 
   const selectionModifierRef = useRef<'replace' | 'add' | 'subtract'>('replace');
   const baseSelectionMaskRef = useRef<Set<string>>(new Set());

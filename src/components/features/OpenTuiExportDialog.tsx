@@ -57,11 +57,10 @@ export const OpenTuiExportDialog: React.FC = () => {
   const setIsExporting = useExportStore((state) => state.setIsExporting);
   const isExporting = useExportStore((state) => state.isExporting);
 
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'opentui';
+  const exportData = useExportDataCollector(isOpen);
 
   const [copySuccess, setCopySuccess] = useState(false);
-
-  const isOpen = showExportModal && activeFormat === 'opentui';
 
   const sanitizedFileName = useMemo(() => finalizeFileName(sanitizeFileName(opentuiSettings.fileName)), [opentuiSettings.fileName]);
   const componentName = useMemo(() => toPascalCase(sanitizedFileName || opentuiSettings.fileName), [opentuiSettings.fileName, sanitizedFileName]);

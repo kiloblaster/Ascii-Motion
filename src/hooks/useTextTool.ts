@@ -17,10 +17,24 @@ import { screenToLocal } from '../utils/layerTransformUtils';
  * - Clipboard paste support with overwrite behavior
  */
 export const useTextTool = () => {
-  const { textToolState, startTyping, stopTyping, setCursorPosition, setCursorVisible, setTextBuffer, commitWord, pushCanvasHistory, finalizeCanvasHistory } = useToolStore();
-  const { width, height, setCell, getCell, cells } = useCanvasStore();
+  // PERF FIX: Targeted selectors instead of broad useToolStore()/useCanvasStore().
+  const textToolState = useToolStore((s) => s.textToolState);
+  const startTyping = useToolStore((s) => s.startTyping);
+  const stopTyping = useToolStore((s) => s.stopTyping);
+  const setCursorPosition = useToolStore((s) => s.setCursorPosition);
+  const setCursorVisible = useToolStore((s) => s.setCursorVisible);
+  const setTextBuffer = useToolStore((s) => s.setTextBuffer);
+  const commitWord = useToolStore((s) => s.commitWord);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const finalizeCanvasHistory = useToolStore((s) => s.finalizeCanvasHistory);
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const setCell = useCanvasStore((s) => s.setCell);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const cells = useCanvasStore((s) => s.cells);
   const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
-  const { selectedColor, selectedBgColor } = useToolStore();
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
   
   const blinkTimerRef = useRef<NodeJS.Timeout | null>(null);
   const wordBoundaryChars = useRef(new Set([' ', '\t', '\n', '.', ',', ';', ':', '!', '?', '"', "'", '(', ')', '[', ']', '{', '}', '<', '>', '/', '\\', '|', '@', '#', '$', '%', '^', '&', '*', '+', '=', '-', '_', '~', '`']));

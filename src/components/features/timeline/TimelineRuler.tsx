@@ -142,13 +142,18 @@ export const TimelineRuler: React.FC = () => {
   // Determine tick interval — always show every frame
   const majorInterval = Math.max(1, frameRate);
 
+  // PERF FIX: Compute visible tick range upfront instead of iterating all frames.
+  // Previously iterated all durationFrames with a hardcoded 2000px cutoff.
+  // Now computes exact start/end indices from scrollX and container width.
+  const rulerWidth = rulerRef.current?.clientWidth ?? 1200;
+  const TICK_MARGIN = 50; // px margin for smooth appearance
+  const startTick = Math.max(0, Math.floor((scrollX - TICK_MARGIN) / pxPerFrame));
+  const endTick = Math.min(durationFrames, Math.ceil((scrollX + rulerWidth + TICK_MARGIN) / pxPerFrame));
+
   const ticks: React.ReactNode[] = [];
-  for (let i = 0; i < durationFrames; i++) {
+  for (let i = startTick; i < endTick; i++) {
     const isMajor = i % majorInterval === 0;
     const left = i * pxPerFrame - scrollX;
-
-    // Skip ticks outside visible area (with margin)
-    if (left < -50 || left > 2000) continue;
 
     ticks.push(
       <div

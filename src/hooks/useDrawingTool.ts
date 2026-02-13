@@ -14,25 +14,27 @@ import type { Cell } from '../types';
  * Custom hook for handling canvas drawing operations
  */
 export const useDrawingTool = () => {
-  const { setCell, clearCell, getCell, fillArea } = useCanvasStore();
-  const { 
-    activeTool, 
-    selectedChar, 
-    selectedColor, 
-    selectedBgColor,
-    brushSettings,
-    rectangleFilled,
-    paintBucketContiguous,
-    pickFromCell,
-    pencilLastPosition,
-    setPencilLastPosition,
-    toolAffectsChar,
-    toolAffectsColor,
-    toolAffectsBgColor,
-    fillMatchChar,
-    fillMatchColor,
-    fillMatchBgColor
-  } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const setCell = useCanvasStore((s) => s.setCell);
+  const clearCell = useCanvasStore((s) => s.clearCell);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const fillArea = useCanvasStore((s) => s.fillArea);
+  const activeTool = useToolStore((s) => s.activeTool);
+  const selectedChar = useToolStore((s) => s.selectedChar);
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
+  const brushSettings = useToolStore((s) => s.brushSettings);
+  const rectangleFilled = useToolStore((s) => s.rectangleFilled);
+  const paintBucketContiguous = useToolStore((s) => s.paintBucketContiguous);
+  const pickFromCell = useToolStore((s) => s.pickFromCell);
+  const pencilLastPosition = useToolStore((s) => s.pencilLastPosition);
+  const setPencilLastPosition = useToolStore((s) => s.setPencilLastPosition);
+  const toolAffectsChar = useToolStore((s) => s.toolAffectsChar);
+  const toolAffectsColor = useToolStore((s) => s.toolAffectsColor);
+  const toolAffectsBgColor = useToolStore((s) => s.toolAffectsBgColor);
+  const fillMatchChar = useToolStore((s) => s.fillMatchChar);
+  const fillMatchColor = useToolStore((s) => s.fillMatchColor);
+  const fillMatchBgColor = useToolStore((s) => s.fillMatchBgColor);
   const { fontMetrics } = useCanvasContext();
 
   // Helper function to create a cell respecting the tool toggles

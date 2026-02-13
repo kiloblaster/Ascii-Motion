@@ -93,18 +93,12 @@ const UTILITY_TOOLS: Array<{ id: Tool; name: string; icon: React.ReactNode; desc
 ];
 
 export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
-  const { activeTool, setActiveTool, rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection, lassoSelection, magicWandSelection } = useToolStore();
-  const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
-  const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
-  // PERF FIX: currentFrameIndex only used inside callbacks — read from getState()
-  // instead of subscribing reactively (was causing re-render on every frame scrub)
-  // PERF FIX: flipHorizontal/flipVertical and canCrop/cropToSelection hooks were
-  // importing useCanvasStore(), useCanvasContext(), useTimelineStore(s.layers),
-  // and useAnimationStore(s.frames) — causing ToolPalette (824 lines) to re-render
-  // on EVERY cell change, frame navigation, and layer mutation. These are only used
-  // in click handlers, so we call them imperatively via getState() instead.
-  const { canCrop, cropToSelection } = useCropToSelection();
-  const [showOptions, setShowOptions] = React.useState(true);
+  // PERF FIX: Only subscribe to `activeTool` reactively here. All other
+  // toolStore properties are read inside the memoized ToolOptionsPanel below,
+  // which only re-renders when the active tool changes — not on every
+  // unrelated toolStore mutation (isProcessingHistory, brush settings, etc.)
+  const activeTool = useToolStore((s) => s.activeTool);
+  const setActiveTool = useToolStore((s) => s.setActiveTool);
   const [showTools, setShowTools] = React.useState(true);
 
   // Calculate effective tool
@@ -115,22 +109,6 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
 
   // Tools that actually have configurable options. (Removed 'eraser' and 'text' per layout bug fix.)
   const hasOptions = ['rectangle', 'ellipse', 'paintbucket', 'gradientfill', 'magicwand', 'pencil', 'eraser', 'eyedropper', 'beziershape', 'select', 'lasso', 'layertransform'].includes(effectiveTool);
-
-  // Get the current tool's icon
-  const getCurrentToolIcon = () => {
-    const allTools = [...DRAWING_TOOLS, ...SELECTION_TOOLS, ...UTILITY_TOOLS];
-    const currentTool = allTools.find(tool => tool.id === effectiveTool);
-    return currentTool?.icon || null;
-  };
-
-  // PERF FIX: Flip/crop utilities are NOT imported as hooks here anymore.
-  // Previously, useFlipUtilities() and useCropToSelection() each subscribed
-  // to useCanvasStore(), useCanvasContext(), useTimelineStore(s.layers), etc.
-  // causing this 824-line component to re-render on EVERY cell change,
-  // frame navigation, and layer mutation.
-  // 
-  // Flip actions are triggered via keyboard event dispatch (Shift+H/V hotkeys
-  // are already handled by useKeyboardShortcuts). Crop check uses local state.
 
   const handleToolClick = (tool: { id: Tool; name: string; icon: React.ReactNode; description: string }) => {
     // Handle flip utilities via keyboard shortcut dispatch
@@ -145,25 +123,6 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
     
     // Default tool switching behavior
     setActiveTool(tool.id);
-  };
-
-  // Handle close shape toggle with history tracking
-  const handleCloseShapeToggle = (checked: boolean) => {
-    const wasClosed = isClosed;
-    toggleClosedShape();
-    
-    // Push history for closing/opening shape
-    const closeAction: BezierCloseShapeHistoryAction = {
-      type: 'bezier_close_shape',
-      timestamp: Date.now(),
-      description: checked ? 'Close bezier shape' : 'Open bezier shape',
-      data: {
-        wasClosed,
-        nowClosed: checked,
-        frameIndex: useTimelineStore.getState().view.currentFrame,
-      },
-    };
-    pushToHistory(closeAction);
   };
 
   const ToolButton: React.FC<{ tool: { id: Tool; name: string; icon: React.ReactNode; description: string } }> = ({ tool }) => {
@@ -242,18 +201,59 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
         {/* Separator between Tools and Tool Options */}
         {hasOptions && <PanelSeparator side="left" />}
 
-        {/* Tool Options */}
-        {hasOptions && (
-          <div>
-            <Collapsible open={showOptions} onOpenChange={setShowOptions}>
-            <CollapsibleHeader isOpen={showOptions}>
-              <div className="flex items-center gap-2">
-                {getCurrentToolIcon()}
-                <span>Tool Options</span>
-              </div>
-            </CollapsibleHeader>
-            <CollapsibleContent className="collapsible-content">
-              <div className="mt-2 space-y-2">
+        {/* Tool Options — memoized to avoid re-rendering when parent re-renders */}
+        {hasOptions && <ToolOptionsPanel activeTool={effectiveTool} />}
+
+        {/* Separator after Tool Options */}
+        {hasOptions && <PanelSeparator side="left" />}
+      </div>
+    </TooltipProvider>
+  );
+};
+
+/**
+ * PERF FIX: Memoized tool options panel.
+ * Subscribes to its own store slices independently from the parent ToolPalette.
+ * Only re-renders when activeTool changes or when the specific tool's settings change.
+ */
+const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
+  const { rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection, lassoSelection, magicWandSelection } = useToolStore();
+  const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
+  const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
+  const { canCrop, cropToSelection } = useCropToSelection();
+  const [showOptions, setShowOptions] = React.useState(true);
+
+  const effectiveTool = activeTool;
+
+  const handleCloseShapeToggle = (checked: boolean) => {
+    const wasClosed = isClosed;
+    toggleClosedShape();
+    const closeAction: BezierCloseShapeHistoryAction = {
+      type: 'bezier_close_shape',
+      timestamp: Date.now(),
+      description: checked ? 'Close bezier shape' : 'Open bezier shape',
+      data: { wasClosed, nowClosed: checked, frameIndex: useTimelineStore.getState().view.currentFrame },
+    };
+    pushToHistory(closeAction);
+  };
+
+  const getCurrentToolIcon = () => {
+    const allTools = [...DRAWING_TOOLS, ...SELECTION_TOOLS, ...UTILITY_TOOLS];
+    const currentTool = allTools.find(tool => tool.id === effectiveTool);
+    return currentTool?.icon || null;
+  };
+
+  return (
+    <div>
+      <Collapsible open={showOptions} onOpenChange={setShowOptions}>
+        <CollapsibleHeader isOpen={showOptions}>
+          <div className="flex items-center gap-2">
+            {getCurrentToolIcon()}
+            <span>Tool Options</span>
+          </div>
+        </CollapsibleHeader>
+        <CollapsibleContent className="collapsible-content">
+          <div className="mt-2 space-y-2">
                 {effectiveTool === 'rectangle' && (
                     <div className="flex items-center justify-between">
                       <Label htmlFor="filled-rectangle" className="text-xs cursor-pointer">
@@ -824,12 +824,8 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
               </div>
             </CollapsibleContent>
           </Collapsible>
-          </div>
-        )}
-
-        {/* Separator after Tool Options */}
-        {hasOptions && <PanelSeparator side="left" />}
-      </div>
-    </TooltipProvider>
+    </div>
   );
-};
+});
+
+ToolOptionsPanel.displayName = 'ToolOptionsPanel';

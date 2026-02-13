@@ -18,7 +18,7 @@ import { KeyframeDiamond } from './KeyframeDiamond';
 import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER } from '../../../types/timeline';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import { TimelineContextMenu, type TimelineContextMenuState } from './TimelineContextMenu';
-import type { KeyframeId } from '../../../types/timeline';
+import type { KeyframeId, ContentFrameId, LayerId } from '../../../types/timeline';
 import { cn } from '@/lib/utils';
 
 /** Pixels per frame at zoom=1 */
@@ -68,6 +68,35 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   }, [scrollRef]);
   const pxPerFrame = BASE_PX_PER_FRAME * zoom;
   const totalWidth = durationFrames * pxPerFrame;
+
+  // PERF FIX: Compute visible frame range for viewport-based virtualization.
+  // Only ContentFrameBlocks and keyframe diamonds that overlap the visible area
+  // will be rendered, reducing DOM elements from O(totalFrames) to O(visibleFrames).
+  const containerWidth = internalRef.current?.clientWidth ?? 1200;
+  const VIRTUALIZATION_MARGIN = 100; // px margin for smooth scrolling
+  const visibleLeft = scrollX - VIRTUALIZATION_MARGIN;
+  const visibleRight = scrollX + containerWidth + VIRTUALIZATION_MARGIN;
+
+  // PERF FIX: Stable onContextMenu handler for ContentFrameBlock.
+  // Previously an inline arrow function was passed, defeating React.memo —
+  // new function reference every render meant ALL ContentFrameBlocks re-rendered
+  // on every parent re-render (O(F) per mouse move during drag).
+  const handleContentFrameContextMenu = useCallback(
+    (e: React.MouseEvent, cfId: ContentFrameId, layerIdParam: LayerId) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+      const frameIds = selectedIds.has(cfId) && selectedIds.size > 0
+        ? [...selectedIds]
+        : [cfId];
+      const trackEl = e.currentTarget.parentElement;
+      const rect = trackEl?.getBoundingClientRect();
+      const clickX = rect ? e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0) : 0;
+      const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+      setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'frame', layerId: layerIdParam, frameIds, clickFrame } });
+    },
+    [pxPerFrame],
+  );
 
   // Display reversed to match layer list (top = top z-order)
   const displayLayers = [...layers].reverse();
@@ -232,29 +261,19 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'empty-track', layerId: layer.id, clickFrame } });
               }}
             >
-              {/* Content frame blocks */}
-              {layer.contentFrames.map((cf) => (
+              {/* Content frame blocks — virtualized: only render visible ones */}
+              {layer.contentFrames.filter((cf) => {
+                const blockLeft = cf.startFrame * pxPerFrame;
+                const blockRight = (cf.startFrame + cf.durationFrames) * pxPerFrame;
+                return blockRight >= visibleLeft && blockLeft <= visibleRight;
+              }).map((cf) => (
                 <ContentFrameBlock
                   key={cf.id}
                   layerId={layer.id}
                   contentFrame={cf}
                   pxPerFrame={pxPerFrame}
                   scrollX={scrollX}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // If this frame is selected, use all selected frames; otherwise just this one
-                    const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
-                    const frameIds = selectedIds.has(cf.id) && selectedIds.size > 0
-                      ? [...selectedIds]
-                      : [cf.id];
-                    // Calculate the frame position where the user right-clicked
-                    const trackEl = e.currentTarget.parentElement;
-                    const rect = trackEl?.getBoundingClientRect();
-                    const clickX = rect ? e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0) : 0;
-                    const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
-                    setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'frame', layerId: layer.id, frameIds, clickFrame } });
-                  }}
+                  onContextMenu={handleContentFrameContextMenu}
                 />
               ))}
 

@@ -50,20 +50,17 @@ export const useAsciiBoxTool = () => {
     reset
   } = useAsciiBoxStore();
   
-  const { 
-    activeTool,
-    selectedColor,
-    selectedBgColor,
-    setActiveTool,
-    pushToHistory,
-    setLinePreview,
-    clearLinePreview
-  } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useToolStore()/useCanvasStore().
+  const activeTool = useToolStore((s) => s.activeTool);
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
+  const setActiveTool = useToolStore((s) => s.setActiveTool);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
+  const setLinePreview = useToolStore((s) => s.setLinePreview);
+  const clearLinePreview = useToolStore((s) => s.clearLinePreview);
   
-  const {
-    cells,
-    setCanvasData
-  } = useCanvasStore();
+  const cells = useCanvasStore((s) => s.cells);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
   
   const { shiftKeyDown } = useCanvasContext();
   

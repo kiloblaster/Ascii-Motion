@@ -14,25 +14,22 @@ import type { CanvasHistoryAction } from '../types';
  * Integrates canvas interaction, fill area detection, gradient calculation, and undo/redo
  */
 export const useGradientFillTool = () => {
-  const { 
-    cells,
-    width: canvasWidth,
-    height: canvasHeight,
-    getCell, 
-    setCanvasData 
-  } = useCanvasStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const cells = useCanvasStore((s) => s.cells);
+  const canvasWidth = useCanvasStore((s) => s.width);
+  const canvasHeight = useCanvasStore((s) => s.height);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
   
   const { cellWidth, cellHeight } = useCanvasContext();
   
   const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   
-  const { 
-    activeTool,
-    selectedChar,
-    selectedColor,
-    selectedBgColor,
-    pushToHistory
-  } = useToolStore();
+  const activeTool = useToolStore((s) => s.activeTool);
+  const selectedChar = useToolStore((s) => s.selectedChar);
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
   
   const { 
     isApplying, 

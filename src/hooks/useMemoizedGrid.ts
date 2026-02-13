@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
+import { useShallow } from 'zustand/react/shallow';
 import type { Cell } from '../types';
 
 interface GridCell {
@@ -35,8 +36,15 @@ export const useMemoizedGrid = (
   moveState?: MoveState | null,
   getTotalOffset?: (moveState: MoveState) => { x: number; y: number }
 ) => {
-  const { width, height, cells, getCell } = useCanvasStore();
-  const { selection, shapePreview } = useToolStore();
+  // PERF FIX: Use targeted selectors instead of broad useCanvasStore()/useToolStore().
+  // Previously: `const { width, height, cells, getCell } = useCanvasStore();`
+  // This caused re-renders on ANY canvasStore change (e.g., background color).
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const selection = useToolStore((s) => s.selection);
+  const shapePreview = useToolStore((s) => s.shapePreview);
 
   // Memoize the set of moving cell coordinates
   const movingCellKeys = useMemo(() => {

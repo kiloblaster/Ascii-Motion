@@ -24,7 +24,7 @@ export function PublishToGalleryDialogWrapper({
   onOpenChange,
   onPublishSuccess,
 }: PublishToGalleryDialogWrapperProps) {
-  const exportData = useExportDataCollector();
+  const exportData = useExportDataCollector(isOpen);
   const { currentProjectId, setProjectName, setProjectDescription } = useProjectMetadataStore();
   const { handleSaveToCloud } = useCloudProjectActions();
   const { loadFromCloud } = useCloudProject();

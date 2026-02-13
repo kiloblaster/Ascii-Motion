@@ -24,14 +24,13 @@ export const TextExportDialog: React.FC = () => {
   const textSettings = useExportStore(state => state.textSettings);
   const setTextSettings = useExportStore(state => state.setTextSettings);
   
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'text';
+  const exportData = useExportDataCollector(isOpen);
   const projectName = useProjectMetadataStore((state) => state.projectName);
   
   const [filename, setFilename] = useState(projectName || 'ascii-motion-text');
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<{ message: string; progress: number } | null>(null);
-
-  const isOpen = showExportModal && activeFormat === 'text';
 
   // Sync filename with project name when dialog opens
   useEffect(() => {

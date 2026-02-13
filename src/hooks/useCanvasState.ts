@@ -11,8 +11,20 @@ import { screenToLocal } from '../utils/layerTransformUtils';
  */
 export const useCanvasState = () => {
   const canvasContext = useCanvasContext();
-  const { width, height, cells, setCanvasData } = useCanvasStore();
-  const { selection, lassoSelection, magicWandSelection, activeTool, setSelectionFromMask, setLassoSelectionFromMask, setMagicWandSelectionFromMask } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  // This hook is consumed by 9 call sites in the CanvasGrid tree — broad subscriptions
+  // here caused ALL of them to re-render on every cell edit and every tool state change.
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
+  const selection = useToolStore((s) => s.selection);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const activeTool = useToolStore((s) => s.activeTool);
+  const setSelectionFromMask = useToolStore((s) => s.setSelectionFromMask);
+  const setLassoSelectionFromMask = useToolStore((s) => s.setLassoSelectionFromMask);
+  const setMagicWandSelectionFromMask = useToolStore((s) => s.setMagicWandSelectionFromMask);
 
   const {
     cellSize,

@@ -30,16 +30,18 @@ export const useCanvasSelection = () => {
     setJustCommittedMove,
   } = useCanvasState();
   
-  const { width, height, cells, getCell } = useCanvasStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const getCell = useCanvasStore((s) => s.getCell);
   const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
-  const { 
-    selection, 
-    startSelection, 
-    updateSelection, 
-    clearSelection, 
-    pushCanvasHistory,
-    setSelectionFromMask
-  } = useToolStore();
+  const selection = useToolStore((s) => s.selection);
+  const startSelection = useToolStore((s) => s.startSelection);
+  const updateSelection = useToolStore((s) => s.updateSelection);
+  const clearSelection = useToolStore((s) => s.clearSelection);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const setSelectionFromMask = useToolStore((s) => s.setSelectionFromMask);
 
   const selectionModifierRef = useRef<'replace' | 'add' | 'subtract'>('replace');
   const baseSelectionMaskRef = useRef<Set<string>>(new Set());

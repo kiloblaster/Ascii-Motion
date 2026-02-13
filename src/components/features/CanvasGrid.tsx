@@ -25,7 +25,12 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
   const { canvasRef, setMouseButtonDown, setShiftKeyDown, setAltKeyDown, altKeyDown, setCtrlKeyDown, ctrlKeyDown, cellWidth, cellHeight, zoom, panOffset } = useCanvasContext();
   
   // Get active tool and tool behavior
-  const { activeTool, textToolState, isPlaybackMode } = useToolStore();
+  // PERF FIX: Use targeted selectors instead of broad useToolStore().
+  // Previously had TWO broad useToolStore() calls causing entire grid re-render
+  // on any tool state change (brush size, color, fill mode, etc.).
+  const activeTool = useToolStore((s) => s.activeTool);
+  const textToolState = useToolStore((s) => s.textToolState);
+  const isPlaybackMode = useToolStore((s) => s.isPlaybackMode);
   const isPlaying = useTimelineStore((s) => s.view.isPlaying);
   const { getToolCursor } = useToolBehavior();
   
@@ -70,14 +75,13 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
   // Enable hover preview for tools (brush outline, etc.)
   useHoverPreview();
 
-  const { 
-    selection, 
-    lassoSelection, 
-    magicWandSelection, 
-    clearSelection, 
-    clearLassoSelection, 
-    clearMagicWandSelection 
-  } = useToolStore();
+  // PERF FIX: Use targeted selectors instead of second broad useToolStore() call.
+  const selection = useToolStore((s) => s.selection);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const clearSelection = useToolStore((s) => s.clearSelection);
+  const clearLassoSelection = useToolStore((s) => s.clearLassoSelection);
+  const clearMagicWandSelection = useToolStore((s) => s.clearMagicWandSelection);
 
   // Handle arrow movement for rectangular selection
   const handleRectangularSelectionArrowMovement = useCallback((arrowOffset: { x: number; y: number }) => {

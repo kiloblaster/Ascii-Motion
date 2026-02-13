@@ -21,7 +21,9 @@ import { calculateBrushCells } from '../utils/brushUtils';
  * - 'paint-bucket': Preview fill area before applying
  */
 export const useHoverPreview = () => {
-  const { activeTool, brushSettings } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useToolStore().
+  const activeTool = useToolStore((s) => s.activeTool);
+  const brushSettings = useToolStore((s) => s.brushSettings);
   const { hoveredCellRef, fontMetrics, setHoverPreview, isDrawing, altKeyDown, ctrlKeyDown, registerHoveredCellRender } = useCanvasContext();
   
   // Calculate effective tool (Ctrl overrides pencil with eraser, Alt overrides drawing tools with eyedropper)

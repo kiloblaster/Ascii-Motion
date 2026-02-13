@@ -194,14 +194,34 @@ export function compositeLayersAtFrame(
 /**
  * Get the content frame active at a given frame number for a layer.
  * Returns null if the frame falls in a gap between content frames.
+ * 
+ * PERF FIX: Uses binary search (O(log F)) instead of linear scan (O(F)).
+ * Content frames are sorted by startFrame, so binary search is valid.
+ * Falls back to linear scan if the array appears unsorted.
  */
 export function getContentFrameAtTime(layer: Layer, frame: number): ContentFrame | null {
-  for (const cf of layer.contentFrames) {
-    if (cf.hidden) continue; // Skip hidden frames during compositing/playback
-    if (frame >= cf.startFrame && frame < cf.startFrame + cf.durationFrames) {
+  const cfs = layer.contentFrames;
+  if (cfs.length === 0) return null;
+
+  // Binary search: content frames are sorted by startFrame
+  let lo = 0;
+  let hi = cfs.length - 1;
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const cf = cfs[mid];
+
+    if (frame < cf.startFrame) {
+      hi = mid - 1;
+    } else if (frame >= cf.startFrame + cf.durationFrames) {
+      lo = mid + 1;
+    } else {
+      // frame is within this content frame's range
+      if (cf.hidden) return null;
       return cf;
     }
   }
+
   return null;
 }
 

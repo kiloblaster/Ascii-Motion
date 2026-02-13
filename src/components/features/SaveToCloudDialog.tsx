@@ -43,7 +43,7 @@ interface SaveToCloudDialogProps {
 
 export function SaveToCloudDialog({ open, onOpenChange }: SaveToCloudDialogProps) {
   const { user, getAccessToken } = useAuth();
-  const exportData = useExportDataCollector();
+  const exportData = useExportDataCollector(open);
   const { handleSaveToCloud, saveProgress, saveProgressMessage } = useCloudProjectActions();
   const { getUserProfile, listProjects } = useCloudProject();
   const { 

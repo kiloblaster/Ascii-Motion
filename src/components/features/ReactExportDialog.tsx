@@ -56,11 +56,10 @@ export const ReactExportDialog: React.FC = () => {
   const setIsExporting = useExportStore((state) => state.setIsExporting);
   const isExporting = useExportStore((state) => state.isExporting);
 
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'react';
+  const exportData = useExportDataCollector(isOpen);
 
   const [copySuccess, setCopySuccess] = useState(false);
-
-  const isOpen = showExportModal && activeFormat === 'react';
 
   const sanitizedFileName = useMemo(() => finalizeFileName(sanitizeFileName(reactSettings.fileName)), [reactSettings.fileName]);
   const componentName = useMemo(() => toPascalCase(sanitizedFileName || reactSettings.fileName), [reactSettings.fileName, sanitizedFileName]);

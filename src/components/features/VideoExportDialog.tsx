@@ -25,7 +25,8 @@ export const VideoExportDialog: React.FC = () => {
   const activeFormat = useExportStore(state => state.activeFormat);
   const setShowExportModal = useExportStore(state => state.setShowExportModal);
   
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'mp4';
+  const exportData = useExportDataCollector(isOpen);
   const projectName = useProjectMetadataStore((state) => state.projectName);
   
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>({
@@ -42,8 +43,6 @@ export const VideoExportDialog: React.FC = () => {
   const [filename, setFilename] = useState(projectName || 'ascii-motion-video');
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<{ message: string; progress: number } | null>(null);
-
-  const isOpen = showExportModal && activeFormat === 'mp4';
 
   // Sync filename with project name when dialog opens
   useEffect(() => {

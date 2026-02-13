@@ -50,20 +50,14 @@ export function useCompositedCanvas() {
   // Composite all layers, but substitute canvasStore cells for the active layer
   const compositedCells = useMemo(() => {
     if (!isLayerMode) {
-      // Not in layer mode — fall through to canvasStore directly
       return canvasCells;
     }
 
     // Fast path: single layer with NO transforms — skip compositing entirely
-    // This handles the common case of editing with one layer and no keyframes
     if (layers.length === 1 && layers[0].id === activeLayerId) {
       const layer = layers[0];
-      // Only fast-path if no property tracks and no VISUAL transform offsets.
-      // Anchor point statics are excluded because they only affect rotation/scale
-      // center — with no rotation or scale, anchor has zero visual effect.
       const hasTransforms = layer.propertyTracks.length > 0 ||
         Object.keys(layer.staticProperties).some(k => {
-          // Skip anchor point — it doesn't affect position/scale/rotation visually
           if (k === 'transform.anchorPoint.x' || k === 'transform.anchorPoint.y') return false;
           const v = layer.staticProperties[k];
           if (k === 'transform.scale.x' || k === 'transform.scale.y') return v !== 1;
@@ -73,10 +67,8 @@ export function useCompositedCanvas() {
       if (!hasTransforms) {
         const activeContentFrame = getContentFrameAtTime(layer, currentFrame);
         if (activeContentFrame) {
-          // Active layer uses canvasStore cells (the working copy)
           return canvasCells;
         }
-        // Gap in content — empty canvas
         return new Map<string, Cell>();
       }
     }
@@ -84,8 +76,6 @@ export function useCompositedCanvas() {
     // Multi-layer path: build modified layers and composite
     const layersForCompositing: Layer[] = layers.map((layer) => {
       if (layer.id === activeLayerId) {
-        // The active layer's content frame uses canvasStore cells (the working copy)
-        // Find which content frame is active at the current frame
         const activeContentFrame = getContentFrameAtTime(layer, currentFrame);
         if (activeContentFrame) {
           return {
@@ -106,8 +96,8 @@ export function useCompositedCanvas() {
       currentFrame,
       canvasWidth,
       canvasHeight,
-      undefined, // cellAspectRatio — use default
-      false,     // clip: false — display mode shows all cells, including outside canvas bounds
+      undefined,
+      false,
     );
   }, [layers, currentFrame, activeLayerId, canvasCells, canvasWidth, canvasHeight, isLayerMode]);
 

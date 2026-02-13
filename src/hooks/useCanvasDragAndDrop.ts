@@ -14,20 +14,21 @@ import { screenToLocal } from '../utils/layerTransformUtils';
 export const useCanvasDragAndDrop = () => {
   const { canvasRef, isDrawing, setIsDrawing, setMouseButtonDown, shiftKeyDown, cellWidth, cellHeight, fontMetrics } = useCanvasContext();
   const { getGridCoordinates } = useCanvasDimensions();
-  const { width, height, cells } = useCanvasStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
   const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
-  const { 
-    shapePreview,
-    startShapePreview,
-    updateShapePreview,
-    clearShapePreview,
-    pushCanvasHistory,
-    finalizeCanvasHistory,
-    pencilLastPosition,
-    setLinePreview,
-    clearLinePreview,
-    getBrushSettings
-  } = useToolStore();
+  const shapePreview = useToolStore((s) => s.shapePreview);
+  const startShapePreview = useToolStore((s) => s.startShapePreview);
+  const updateShapePreview = useToolStore((s) => s.updateShapePreview);
+  const clearShapePreview = useToolStore((s) => s.clearShapePreview);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const finalizeCanvasHistory = useToolStore((s) => s.finalizeCanvasHistory);
+  const pencilLastPosition = useToolStore((s) => s.pencilLastPosition);
+  const setLinePreview = useToolStore((s) => s.setLinePreview);
+  const clearLinePreview = useToolStore((s) => s.clearLinePreview);
+  const getBrushSettings = useToolStore((s) => s.getBrushSettings);
   const { drawAtPosition, drawRectangle, drawEllipse, drawBrushLine, eraseBrushLine, activeTool } = useDrawingTool();
 
   // Helper function to apply aspect ratio constraints when shift is held

@@ -29,20 +29,24 @@ export const CanvasOverlay: React.FC = React.memo(() => {
     getTotalOffset,
   } = useCanvasState();
 
-  const { selection, lassoSelection, magicWandSelection, linePreview, activeTool } = useToolStore();
-  const { 
-    isApplying: gradientApplying, 
-    startPoint: gradientStart, 
-    endPoint: gradientEnd,
-    definition: gradientDefinition,
-    previewData: gradientPreview
-  } = useGradientStore();
-  const {
-    isApplying: boxApplying,
-    previewData: boxPreview,
-    drawnCells: boxDrawnCells,
-    rectanglePreview: boxRectanglePreview
-  } = useAsciiBoxStore();
+  // PERF FIX: Use targeted selectors instead of broad useToolStore().
+  // Previously: `const { selection, lassoSelection, ... } = useToolStore();`
+  // Broad subscriptions bypass React.memo, causing re-renders on any tool change.
+  const selection = useToolStore((s) => s.selection);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const linePreview = useToolStore((s) => s.linePreview);
+  const activeTool = useToolStore((s) => s.activeTool);
+  // PERF FIX: Use targeted selectors for gradientStore and asciiBoxStore.
+  const gradientApplying = useGradientStore((s) => s.isApplying);
+  const gradientStart = useGradientStore((s) => s.startPoint);
+  const gradientEnd = useGradientStore((s) => s.endPoint);
+  const gradientDefinition = useGradientStore((s) => s.definition);
+  const gradientPreview = useGradientStore((s) => s.previewData);
+  const boxApplying = useAsciiBoxStore((s) => s.isApplying);
+  const boxPreview = useAsciiBoxStore((s) => s.previewData);
+  const boxDrawnCells = useAsciiBoxStore((s) => s.drawnCells);
+  const boxRectanglePreview = useAsciiBoxStore((s) => s.rectanglePreview);
   // Only subscribe to bezier preview cells, not the entire store
   const bezierPreview = useBezierStore((state) => state.previewCells);
   const bezierRemountKey = useBezierStore((state) => state.remountKey);

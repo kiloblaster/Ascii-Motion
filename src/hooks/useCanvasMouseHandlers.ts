@@ -29,11 +29,22 @@ export interface MouseHandlers {
  * Routes mouse events to appropriate tool handlers
  */
 export const useCanvasMouseHandlers = (): MouseHandlers => {
-  const { activeTool, clearSelection: clearCanvasSelection, clearLassoSelection, isPlaybackMode } = useToolStore();
+  // PERF FIX: Use targeted selectors instead of broad useToolStore()/useCanvasStore().
+  // Previously: `const { activeTool, clearSelection, ... } = useToolStore();`
+  // Broad subscriptions caused re-renders on ANY store field change.
+  const activeTool = useToolStore((s) => s.activeTool);
+  const clearCanvasSelection = useToolStore((s) => s.clearSelection);
+  const clearLassoSelection = useToolStore((s) => s.clearLassoSelection);
+  const isPlaybackMode = useToolStore((s) => s.isPlaybackMode);
   const clearTimelineSelection = useAnimationStore((state) => state.clearSelection);
   const { canvasRef, altKeyDown, ctrlKeyDown, setIsDrawing, setMouseButtonDown, setHoveredCell, pasteMode, updatePastePosition, startPasteDrag, stopPasteDrag, cancelPasteMode, commitPaste } = useCanvasContext();
   const { getGridCoordinates } = useCanvasDimensions();
-  const { width, height, cells, setCanvasData } = useCanvasStore();
+  // PERF FIX: Targeted selectors for canvasStore — `cells` changes on every draw stroke;
+  // broad subscription would cascade through all useCallback deps even for unrelated fields.
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
   const { moveState, commitMove, isPointInEffectiveSelection, selectionMode } = useCanvasState();
   
   // Throttle hover updates to reduce re-renders - only update if cell actually changed

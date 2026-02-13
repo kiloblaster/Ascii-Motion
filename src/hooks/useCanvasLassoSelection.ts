@@ -28,18 +28,20 @@ export const useCanvasLassoSelection = () => {
     setJustCommittedMove,
   } = useCanvasState();
   
-  const { width, height, cells, getCell } = useCanvasStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const getCell = useCanvasStore((s) => s.getCell);
   const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
-  const { 
-    lassoSelection, 
-    startLassoSelection,
-    addLassoPoint,
-    updateLassoSelectedCells,
-    finalizeLassoSelection,
-    clearLassoSelection,
-    pushCanvasHistory,
-    setLassoSelectionFromMask
-  } = useToolStore();
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const startLassoSelection = useToolStore((s) => s.startLassoSelection);
+  const addLassoPoint = useToolStore((s) => s.addLassoPoint);
+  const updateLassoSelectedCells = useToolStore((s) => s.updateLassoSelectedCells);
+  const finalizeLassoSelection = useToolStore((s) => s.finalizeLassoSelection);
+  const clearLassoSelection = useToolStore((s) => s.clearLassoSelection);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const setLassoSelectionFromMask = useToolStore((s) => s.setLassoSelectionFromMask);
 
   const selectionModifierRef = useRef<'replace' | 'add' | 'subtract'>('replace');
   const baseSelectionMaskRef = useRef<Set<string>>(new Set());

@@ -76,24 +76,33 @@ export const useCanvasRenderer = () => {
     getTotalOffset,
   } = useCanvasState();
 
-  const { 
-    width, 
-    height, 
-    canvasBackgroundColor,
-    showGrid,
-    getCell
-  } = useCanvasStore();
+  // PERF FIX: Targeted selectors for canvasStore — broad subscription caused full
+  // canvas redraw on any store change (e.g., background color when only cells changed).
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const canvasBackgroundColor = useCanvasStore((s) => s.canvasBackgroundColor);
+  const showGrid = useCanvasStore((s) => s.showGrid);
+  const getCell = useCanvasStore((s) => s.getCell);
 
   // Layer compositing: provides composited cells from all visible layers
   const { getCompositedCell, compositedCells, isLayerMode } = useCompositedCanvas();
   // Use composited cell getter when in layer mode, otherwise use canvasStore directly
   const getCellForRender = isLayerMode ? getCompositedCell : getCell;
 
-  const { activeTool, rectangleFilled, lassoSelection, magicWandSelection, textToolState, linePreview } = useToolStore();
-  const { previewData, isPreviewActive } = usePreviewStore();
-  const { isPreviewActive: isEffectPreviewActive } = useEffectsStore();
-  const { isPreviewActive: isTimeEffectPreviewActive } = useTimeEffectsStore();
-  const { previewOrigin, previewDimensions } = useAsciiTypeStore();
+  // PERF FIX: Targeted selectors for toolStore — broad subscription caused full
+  // canvas redraw when unrelated tool properties changed (brush size, fill mode, etc.).
+  const activeTool = useToolStore((s) => s.activeTool);
+  const rectangleFilled = useToolStore((s) => s.rectangleFilled);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const textToolState = useToolStore((s) => s.textToolState);
+  const linePreview = useToolStore((s) => s.linePreview);
+  const previewData = usePreviewStore((s) => s.previewData);
+  const isPreviewActive = usePreviewStore((s) => s.isPreviewActive);
+  const isEffectPreviewActive = useEffectsStore((s) => s.isPreviewActive);
+  const isTimeEffectPreviewActive = useTimeEffectsStore((s) => s.isPreviewActive);
+  const previewOrigin = useAsciiTypeStore((s) => s.previewOrigin);
+  const previewDimensions = useAsciiTypeStore((s) => s.previewDimensions);
   
 
   const { getEllipsePoints } = useDrawingTool();

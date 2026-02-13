@@ -11,8 +11,22 @@ import type { CanvasResizeHistoryAction } from '../types';
  * Supports rectangular, lasso, and magic wand selections
  */
 export function useCropToSelection() {
-  const { width: canvasWidth, height: canvasHeight, cells, setCanvasSize, setCanvasData } = useCanvasStore();
-  const { selection, lassoSelection, magicWandSelection, activeTool, clearSelection, clearLassoSelection, clearMagicWandSelection } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  // Previously: `const { width, height, cells, ... } = useCanvasStore();`
+  // Broad subscriptions caused re-renders on every cell edit, cascading through
+  // ToolOptionsPanel (~700 lines) even though crop only needs callback access.
+  const canvasWidth = useCanvasStore((s) => s.width);
+  const canvasHeight = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const setCanvasSize = useCanvasStore((s) => s.setCanvasSize);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
+  const selection = useToolStore((s) => s.selection);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const activeTool = useToolStore((s) => s.activeTool);
+  const clearSelection = useToolStore((s) => s.clearSelection);
+  const clearLassoSelection = useToolStore((s) => s.clearLassoSelection);
+  const clearMagicWandSelection = useToolStore((s) => s.clearMagicWandSelection);
   const frames = useAnimationStore((s) => s.frames);
   const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   const setFrameData = useAnimationStore((s) => s.setFrameData);

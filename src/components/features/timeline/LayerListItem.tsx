@@ -33,7 +33,7 @@ interface LayerListItemProps {
   onDragEnd: () => void;
 }
 
-export const LayerListItem: React.FC<LayerListItemProps> = ({
+export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function LayerListItem({
   layer,
   isActive,
   onSelect,
@@ -42,7 +42,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
   onDragOver,
   onDrop,
   onDragEnd,
-}) => {
+}) {
   const setLayerVisible = useTimelineStore((s) => s.setLayerVisible);
   const setLayerSolo = useTimelineStore((s) => s.setLayerSolo);
   const setLayerLocked = useTimelineStore((s) => s.setLayerLocked);
@@ -422,4 +422,4 @@ export const LayerListItem: React.FC<LayerListItemProps> = ({
     </TooltipProvider>
     </div>
   );
-};
+});
