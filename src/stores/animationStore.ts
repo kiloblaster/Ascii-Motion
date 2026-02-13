@@ -639,11 +639,15 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
 
 // ─────────────────────────────────────────────
 // Sync: timelineStore → adapter
-// Only re-derive legacy state when STRUCTURAL changes occur
-// (layer add/remove, frame add/remove, frame rate change, navigation).
-// Do NOT re-derive on every cell data update (drawing) — that causes
-// expensive Map copies and 43-component re-renders on every mouse move.
-// Consumers that need live cell data use canvasStore or useCompositedCanvas.
+// PERF FIX: Split into two tiers to avoid expensive re-derives on every frame navigation.
+//
+// Tier 1 (CHEAP): currentFrame, isPlaying, looping — scalar setState only, no Map cloning.
+//   Fires on every frame navigation but only updates scalar values.
+//   With targeted selectors in consumers, only components that display frame index re-render.
+//
+// Tier 2 (EXPENSIVE): frames derivation — only when layer/frame STRUCTURE actually changes.
+//   Calls deriveLegacyFrames() which clones Map data. Only fires on add/remove/reorder,
+//   NOT on frame navigation or cell data edits.
 // ─────────────────────────────────────────────
 
 let prevLayerCount = -1;
@@ -656,38 +660,44 @@ let prevLooping = true;
 
 useTimelineStore.subscribe((state) => {
   const { layers, view, config } = state;
-  
-  // Compute lightweight structural fingerprint (no cell data inspection)
+
   const activeLayer = layers.find((l) => l.id === view.activeLayerId);
   const cfCount = activeLayer?.contentFrames.length ?? 0;
-  
-  // Only sync on structural changes, not cell data edits
-  if (
-    layers.length === prevLayerCount &&
-    view.activeLayerId === prevActiveLayerId &&
-    cfCount === prevContentFrameCount &&
-    view.currentFrame === prevCurrentFrame &&
-    view.isPlaying === prevPlaying &&
-    config.frameRate === prevFrameRate &&
-    view.looping === prevLooping
-  ) {
-    return; // Cell data change only — skip expensive derivation
+
+  // Tier 1: Cheap scalar sync — only scalars, no deriveLegacyFrames()
+  const frameChanged = view.currentFrame !== prevCurrentFrame;
+  const playingChanged = view.isPlaying !== prevPlaying;
+  const loopingChanged = view.looping !== prevLooping;
+
+  if (frameChanged || playingChanged || loopingChanged) {
+    prevCurrentFrame = view.currentFrame;
+    prevPlaying = view.isPlaying;
+    prevLooping = view.looping;
+
+    useAnimationStore.setState({
+      currentFrameIndex: view.currentFrame,
+      isPlaying: view.isPlaying,
+      looping: view.looping,
+    });
   }
 
-  prevLayerCount = layers.length;
-  prevActiveLayerId = view.activeLayerId;
-  prevContentFrameCount = cfCount;
-  prevCurrentFrame = view.currentFrame;
-  prevPlaying = view.isPlaying;
-  prevFrameRate = config.frameRate;
-  prevLooping = view.looping;
+  // Tier 2: Expensive structural sync — full frame re-derivation
+  const structuralChange =
+    layers.length !== prevLayerCount ||
+    view.activeLayerId !== prevActiveLayerId ||
+    cfCount !== prevContentFrameCount ||
+    config.frameRate !== prevFrameRate;
 
-  useAnimationStore.setState({
-    frames: deriveLegacyFrames(),
-    currentFrameIndex: view.currentFrame,
-    isPlaying: view.isPlaying,
-    frameRate: config.frameRate,
-    looping: view.looping,
-    totalDuration: useAnimationStore.getState().calculateTotalDuration(),
-  });
+  if (structuralChange) {
+    prevLayerCount = layers.length;
+    prevActiveLayerId = view.activeLayerId;
+    prevContentFrameCount = cfCount;
+    prevFrameRate = config.frameRate;
+
+    useAnimationStore.setState({
+      frames: deriveLegacyFrames(),
+      frameRate: config.frameRate,
+      totalDuration: useAnimationStore.getState().calculateTotalDuration(),
+    });
+  }
 });

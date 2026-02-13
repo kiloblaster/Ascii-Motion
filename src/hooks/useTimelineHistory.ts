@@ -44,37 +44,23 @@ import type {
 } from '../types/timeline';
 
 export function useTimelineHistory() {
-  const {
-    layers,
-    config,
-    view,
-    addLayer: addLayerStore,
-    removeLayer: removeLayerStore,
-    duplicateLayer: duplicateLayerStore,
-    reorderLayers: reorderLayersStore,
-    renameLayer: renameLayerStore,
-    setLayerVisible: setLayerVisibleStore,
-    setLayerOpacity: setLayerOpacityStore,
-    addContentFrame: addContentFrameStore,
-    removeContentFrame: removeContentFrameStore,
-    updateContentFrameTiming: updateContentFrameTimingStore,
-    updateContentFrameData: updateContentFrameDataStore,
-    addPropertyTrack: addPropertyTrackStore,
-    removePropertyTrack: removePropertyTrackStore,
-    addKeyframe: addKeyframeStore,
-    removeKeyframe: removeKeyframeStore,
-    updateKeyframe: updateKeyframeStore,
-    setFrameRate: setFrameRateStore,
-    getLayer,
-  } = useTimelineStore();
+  // PERF FIX: Use getState() inside callbacks instead of a broad reactive subscription.
+  // The previous `useTimelineStore()` (no selector) created a full-store subscription
+  // that re-rendered every consumer on ANY timelineStore change. Since this hook is
+  // called 8× in the CanvasGrid tree (via useLayerTransformTool → useKeyframeableProperty ×7),
+  // it caused massive unnecessary re-renders (~53ms per cell edit).
+  //
+  // All action functions only need store data at CALL TIME, not at render time,
+  // so getState() inside callbacks is correct and avoids reactive subscriptions.
 
-  const { pushToHistory } = useToolStore();
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   // ============================================
   // LAYER OPERATIONS
   // ============================================
 
   const addLayer = useCallback((name?: string) => {
+    const { layers, view, addLayer: addLayerStore } = useTimelineStore.getState();
     const insertIndex = view.activeLayerId
       ? layers.findIndex((l) => l.id === view.activeLayerId) + 1
       : layers.length;
@@ -97,9 +83,10 @@ export function useTimelineHistory() {
     }
 
     return layerId;
-  }, [layers, view.activeLayerId, addLayerStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const removeLayer = useCallback((layerId: LayerId) => {
+    const { layers, getLayer, removeLayer: removeLayerStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     if (!layer) return;
 
@@ -118,9 +105,10 @@ export function useTimelineHistory() {
 
     removeLayerStore(layerId);
     pushToHistory(historyAction);
-  }, [layers, getLayer, removeLayerStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const duplicateLayer = useCallback((layerId: LayerId) => {
+    const { layers, getLayer, duplicateLayer: duplicateLayerStore } = useTimelineStore.getState();
     const source = getLayer(layerId);
     if (!source) return layerId;
 
@@ -143,7 +131,7 @@ export function useTimelineHistory() {
     }
 
     return newId;
-  }, [layers, getLayer, duplicateLayerStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const reorderLayers = useCallback((fromIndex: number, toIndex: number) => {
     if (fromIndex === toIndex) return;
@@ -155,11 +143,12 @@ export function useTimelineHistory() {
       data: { fromIndex, toIndex },
     };
 
-    reorderLayersStore(fromIndex, toIndex);
+    useTimelineStore.getState().reorderLayers(fromIndex, toIndex);
     pushToHistory(historyAction);
-  }, [reorderLayersStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const renameLayer = useCallback((layerId: LayerId, name: string) => {
+    const { getLayer, renameLayer: renameLayerStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     if (!layer) return;
 
@@ -176,9 +165,10 @@ export function useTimelineHistory() {
 
     renameLayerStore(layerId, name);
     pushToHistory(historyAction);
-  }, [getLayer, renameLayerStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const setLayerVisible = useCallback((layerId: LayerId, visible: boolean) => {
+    const { getLayer, setLayerVisible: setLayerVisibleStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     if (!layer) return;
 
@@ -195,9 +185,10 @@ export function useTimelineHistory() {
 
     setLayerVisibleStore(layerId, visible);
     pushToHistory(historyAction);
-  }, [getLayer, setLayerVisibleStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const setLayerOpacity = useCallback((layerId: LayerId, opacity: number) => {
+    const { getLayer, setLayerOpacity: setLayerOpacityStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     if (!layer) return;
 
@@ -214,7 +205,7 @@ export function useTimelineHistory() {
 
     setLayerOpacityStore(layerId, opacity);
     pushToHistory(historyAction);
-  }, [getLayer, setLayerOpacityStore, pushToHistory]);
+  }, [pushToHistory]);
 
   // ============================================
   // CONTENT FRAME OPERATIONS
@@ -226,7 +217,7 @@ export function useTimelineHistory() {
     durationFrames: number,
     data?: Map<string, Cell>,
   ) => {
-    const frameId = addContentFrameStore(layerId, startFrame, durationFrames, data);
+    const frameId = useTimelineStore.getState().addContentFrame(layerId, startFrame, durationFrames, data);
     if (!frameId) return null; // Overlap rejection
 
     // Get the frame that was just created
@@ -248,7 +239,7 @@ export function useTimelineHistory() {
     }
 
     return frameId;
-  }, [addContentFrameStore, pushToHistory]);
+  }, [pushToHistory]);
 
   /**
    * Split a content frame at the playhead into two frames.
@@ -259,6 +250,7 @@ export function useTimelineHistory() {
     frameId: ContentFrameId,
     atFrame: number,
   ) => {
+    const { getLayer } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     const cf = layer?.contentFrames.find((c) => c.id === frameId);
     if (!cf) return null;
@@ -302,11 +294,11 @@ export function useTimelineHistory() {
     }
 
     return newFrameId;
-  }, [getLayer, pushToHistory]);
+  }, [pushToHistory]);
 
   /**
    * Duplicate a content frame, placing the copy immediately after the original.
-   */
+   */  
   const duplicateContentFrame = useCallback((
     layerId: LayerId,
     frameId: ContentFrameId,
@@ -335,6 +327,7 @@ export function useTimelineHistory() {
   }, [pushToHistory]);
 
   const removeContentFrame = useCallback((layerId: LayerId, frameId: ContentFrameId) => {
+    const { getLayer, removeContentFrame: removeContentFrameStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     const frame = layer?.contentFrames.find((cf) => cf.id === frameId);
     if (!frame) return;
@@ -352,7 +345,7 @@ export function useTimelineHistory() {
 
     removeContentFrameStore(layerId, frameId);
     pushToHistory(historyAction);
-  }, [getLayer, removeContentFrameStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const updateContentFrameTiming = useCallback((
     layerId: LayerId,
@@ -360,6 +353,7 @@ export function useTimelineHistory() {
     startFrame: number,
     durationFrames: number,
   ) => {
+    const { getLayer, updateContentFrameTiming: updateContentFrameTimingStore, config } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     const frame = layer?.contentFrames.find((cf) => cf.id === frameId);
     if (!frame) return false;
@@ -370,7 +364,7 @@ export function useTimelineHistory() {
     };
 
     // Capture timeline duration before (may change via ensureTimelineContains)
-    const previousTimelineDuration = useTimelineStore.getState().config.durationFrames;
+    const previousTimelineDuration = config.durationFrames;
 
     const success = updateContentFrameTimingStore(layerId, frameId, startFrame, durationFrames);
     if (!success) return false;
@@ -396,13 +390,14 @@ export function useTimelineHistory() {
     pushToHistory(historyAction);
 
     return true;
-  }, [getLayer, updateContentFrameTimingStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const updateContentFrameData = useCallback((
     layerId: LayerId,
     frameId: ContentFrameId,
     data: Map<string, Cell>,
   ) => {
+    const { getLayer, updateContentFrameData: updateContentFrameDataStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     const frame = layer?.contentFrames.find((cf) => cf.id === frameId);
     if (!frame) return;
@@ -421,14 +416,14 @@ export function useTimelineHistory() {
 
     updateContentFrameDataStore(layerId, frameId, data);
     pushToHistory(historyAction);
-  }, [getLayer, updateContentFrameDataStore, pushToHistory]);
+  }, [pushToHistory]);
 
   // ============================================
   // PROPERTY TRACK & KEYFRAME OPERATIONS
   // ============================================
 
   const addPropertyTrack = useCallback((layerId: LayerId, propertyPath: PropertyPath) => {
-    const trackId = addPropertyTrackStore(layerId, propertyPath);
+    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, propertyPath);
 
     const historyAction: PropertyTrackAddHistoryAction = {
       type: 'property_track_add',
@@ -443,9 +438,10 @@ export function useTimelineHistory() {
     pushToHistory(historyAction);
 
     return trackId;
-  }, [addPropertyTrackStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const removePropertyTrack = useCallback((layerId: LayerId, trackId: PropertyTrackId) => {
+    const { getLayer, removePropertyTrack: removePropertyTrackStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     const track = layer?.propertyTracks.find((pt) => pt.id === trackId);
     if (!track) return;
@@ -463,7 +459,7 @@ export function useTimelineHistory() {
 
     removePropertyTrackStore(layerId, trackId);
     pushToHistory(historyAction);
-  }, [getLayer, removePropertyTrackStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const addKeyframe = useCallback((
     layerId: LayerId,
@@ -471,7 +467,7 @@ export function useTimelineHistory() {
     frame: number,
     value: number,
   ) => {
-    const keyframeId = addKeyframeStore(layerId, trackId, frame, value);
+    const keyframeId = useTimelineStore.getState().addKeyframe(layerId, trackId, frame, value);
 
     // Get the keyframe that was just created
     const layer = useTimelineStore.getState().getLayer(layerId);
@@ -494,13 +490,14 @@ export function useTimelineHistory() {
     }
 
     return keyframeId;
-  }, [addKeyframeStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const removeKeyframe = useCallback((
     layerId: LayerId,
     trackId: PropertyTrackId,
     keyframeId: KeyframeId,
   ) => {
+    const { getLayer, removeKeyframe: removeKeyframeStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     const track = layer?.propertyTracks.find((pt) => pt.id === trackId);
     const keyframe = track?.keyframes.find((kf) => kf.id === keyframeId);
@@ -520,7 +517,7 @@ export function useTimelineHistory() {
 
     removeKeyframeStore(layerId, trackId, keyframeId);
     pushToHistory(historyAction);
-  }, [getLayer, removeKeyframeStore, pushToHistory]);
+  }, [pushToHistory]);
 
   const updateKeyframe = useCallback((
     layerId: LayerId,
@@ -528,6 +525,7 @@ export function useTimelineHistory() {
     keyframeId: KeyframeId,
     updates: Partial<Pick<Keyframe, 'frame' | 'value' | 'easing'>>,
   ) => {
+    const { getLayer, updateKeyframe: updateKeyframeStore } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     const track = layer?.propertyTracks.find((pt) => pt.id === trackId);
     const keyframe = track?.keyframes.find((kf) => kf.id === keyframeId);
@@ -548,13 +546,14 @@ export function useTimelineHistory() {
 
     updateKeyframeStore(layerId, trackId, keyframeId, updates);
     pushToHistory(historyAction);
-  }, [getLayer, updateKeyframeStore, pushToHistory]);
+  }, [pushToHistory]);
 
   // ============================================
   // FRAME RATE CHANGE
   // ============================================
 
   const setFrameRate = useCallback((newFps: number, maintainDuration: boolean = true) => {
+    const { config, layers, setFrameRate: setFrameRateStore } = useTimelineStore.getState();
     const oldFps = config.frameRate;
     const oldLayers = structuredClone(layers);
     const oldDuration = config.durationFrames;
@@ -577,13 +576,14 @@ export function useTimelineHistory() {
       },
     };
     pushToHistory(historyAction);
-  }, [config, layers, setFrameRateStore, pushToHistory]);
+  }, [pushToHistory]);
 
   // ============================================
   // STATIC PROPERTY CHANGE (with history)
   // ============================================
 
   const setStaticProperty = useCallback((layerId: LayerId, propertyPath: string, newValue: number) => {
+    const { getLayer } = useTimelineStore.getState();
     const layer = getLayer(layerId);
     if (!layer) return;
 
@@ -603,7 +603,7 @@ export function useTimelineHistory() {
       },
     };
     pushToHistory(historyAction);
-  }, [getLayer, pushToHistory]);
+  }, [pushToHistory]);
 
   // ============================================
   // TRIM TO WORK AREA (with history)

@@ -31,7 +31,7 @@ export const useCanvasSelection = () => {
   } = useCanvasState();
   
   const { width, height, cells, getCell } = useCanvasStore();
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   const { 
     selection, 
     startSelection, 

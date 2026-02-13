@@ -25,9 +25,8 @@ import {
   getTransformAtFrame,
   applyRotation,
 } from '../utils/layerCompositing';
-import { PROPERTY_DEFINITIONS, type PropertyPath } from '../types/timeline';
+import { PROPERTY_DEFINITIONS, type PropertyPath, type Layer } from '../types/timeline';
 import { useKeyframeableProperty } from './useKeyframeableProperty';
-import { useTimelineHistory } from './useTimelineHistory';
 import { useToolStore } from '../stores/toolStore';
 import { toast } from 'sonner';
 
@@ -134,6 +133,8 @@ function angleDeg(a: { x: number; y: number }, b: { x: number; y: number }): num
 // Hook
 // ============================================
 
+const EMPTY_LAYERS: Layer[] = [];
+
 export function useLayerTransformTool() {
   const [dragState, setDragState] = useState<TransformDragState | null>(null);
   const [cursorZone, setCursorZone] = useState<TransformDragMode>('none');
@@ -142,16 +143,27 @@ export function useLayerTransformTool() {
   const didWriteRef = useRef(false);
   const startSnapshotRef = useRef<TransformDragState['startValues'] | null>(null);
 
-  // Timeline state
+  // Tool state — must be declared before selectors that use isTransformToolActive
+  const activeTool = useToolStore((s) => s.activeTool);
+  const isPlaybackMode = useToolStore((s) => s.isPlaybackMode);
+  const isTransformToolActive = activeTool === 'layertransform';
+
+  // Timeline state — only subscribe to layers when transform tool is active
+  // to avoid running .find() on every CanvasGrid render
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
-  const layers = useTimelineStore((s) => s.layers);
+  const layers = useTimelineStore((s) => isTransformToolActive ? s.layers : EMPTY_LAYERS);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const isPlaying = useTimelineStore((s) => s.view.isPlaying);
 
   // Canvas state
   const { cellWidth, cellHeight, shiftKeyDown } = useCanvasContext();
 
-  const isPlaybackMode = useToolStore((s) => s.isPlaybackMode);
+  // PERF FIX: Only pass the real layerId to useKeyframeableProperty when the
+  // layer transform tool is active. Otherwise pass null, which makes each
+  // hook short-circuit (no selector evaluation, no useMemo recalculation).
+  // This eliminates ~56 unnecessary hooks from the CanvasGrid render path
+  // when using pencil, eraser, selection, or any other tool.
+  const kfLayerId = isTransformToolActive ? activeLayerId : null;
 
   const activeLayer = useMemo(
     () => layers.find((l) => l.id === activeLayerId) ?? null,
@@ -164,19 +176,18 @@ export function useLayerTransformTool() {
   );
 
   // Keyframeable property bindings — used for reading values and on mouseUp
-  const posX = useKeyframeableProperty(activeLayerId, 'transform.position.x');
-  const posY = useKeyframeableProperty(activeLayerId, 'transform.position.y');
-  const scaleX = useKeyframeableProperty(activeLayerId, 'transform.scale.x');
-  const scaleY = useKeyframeableProperty(activeLayerId, 'transform.scale.y');
-  const rotation = useKeyframeableProperty(activeLayerId, 'transform.rotation');
-  const anchorX = useKeyframeableProperty(activeLayerId, 'transform.anchorPoint.x');
-  const anchorY = useKeyframeableProperty(activeLayerId, 'transform.anchorPoint.y');
+  const posX = useKeyframeableProperty(kfLayerId, 'transform.position.x');
+  const posY = useKeyframeableProperty(kfLayerId, 'transform.position.y');
+  const scaleX = useKeyframeableProperty(kfLayerId, 'transform.scale.x');
+  const scaleY = useKeyframeableProperty(kfLayerId, 'transform.scale.y');
+  const rotation = useKeyframeableProperty(kfLayerId, 'transform.rotation');
+  const anchorX = useKeyframeableProperty(kfLayerId, 'transform.anchorPoint.x');
+  const anchorY = useKeyframeableProperty(kfLayerId, 'transform.anchorPoint.y');
 
-  // Auto-keyframe mode + history-wrapped track creation
+  // Auto-keyframe mode
   const autoKeyframe = useToolStore((s) => s.layerTransformAutoKeyframe);
-  const { addPropertyTrack, addKeyframe: addKeyframeHistory } = useTimelineHistory();
 
-  const isDisabled = !activeLayer || isPlaying || isPlaybackMode;
+  const isDisabled = !activeLayer || isPlaying || isPlaybackMode || !isTransformToolActive;
   const isLocked = activeLayer?.locked ?? false;
 
   /**
@@ -354,8 +365,9 @@ export function useLayerTransformTool() {
           for (const prop of affectedProps) {
             const hasTrack = layer.propertyTracks.some((t) => t.propertyPath === prop);
             if (!hasTrack) {
-              // Create the property track (with history)
-              const trackId = addPropertyTrack(activeLayerId, prop);
+              // Create the property track directly (no useTimelineHistory to avoid subscriptions)
+              const tl = useTimelineStore.getState();
+              const trackId = tl.addPropertyTrack(activeLayerId, prop);
               if (trackId) {
                 // Add an initial keyframe at current frame with the current value
                 const currentValue = startValues[
@@ -367,14 +379,14 @@ export function useLayerTransformTool() {
                   prop === 'transform.anchorPoint.x' ? 'anchorPointX' :
                   'anchorPointY'
                 ];
-                addKeyframeHistory(activeLayerId, trackId, useTimelineStore.getState().view.currentFrame, currentValue);
+                tl.addKeyframe(activeLayerId, trackId, tl.view.currentFrame, currentValue);
               }
             }
           }
         }
       }
     },
-    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scaleX.value, scaleY.value, rotation.value, anchorX.value, anchorY.value, autoKeyframe, activeLayerId, addPropertyTrack, addKeyframeHistory],
+    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scaleX.value, scaleY.value, rotation.value, anchorX.value, anchorY.value, autoKeyframe, activeLayerId],
   );
 
   const handleMouseMove = useCallback(

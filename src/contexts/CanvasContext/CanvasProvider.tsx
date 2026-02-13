@@ -54,21 +54,37 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
   const [selectionMode, setSelectionMode] = useState<'none' | 'dragging' | 'moving'>('none');
   const [pendingSelectionStart, setPendingSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [justCommittedMove, setJustCommittedMove] = useState(false);
-
-  const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
   
-  // Optimized setter that only updates if coordinates actually changed
+  // hoveredCell is ref-based (see hoveredCellRef below) — no React state needed.
+  // The context value uses null as a stable placeholder since consumers read from the ref directly.
+  
+  // Ref-based hoveredCell for zero-latency rendering — bypasses React state entirely.
+  // PERF FIX: hoveredCell was previously a React state that changed on every mouse move,
+  // causing CanvasProvider to re-render and ALL context consumers to re-render.
+  // Now it's ref-based: writes go to the ref, and a direct render callback fires
+  // without React involvement. Only MouseCoordinates.tsx needs the old state pattern,
+  // and it subscribes via registerHoveredCellRender instead.
+  const hoveredCellRef = useRef<{ x: number; y: number } | null>(null);
+  const hoveredCellCallbacksRef = useRef<Set<() => void>>(new Set());
+
+  const registerHoveredCellRender = useCallback((cb: (() => void) | null) => {
+    if (cb) hoveredCellCallbacksRef.current.add(cb);
+    // Return cleanup: caller should call the returned function to unregister
+    return () => { if (cb) hoveredCellCallbacksRef.current.delete(cb); };
+  }, []);
+  
+  // Optimized setter: writes to ref + calls direct render callbacks, skips React state
   const setHoveredCellOptimized = useCallback((cell: { x: number; y: number } | null) => {
-    setHoveredCell((prev) => {
-      // If both are null, no change
-      if (!prev && !cell) return prev;
-      // If one is null but not the other, update
-      if (!prev || !cell) return cell;
-      // If coordinates haven't changed, return previous reference to prevent re-renders
-      if (prev.x === cell.x && prev.y === cell.y) return prev;
-      // Coordinates changed, update
-      return cell;
-    });
+    const prev = hoveredCellRef.current;
+    if (!prev && !cell) return;
+    if (!prev || !cell) {
+      hoveredCellRef.current = cell;
+      hoveredCellCallbacksRef.current.forEach(fn => fn());
+      return;
+    }
+    if (prev.x === cell.x && prev.y === cell.y) return;
+    hoveredCellRef.current = cell;
+    hoveredCellCallbacksRef.current.forEach(fn => fn());
   }, []);
 
   const [hoverPreview, setHoverPreview] = useState<CanvasContextValue['hoverPreview']>({
@@ -215,7 +231,7 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     selectionMode,
     pendingSelectionStart,
     justCommittedMove,
-    hoveredCell,
+    hoveredCell: null, // always null — consumers read from hoveredCellRef instead
     hoverPreview,
     moveState,
     pasteMode,
@@ -236,6 +252,8 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     setPendingSelectionStart,
     setJustCommittedMove,
     setHoveredCell: setHoveredCellOptimized,
+    hoveredCellRef,
+    registerHoveredCellRender,
     setHoverPreview: setHoverPreviewOptimized,
     hoverPreviewRef,
     registerHoverRender,

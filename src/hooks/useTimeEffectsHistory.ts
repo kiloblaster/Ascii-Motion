@@ -35,7 +35,7 @@ export const useTimeEffectsHistory = () => {
   } = useTimeEffectsStore();
   
   const { width: canvasWidth, height: canvasHeight } = useCanvasStore();
-  const { frames } = useAnimationStore();
+  const frames = useAnimationStore((s) => s.frames);
   
   /**
    * Get affected frame indices based on frame range settings

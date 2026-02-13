@@ -16,103 +16,144 @@
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §4.5
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useTimelineStore } from '../stores/timelineStore';
-import { useTimelineHistory } from './useTimelineHistory';
+import { useToolStore } from '../stores/toolStore';
 import {
   PROPERTY_DEFINITIONS,
   type PropertyPath,
   type LayerId,
 } from '../types/timeline';
 import { getPropertyValueAtFrame } from '../utils/layerCompositing';
+import type {
+  KeyframeUpdateHistoryAction,
+  KeyframeAddHistoryAction,
+  StaticPropertyChangeHistoryAction,
+  PropertyTrackAddHistoryAction,
+  PropertyTrackRemoveHistoryAction,
+  KeyframeRemoveHistoryAction,
+} from '../types';
 
+// Stable no-op functions for the inactive path — avoids creating new function
+// objects on every render when layerId is null
+const NOOP = () => {};
+const NOOP_RETURN_NULL = () => null;
+
+/**
+ * PERF-CRITICAL: This hook is called 7× inside useLayerTransformTool, which runs
+ * on every CanvasGrid render. When layerId is null (transform tool not active),
+ * this hook MUST be essentially zero-cost — no store subscriptions, no useMemo
+ * recalculations, no useCallback recreations.
+ *
+ * We achieve this by:
+ * 1. Skipping the layers.find() selector entirely when layerId is null
+ * 2. NOT importing useTimelineHistory (which creates 20+ useCallbacks)
+ * 3. Using direct getState() calls in the action callbacks instead
+ */
 export function useKeyframeableProperty(
   layerId: LayerId | null,
   propertyPath: PropertyPath,
 ) {
+  // Only subscribe to layer data when we have a real layerId
   const layer = useTimelineStore((s) =>
     layerId ? s.layers.find((l) => l.id === layerId) : null,
   );
-  const currentFrame = useTimelineStore((s) => s.view.currentFrame);
-  const {
-    addPropertyTrack,
-    removePropertyTrack,
-    addKeyframe,
-    updateKeyframe,
-    removeKeyframe,
-    setStaticProperty,
-  } = useTimelineHistory();
+  // Only subscribe to currentFrame when we have a layerId
+  const currentFrame = useTimelineStore((s) =>
+    layerId ? s.view.currentFrame : 0,
+  );
 
   const definition = PROPERTY_DEFINITIONS[propertyPath];
   const defaultValue = (definition?.defaultValue as number) ?? 0;
 
-  // Find the property track (if it exists)
   const track = useMemo(
     () => layer?.propertyTracks.find((t) => t.propertyPath === propertyPath) ?? null,
     [layer, propertyPath],
   );
 
-  // Interpolated value at current frame
   const value = useMemo(() => {
     if (!layer) return defaultValue;
     return getPropertyValueAtFrame(layer, propertyPath, currentFrame);
   }, [layer, propertyPath, currentFrame, defaultValue]);
 
-  // Whether a keyframe exists exactly at the current frame
   const keyframeAtCurrentFrame = useMemo(
     () => track?.keyframes.find((kf) => kf.frame === currentFrame) ?? null,
     [track, currentFrame],
   );
 
-  // Set value — updates keyframe if tracked, or sets static property if not.
-  // Static properties apply uniformly across all frames (no animation).
+  // Use a ref to hold the latest values for action callbacks.
+  // This avoids recreating useCallback on every render while keeping
+  // the callbacks correct.
+  const stateRef = useRef({ layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, value });
+  stateRef.current = { layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, value };
+
+  // Set value — uses getState() directly instead of useTimelineHistory
+  // to avoid creating reactive subscriptions in the CanvasGrid tree
   const setValue = useCallback(
     (newValue: number) => {
-      if (!layerId) return;
-      if (track) {
-        // Property is tracked (keyframed) — update or create keyframe
-        if (keyframeAtCurrentFrame) {
-          updateKeyframe(layerId, track.id, keyframeAtCurrentFrame.id, { value: newValue });
+      const { layerId: lid, track: t, keyframeAtCurrentFrame: kf, currentFrame: cf, propertyPath: pp } = stateRef.current;
+      if (!lid) return;
+      const tl = useTimelineStore.getState();
+      const { pushToHistory } = useToolStore.getState();
+      if (t) {
+        if (kf) {
+          const oldKf = structuredClone(kf);
+          tl.updateKeyframe(lid, t.id, kf.id, { value: newValue });
+          pushToHistory({ type: 'keyframe_update', timestamp: Date.now(), description: `Update keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kf.id, oldValue: oldKf, newValue: { ...oldKf, value: newValue } } } as KeyframeUpdateHistoryAction);
         } else {
-          addKeyframe(layerId, track.id, currentFrame, newValue);
+          const kfId = tl.addKeyframe(lid, t.id, cf, newValue);
+          const newKf = tl.getLayer(lid)?.propertyTracks.find(pt => pt.id === t.id)?.keyframes.find(k => k.id === kfId);
+          if (newKf) pushToHistory({ type: 'keyframe_add', timestamp: Date.now(), description: `Add keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kfId, keyframe: structuredClone(newKf) } } as KeyframeAddHistoryAction);
         }
       } else {
-        // Not tracked — set as static property on the layer (with history)
-        setStaticProperty(layerId, propertyPath, newValue);
+        const layer = tl.getLayer(lid);
+        const oldValue = layer?.staticProperties?.[pp];
+        tl.setStaticProperty(lid, pp, newValue);
+        pushToHistory({ type: 'static_property_change', timestamp: Date.now(), description: `Set ${pp}`, data: { layerId: lid, propertyPath: pp, oldValue, newValue } } as StaticPropertyChangeHistoryAction);
       }
     },
-    [layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, updateKeyframe, addKeyframe, setStaticProperty],
+    [], // stable — reads from stateRef
   );
 
-  // Toggle property track on/off
   const toggleTrack = useCallback(() => {
-    if (!layerId) return;
-    if (track) {
-      removePropertyTrack(layerId, track.id);
+    const { layerId: lid, track: t, propertyPath: pp, currentFrame: cf, value: v } = stateRef.current;
+    if (!lid) return;
+    const tl = useTimelineStore.getState();
+    const { pushToHistory } = useToolStore.getState();
+    if (t) {
+      const trackData = structuredClone(t);
+      tl.removePropertyTrack(lid, t.id);
+      pushToHistory({ type: 'property_track_remove', timestamp: Date.now(), description: `Remove track`, data: { layerId: lid, trackId: t.id, trackData } } as PropertyTrackRemoveHistoryAction);
     } else {
-      const trackId = addPropertyTrack(layerId, propertyPath);
-      // Optionally create an initial keyframe at the current frame
+      const trackId = tl.addPropertyTrack(lid, pp);
       if (trackId) {
-        addKeyframe(layerId, trackId, currentFrame, value);
+        tl.addKeyframe(lid, trackId, cf, v);
+        pushToHistory({ type: 'property_track_add', timestamp: Date.now(), description: `Add track`, data: { layerId: lid, trackId, propertyPath: pp } } as PropertyTrackAddHistoryAction);
       }
     }
-  }, [layerId, track, propertyPath, currentFrame, value, addPropertyTrack, removePropertyTrack, addKeyframe]);
+  }, []);
 
-  // Toggle keyframe at current frame (add or remove)
   const toggleKeyframe = useCallback(() => {
-    if (!layerId || !track) return;
-    if (keyframeAtCurrentFrame) {
-      removeKeyframe(layerId, track.id, keyframeAtCurrentFrame.id);
+    const { layerId: lid, track: t, keyframeAtCurrentFrame: kf, currentFrame: cf, value: v } = stateRef.current;
+    if (!lid || !t) return;
+    const tl = useTimelineStore.getState();
+    const { pushToHistory } = useToolStore.getState();
+    if (kf) {
+      const kfData = structuredClone(kf);
+      tl.removeKeyframe(lid, t.id, kf.id);
+      pushToHistory({ type: 'keyframe_remove', timestamp: Date.now(), description: `Remove keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kf.id, keyframe: kfData } } as KeyframeRemoveHistoryAction);
     } else {
-      addKeyframe(layerId, track.id, currentFrame, value);
+      const kfId = tl.addKeyframe(lid, t.id, cf, v);
+      const newKf = tl.getLayer(lid)?.propertyTracks.find(pt => pt.id === t.id)?.keyframes.find(k => k.id === kfId);
+      if (newKf) pushToHistory({ type: 'keyframe_add', timestamp: Date.now(), description: `Add keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kfId, keyframe: structuredClone(newKf) } } as KeyframeAddHistoryAction);
     }
-  }, [layerId, track, keyframeAtCurrentFrame, currentFrame, value, addKeyframe, removeKeyframe]);
+  }, []);
 
   return {
     value,
-    setValue,
-    toggleTrack,
-    toggleKeyframe,
+    setValue: layerId ? setValue : NOOP as (v: number) => void,
+    toggleTrack: layerId ? toggleTrack : NOOP,
+    toggleKeyframe: layerId ? toggleKeyframe : NOOP,
     isTracked: track !== null,
     hasKeyframeAtCurrentFrame: keyframeAtCurrentFrame !== null,
     track,

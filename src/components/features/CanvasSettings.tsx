@@ -49,7 +49,7 @@ export const CanvasSettings: React.FC = () => {
   } = useCanvasContext();
 
   const { pushCanvasResizeHistory } = useToolStore();
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
 
   // Global dialog state for canvas resize (allows keyboard shortcut to trigger)
   const { showCanvasResizeDialog, setShowCanvasResizeDialog } = useProjectDialogState();

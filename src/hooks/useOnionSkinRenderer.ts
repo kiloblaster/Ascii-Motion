@@ -21,7 +21,10 @@ import type { Cell } from '../types';
  *  - All layers composited
  */
 export const useOnionSkinRenderer = () => {
-  const { onionSkin, currentFrameIndex, frames, isPlaying } = useAnimationStore();
+  const onionSkin = useAnimationStore((s) => s.onionSkin);
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const frames = useAnimationStore((s) => s.frames);
+  const isPlaying = useAnimationStore((s) => s.isPlaying);
   const layers = useTimelineStore((s) => s.layers);
   const tlCurrentFrame = useTimelineStore((s) => s.view.currentFrame);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);

@@ -19,7 +19,7 @@ import { screenToLocal } from '../utils/layerTransformUtils';
 export const useTextTool = () => {
   const { textToolState, startTyping, stopTyping, setCursorPosition, setCursorVisible, setTextBuffer, commitWord, pushCanvasHistory, finalizeCanvasHistory } = useToolStore();
   const { width, height, setCell, getCell, cells } = useCanvasStore();
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   const { selectedColor, selectedBgColor } = useToolStore();
   
   const blinkTimerRef = useRef<NodeJS.Timeout | null>(null);

@@ -58,11 +58,14 @@ export function useCompositedCanvas() {
     // This handles the common case of editing with one layer and no keyframes
     if (layers.length === 1 && layers[0].id === activeLayerId) {
       const layer = layers[0];
-      // Only fast-path if no property tracks and no static transform offsets
+      // Only fast-path if no property tracks and no VISUAL transform offsets.
+      // Anchor point statics are excluded because they only affect rotation/scale
+      // center — with no rotation or scale, anchor has zero visual effect.
       const hasTransforms = layer.propertyTracks.length > 0 ||
         Object.keys(layer.staticProperties).some(k => {
+          // Skip anchor point — it doesn't affect position/scale/rotation visually
+          if (k === 'transform.anchorPoint.x' || k === 'transform.anchorPoint.y') return false;
           const v = layer.staticProperties[k];
-          // Check if any transform value differs from identity
           if (k === 'transform.scale.x' || k === 'transform.scale.y') return v !== 1;
           return v !== 0;
         });

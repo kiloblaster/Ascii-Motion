@@ -24,7 +24,7 @@ import { screenToLocal as screenToLocalFn } from '../utils/layerTransformUtils';
  */
 export const useFlipUtilities = () => {
   const { cells, width, height, setCanvasData } = useCanvasStore();
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   const { moveState, setMoveState } = useCanvasContext();
   const { 
     pushCanvasHistory, 

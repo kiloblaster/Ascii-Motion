@@ -18,18 +18,17 @@ import { cloneFrame, cloneFrames } from '../utils/frameUtils';
  * This ensures all timeline operations are recorded in the history stack
  */
 export const useAnimationHistory = () => {
-  const { 
-    frames, 
-    currentFrameIndex, 
-    selectedFrameIndices,
-    addFrame: addFrameStore, 
-    removeFrame: removeFrameStore, 
-    duplicateFrame: duplicateFrameStore, 
-    duplicateFrameRange: duplicateFrameRangeStore,
-    updateFrameDuration: updateFrameDurationStore, 
-    updateFrameName: updateFrameNameStore, 
-    reorderFrames: reorderFramesStore 
-  } = useAnimationStore();
+  const frames = useAnimationStore((s) => s.frames);
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const selectedFrameIndices = useAnimationStore((s) => s.selectedFrameIndices);
+  // Action functions — stable references, don't need reactive subscription
+  const addFrameStore = useAnimationStore((s) => s.addFrame);
+  const removeFrameStore = useAnimationStore((s) => s.removeFrame);
+  const duplicateFrameStore = useAnimationStore((s) => s.duplicateFrame);
+  const duplicateFrameRangeStore = useAnimationStore((s) => s.duplicateFrameRange);
+  const updateFrameDurationStore = useAnimationStore((s) => s.updateFrameDuration);
+  const updateFrameNameStore = useAnimationStore((s) => s.updateFrameName);
+  const reorderFramesStore = useAnimationStore((s) => s.reorderFrames);
   
   const { pushToHistory } = useToolStore();
 

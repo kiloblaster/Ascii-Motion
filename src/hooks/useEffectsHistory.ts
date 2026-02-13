@@ -40,7 +40,8 @@ export const useEffectsHistory = () => {
   } = useEffectsStore();
   
   const { cells: canvasData } = useCanvasStore();
-  const { frames, currentFrameIndex } = useAnimationStore();
+  const frames = useAnimationStore((s) => s.frames);
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
 
   /**
    * Get the current effect settings for a given effect type

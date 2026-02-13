@@ -15,7 +15,7 @@ export const useCanvasDragAndDrop = () => {
   const { canvasRef, isDrawing, setIsDrawing, setMouseButtonDown, shiftKeyDown, cellWidth, cellHeight, fontMetrics } = useCanvasContext();
   const { getGridCoordinates } = useCanvasDimensions();
   const { width, height, cells } = useCanvasStore();
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   const { 
     shapePreview,
     startShapePreview,

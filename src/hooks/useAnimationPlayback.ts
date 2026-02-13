@@ -9,13 +9,11 @@ import { useToolStore } from '../stores/toolStore';
  * - Manages playback loop and stopping conditions
  */
 export const useAnimationPlayback = () => {
-  const { 
-    frames,
-    currentFrameIndex,
-    isPlaying,
-    play,
-    pause
-  } = useAnimationStore();
+  const frames = useAnimationStore((s) => s.frames);
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const isPlaying = useAnimationStore((s) => s.isPlaying);
+  const play = useAnimationStore((s) => s.play);
+  const pause = useAnimationStore((s) => s.pause);
   
   const { setPlaybackMode } = useToolStore();
   

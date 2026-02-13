@@ -37,7 +37,9 @@ function shiftCellMap(
  */
 export function useCanvasResize() {
   const { width: canvasWidth, height: canvasHeight, cells, setCanvasSize, setCanvasData } = useCanvasStore();
-  const { frames, currentFrameIndex, setFrameData } = useAnimationStore();
+  const frames = useAnimationStore((s) => s.frames);
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const setFrameData = useAnimationStore((s) => s.setFrameData);
   const layers = useTimelineStore((s) => s.layers);
 
   /**

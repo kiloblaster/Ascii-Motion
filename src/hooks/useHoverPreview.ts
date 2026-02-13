@@ -22,7 +22,7 @@ import { calculateBrushCells } from '../utils/brushUtils';
  */
 export const useHoverPreview = () => {
   const { activeTool, brushSettings } = useToolStore();
-  const { hoveredCell, fontMetrics, setHoverPreview, isDrawing, altKeyDown, ctrlKeyDown } = useCanvasContext();
+  const { hoveredCellRef, fontMetrics, setHoverPreview, isDrawing, altKeyDown, ctrlKeyDown, registerHoveredCellRender } = useCanvasContext();
   
   // Calculate effective tool (Ctrl overrides pencil with eraser, Alt overrides drawing tools with eyedropper)
   const drawingTools = ['pencil', 'eraser', 'paintbucket', 'rectangle', 'ellipse'];
@@ -39,13 +39,11 @@ export const useHoverPreview = () => {
   // Use refs to avoid effect re-runs on every hover cell change
   const rafIdRef = useRef<number | null>(null);
   const isScheduledRef = useRef(false);
-  const hoveredCellRef = useRef(hoveredCell);
   const effectiveToolRef = useRef(effectiveTool);
   const activeBrushRef = useRef(activeBrush);
   const isDrawingRef = useRef(isDrawing);
   
   // Keep refs in sync
-  hoveredCellRef.current = hoveredCell;
   effectiveToolRef.current = effectiveTool;
   activeBrushRef.current = activeBrush;
   isDrawingRef.current = isDrawing;
@@ -133,10 +131,11 @@ export const useHoverPreview = () => {
     };
   }, [fontMetrics.aspectRatio, setHoverPreview, getBrushCells]);
   
-  // Only run effect when hover cell actually changes
+  // Register for direct notification when hoveredCell changes (bypasses React state)
   useEffect(() => {
-    scheduleUpdate();
-  }, [hoveredCell, scheduleUpdate]);
+    const cleanup = registerHoveredCellRender(() => scheduleUpdate());
+    return cleanup;
+  }, [registerHoveredCellRender, scheduleUpdate]);
   
   // Cleanup on unmount
   useEffect(() => {

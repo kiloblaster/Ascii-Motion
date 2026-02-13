@@ -18,10 +18,15 @@ import { useTimelineHistory } from '../hooks/useTimelineHistory';
 
 const mockPushToHistory = vi.fn();
 
+const mockToolStoreState = {
+  pushToHistory: mockPushToHistory,
+};
+
 vi.mock('../stores/toolStore', () => ({
-  useToolStore: () => ({
-    pushToHistory: mockPushToHistory,
-  }),
+  useToolStore: (selector?: (state: Record<string, unknown>) => unknown) => {
+    if (typeof selector === 'function') return selector(mockToolStoreState);
+    return mockToolStoreState;
+  },
 }));
 
 // ============================================

@@ -67,7 +67,7 @@ export const useAsciiBoxTool = () => {
   
   const { shiftKeyDown } = useCanvasContext();
   
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   
   // Get current style definition
   const currentStyle = BOX_DRAWING_STYLES.find(s => s.id === selectedStyleId) 

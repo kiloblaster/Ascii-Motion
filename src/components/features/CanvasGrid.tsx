@@ -26,7 +26,7 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
   
   // Get active tool and tool behavior
   const { activeTool, textToolState, isPlaybackMode } = useToolStore();
-  const { isPlaying } = useAnimationStore();
+  const isPlaying = useAnimationStore((s) => s.isPlaying);
   const { getToolCursor } = useToolBehavior();
   
   // Track previous tool for cleanup on tool changes

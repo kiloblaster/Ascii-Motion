@@ -24,7 +24,7 @@ export const useGradientFillTool = () => {
   
   const { cellWidth, cellHeight } = useCanvasContext();
   
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   
   const { 
     activeTool,

@@ -13,7 +13,9 @@ import type { CanvasResizeHistoryAction } from '../types';
 export function useCropToSelection() {
   const { width: canvasWidth, height: canvasHeight, cells, setCanvasSize, setCanvasData } = useCanvasStore();
   const { selection, lassoSelection, magicWandSelection, activeTool, clearSelection, clearLassoSelection, clearMagicWandSelection } = useToolStore();
-  const { frames, currentFrameIndex, setFrameData } = useAnimationStore();
+  const frames = useAnimationStore((s) => s.frames);
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const setFrameData = useAnimationStore((s) => s.setFrameData);
 
   /**
    * Get the current active selection's cells based on active tool

@@ -23,7 +23,7 @@ export const CanvasOverlay: React.FC = () => {
   const hoverCanvasRef = useRef<HTMLCanvasElement>(null);
   
   // Canvas context and state  
-  const { canvasRef, pasteMode, cellWidth, cellHeight, zoom, panOffset, fontMetrics, selectionPreview, hoveredCell, hoverPreviewRef, registerHoverRender } = useCanvasContext();
+  const { canvasRef, pasteMode, cellWidth, cellHeight, zoom, panOffset, fontMetrics, selectionPreview, hoveredCellRef, hoverPreviewRef, registerHoverRender } = useCanvasContext();
   const {
     moveState,
     getTotalOffset,
@@ -838,9 +838,7 @@ export const CanvasOverlay: React.FC = () => {
   // Store current render params in refs so the render callback can access them
   const renderParamsRef = useRef({ effectiveCellWidth, effectiveCellHeight, panOffset, width, height });
   renderParamsRef.current = { effectiveCellWidth, effectiveCellHeight, panOffset, width, height };
-  // Keep hoveredCell in a ref too
-  const hoveredCellRef = useRef(hoveredCell);
-  hoveredCellRef.current = hoveredCell;
+  // hoveredCellRef comes directly from context now (ref-based)
   
   useEffect(() => {
     const renderHover = () => {
@@ -920,11 +918,15 @@ export const CanvasOverlay: React.FC = () => {
     };
   }, [canvasRef, registerHoverRender, hoverPreviewRef]);
   
-  // Re-render hover canvas when hoveredCell changes (for single-cell outline on non-brush tools)
+  // Re-render hover canvas when hoveredCell changes (registered via ref-based callback)
   const hoverRenderFnRef = useRef<(() => void) | null>(null);
+  
+  // Register for hoveredCell change notifications (bypasses React re-render)
+  const { registerHoveredCellRender } = useCanvasContext();
   useEffect(() => {
-    hoverRenderFnRef.current?.();
-  }, [hoveredCell]);
+    const cleanup = registerHoveredCellRender(() => hoverRenderFnRef.current?.());
+    return cleanup;
+  }, [registerHoveredCellRender]);
 
   return (
     <>

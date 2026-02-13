@@ -26,7 +26,7 @@ export const useOptimizedPlayback = () => {
   const renderSettingsRef = useRef<DirectRenderSettings | null>(null);
   
   // Get all required React context data at hook level
-  const { frames } = useAnimationStore();
+  const frames = useAnimationStore((s) => s.frames);
   const canvasContext = useCanvasContext();
   const { canvasRef } = canvasContext;
   const canvasState = useCanvasState();

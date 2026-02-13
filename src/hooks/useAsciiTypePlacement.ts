@@ -18,7 +18,7 @@ interface PlacePreviewOptions {
  */
 export const useAsciiTypePlacement = () => {
   const activeTool = useToolStore((state) => state.activeTool);
-  const { hoveredCell } = useCanvasContext();
+  const { hoveredCellRef, registerHoveredCellRender } = useCanvasContext();
   const canvasWidth = useCanvasStore((state) => state.width);
   const canvasHeight = useCanvasStore((state) => state.height);
   const setPreviewData = usePreviewStore((state) => state.setPreviewData);
@@ -53,25 +53,32 @@ export const useAsciiTypePlacement = () => {
   );
 
   // Follow the hovered cell while the preview hasn’t been placed yet
-  useEffect(() => {
-    if (activeTool !== 'asciitype') return;
-    if (!hasPreviewContent) return;
-    if (!hoveredCell) return;
-    if (isPreviewPlaced) return;
+  // Uses ref-based hoveredCell via callback registration (no React re-render)
+  const followHoverRef = useRef<{
+    activeTool: string;
+    hasPreviewContent: boolean;
+    isPreviewPlaced: boolean;
+    clampOrigin: (o: { x: number; y: number }) => { x: number; y: number };
+    previewOrigin: { x: number; y: number } | null;
+    setPreviewOrigin: (o: { x: number; y: number }) => void;
+  }>({ activeTool, hasPreviewContent, isPreviewPlaced, clampOrigin, previewOrigin, setPreviewOrigin });
+  followHoverRef.current = { activeTool, hasPreviewContent, isPreviewPlaced, clampOrigin, previewOrigin, setPreviewOrigin };
 
-    const clamped = clampOrigin(hoveredCell);
-    if (!previewOrigin || previewOrigin.x !== clamped.x || previewOrigin.y !== clamped.y) {
-      setPreviewOrigin(clamped);
-    }
-  }, [
-    activeTool,
-    hasPreviewContent,
-    hoveredCell,
-    isPreviewPlaced,
-    previewOrigin,
-    clampOrigin,
-    setPreviewOrigin,
-  ]);
+  useEffect(() => {
+    const cleanup = registerHoveredCellRender(() => {
+      const { activeTool: at, hasPreviewContent: hpc, isPreviewPlaced: ipp, clampOrigin: co, previewOrigin: po, setPreviewOrigin: spo } = followHoverRef.current;
+      if (at !== 'asciitype') return;
+      if (!hpc) return;
+      const hc = hoveredCellRef.current;
+      if (!hc) return;
+      if (ipp) return;
+      const clamped = co(hc);
+      if (!po || po.x !== clamped.x || po.y !== clamped.y) {
+        spo(clamped);
+      }
+    });
+    return cleanup;
+  }, [registerHoveredCellRender, hoveredCellRef]);
 
   // Stream preview cells into the shared preview store so the renderer can draw them
   useEffect(() => {

@@ -27,7 +27,7 @@ export const useCanvasMagicWandSelection = () => {
     setJustCommittedMove,
   } = useCanvasState();
   
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   const { width, height, cells, getCell } = useCanvasStore();
   const { 
     magicWandSelection, 

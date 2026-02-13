@@ -73,7 +73,10 @@ export const CanvasActionButtons: React.FC = () => {
     setSelectedColor,
     setSelectedBgColor,
   } = useToolStore();
-  const animationStore = useAnimationStore();
+  // PERF FIX: Don't subscribe reactively — animationStore is only used inside
+  // event handler callbacks (processHistoryAction). Reading from getState()
+  // avoids re-rendering this 666-line component on every frame navigation.
+  const getAnimationStore = useAnimationStore.getState;
   const bezierStore = useBezierStore();
   const { copySelection: handleCopyFromKeyboard, pasteSelection: handlePasteFromKeyboard } = useKeyboardShortcuts();
 
@@ -94,11 +97,11 @@ export const CanvasActionButtons: React.FC = () => {
         }
 
         // Update frame store first to avoid auto-save races
-        animationStore.setFrameData(canvasAction.data.frameIndex, targetData);
+        getAnimationStore().setFrameData(canvasAction.data.frameIndex, targetData);
 
         // Switch to frame if needed
-        if (animationStore.currentFrameIndex !== canvasAction.data.frameIndex) {
-          animationStore.setCurrentFrame(canvasAction.data.frameIndex);
+        if (getAnimationStore().currentFrameIndex !== canvasAction.data.frameIndex) {
+          getAnimationStore().setCurrentFrame(canvasAction.data.frameIndex);
         }
 
         // Reflect on visible canvas
@@ -117,7 +120,7 @@ export const CanvasActionButtons: React.FC = () => {
           setCanvasData(resizeAction.data.previousCanvasData);
         }
         // Set current frame to match the frame this resize was made in
-        animationStore.setCurrentFrame(resizeAction.data.frameIndex);
+        getAnimationStore().setCurrentFrame(resizeAction.data.frameIndex);
         break;
       }
         
@@ -125,16 +128,16 @@ export const CanvasActionButtons: React.FC = () => {
         if (isRedo) {
           // Redo: Re-add the frame with full properties
           const frame = action.data.frame;
-          animationStore.addFrame(action.data.frameIndex, frame.data, frame.duration);
-          animationStore.updateFrameName(action.data.frameIndex, frame.name);
+          getAnimationStore().addFrame(action.data.frameIndex, frame.data, frame.duration);
+          getAnimationStore().updateFrameName(action.data.frameIndex, frame.name);
           // Canvas will sync automatically since addFrame sets current frame
         } else {
           // Undo: Remove the frame that was added
-          animationStore.removeFrame(action.data.frameIndex);
-          animationStore.setCurrentFrame(action.data.previousCurrentFrame);
+          getAnimationStore().removeFrame(action.data.frameIndex);
+          getAnimationStore().setCurrentFrame(action.data.previousCurrentFrame);
           // After removing frame and switching to previous frame, 
           // sync canvas with the frame we switched to
-          const currentFrame = animationStore.frames[action.data.previousCurrentFrame];
+          const currentFrame = getAnimationStore().frames[action.data.previousCurrentFrame];
           if (currentFrame) {
             setCanvasData(currentFrame.data);
           }
@@ -146,15 +149,15 @@ export const CanvasActionButtons: React.FC = () => {
         if (isRedo) {
           // Redo: Re-add the duplicated frame using the stored frame data
           const frame = action.data.frame;
-          animationStore.addFrame(action.data.newIndex, frame.data, frame.duration);
-          animationStore.updateFrameName(action.data.newIndex, frame.name);
+          getAnimationStore().addFrame(action.data.newIndex, frame.data, frame.duration);
+          getAnimationStore().updateFrameName(action.data.newIndex, frame.name);
           // Canvas will sync automatically since addFrame sets current frame
         } else {
           // Undo: Remove the duplicated frame
-          animationStore.removeFrame(action.data.newIndex);
-          animationStore.setCurrentFrame(action.data.previousCurrentFrame);
+          getAnimationStore().removeFrame(action.data.newIndex);
+          getAnimationStore().setCurrentFrame(action.data.previousCurrentFrame);
           // Sync canvas with the frame we switched to
-          const currentFrame = animationStore.frames[action.data.previousCurrentFrame];
+          const currentFrame = getAnimationStore().frames[action.data.previousCurrentFrame];
           if (currentFrame) {
             setCanvasData(currentFrame.data);
           }
@@ -165,10 +168,10 @@ export const CanvasActionButtons: React.FC = () => {
       case 'delete_frame': {
         if (isRedo) {
           // Redo: Re-delete the frame
-          animationStore.removeFrame(action.data.frameIndex);
+          getAnimationStore().removeFrame(action.data.frameIndex);
           // After deletion, sync canvas with the new current frame
-          const newCurrentIndex = Math.min(action.data.frameIndex, animationStore.frames.length - 1);
-          const currentFrame = animationStore.frames[newCurrentIndex];
+          const newCurrentIndex = Math.min(action.data.frameIndex, getAnimationStore().frames.length - 1);
+          const currentFrame = getAnimationStore().frames[newCurrentIndex];
           if (currentFrame) {
             setCanvasData(currentFrame.data);
           }
@@ -177,13 +180,13 @@ export const CanvasActionButtons: React.FC = () => {
           const deletedFrame = action.data.frame;
           
           // Add frame at the correct position
-          animationStore.addFrame(action.data.frameIndex, deletedFrame.data, deletedFrame.duration);
+          getAnimationStore().addFrame(action.data.frameIndex, deletedFrame.data, deletedFrame.duration);
           
           // Update the frame properties to match the deleted frame
-          animationStore.updateFrameName(action.data.frameIndex, deletedFrame.name);
+          getAnimationStore().updateFrameName(action.data.frameIndex, deletedFrame.name);
           
           // Restore previous current frame
-          animationStore.setCurrentFrame(action.data.previousCurrentFrame);
+          getAnimationStore().setCurrentFrame(action.data.previousCurrentFrame);
           // Sync canvas with the restored frame
           setCanvasData(deletedFrame.data);
         }
@@ -193,14 +196,14 @@ export const CanvasActionButtons: React.FC = () => {
       case 'reorder_frames': {
         if (isRedo) {
           // Redo: Re-perform the reorder
-          animationStore.reorderFrames(action.data.fromIndex, action.data.toIndex);
+          getAnimationStore().reorderFrames(action.data.fromIndex, action.data.toIndex);
         } else {
           // Undo: Reverse the reorder
-          animationStore.reorderFrames(action.data.toIndex, action.data.fromIndex);
-          animationStore.setCurrentFrame(action.data.previousCurrentFrame);
+          getAnimationStore().reorderFrames(action.data.toIndex, action.data.fromIndex);
+          getAnimationStore().setCurrentFrame(action.data.previousCurrentFrame);
         }
         // Sync canvas after reorder to ensure we're showing the right frame
-        const currentFrame = animationStore.frames[animationStore.currentFrameIndex];
+        const currentFrame = getAnimationStore().frames[getAnimationStore().currentFrameIndex];
         if (currentFrame) {
           setCanvasData(currentFrame.data);
         }
@@ -210,30 +213,30 @@ export const CanvasActionButtons: React.FC = () => {
       case 'update_duration':
         if (isRedo) {
           // Redo: Apply new duration
-          animationStore.updateFrameDuration(action.data.frameIndex, action.data.newDuration);
+          getAnimationStore().updateFrameDuration(action.data.frameIndex, action.data.newDuration);
         } else {
           // Undo: Restore old duration
-          animationStore.updateFrameDuration(action.data.frameIndex, action.data.oldDuration);
+          getAnimationStore().updateFrameDuration(action.data.frameIndex, action.data.oldDuration);
         }
         break;
 
       case 'update_name':
         if (isRedo) {
           // Redo: Apply new name
-          animationStore.updateFrameName(action.data.frameIndex, action.data.newName);
+          getAnimationStore().updateFrameName(action.data.frameIndex, action.data.newName);
         } else {
           // Undo: Restore old name
-          animationStore.updateFrameName(action.data.frameIndex, action.data.oldName);
+          getAnimationStore().updateFrameName(action.data.frameIndex, action.data.oldName);
         }
         break;
 
       case 'navigate_frame':
         if (isRedo) {
           // Redo: Go to the new frame index
-          animationStore.setCurrentFrame(action.data.newFrameIndex);
+          getAnimationStore().setCurrentFrame(action.data.newFrameIndex);
         } else {
           // Undo: Go back to the previous frame index
-          animationStore.setCurrentFrame(action.data.previousFrameIndex);
+          getAnimationStore().setCurrentFrame(action.data.previousFrameIndex);
         }
         break;
 
@@ -255,8 +258,8 @@ export const CanvasActionButtons: React.FC = () => {
                 });
               }
               // Sync canvas
-              const currentIdx = animationStore.currentFrameIndex;
-              const currentData = animationStore.getFrameData(currentIdx);
+              const currentIdx = getAnimationStore().currentFrameIndex;
+              const currentData = getAnimationStore().getFrameData(currentIdx);
               if (currentData) {
                 setCanvasData(currentData);
               }
@@ -283,8 +286,8 @@ export const CanvasActionButtons: React.FC = () => {
                 });
               }
               // Sync canvas
-              const currentIdx = animationStore.currentFrameIndex;
-              const currentData = animationStore.getFrameData(currentIdx);
+              const currentIdx = getAnimationStore().currentFrameIndex;
+              const currentData = getAnimationStore().getFrameData(currentIdx);
               if (currentData) {
                 setCanvasData(currentData);
               }
@@ -308,7 +311,7 @@ export const CanvasActionButtons: React.FC = () => {
           // Undo: Restore previous frame data
           if (timeEffectAction.data.previousFramesData) {
             timeEffectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
-              animationStore.setFrameData(frameIndex, data);
+              getAnimationStore().setFrameData(frameIndex, data);
             });
           }
         }
@@ -320,12 +323,12 @@ export const CanvasActionButtons: React.FC = () => {
         if (isRedo) {
           // Redo: Re-apply the new duration to all affected frames
           durationsAction.data.affectedFrameIndices.forEach((frameIndex: number) => {
-            animationStore.updateFrameDuration(frameIndex, durationsAction.data.newDuration);
+            getAnimationStore().updateFrameDuration(frameIndex, durationsAction.data.newDuration);
           });
         } else {
           // Undo: Restore previous durations
           durationsAction.data.previousDurations.forEach(({ frameIndex, duration }) => {
-            animationStore.updateFrameDuration(frameIndex, duration);
+            getAnimationStore().updateFrameDuration(frameIndex, duration);
           });
         }
         break;
@@ -335,11 +338,11 @@ export const CanvasActionButtons: React.FC = () => {
         const deleteRangeAction = action as DeleteFrameRangeHistoryAction;
         if (isRedo) {
           // Redo: Re-delete the frames
-          animationStore.removeFrameRange(deleteRangeAction.data.frameIndices);
+          getAnimationStore().removeFrameRange(deleteRangeAction.data.frameIndices);
         } else {
           // Undo: Restore snapshot prior to deletion
           const { previousFrames, previousCurrentFrame, previousSelection } = deleteRangeAction.data;
-          animationStore.replaceFrames(
+          getAnimationStore().replaceFrames(
             previousFrames,
             previousCurrentFrame,
             previousSelection.length > 0 ? previousSelection : undefined
@@ -360,13 +363,13 @@ export const CanvasActionButtons: React.FC = () => {
         } = duplicateRangeAction.data;
 
         if (isRedo) {
-          animationStore.replaceFrames(
+          getAnimationStore().replaceFrames(
             newFrames,
             newCurrentFrame,
             newSelection.length > 0 ? newSelection : undefined
           );
         } else {
-          animationStore.replaceFrames(
+          getAnimationStore().replaceFrames(
             previousFrames,
             previousCurrentFrame,
             previousSelection.length > 0 ? previousSelection : undefined
@@ -379,22 +382,22 @@ export const CanvasActionButtons: React.FC = () => {
         const deleteAllAction = action as DeleteAllFramesHistoryAction;
         if (isRedo) {
           // Redo: Clear all frames again
-          animationStore.clearAllFrames();
+          getAnimationStore().clearAllFrames();
         } else {
           // Undo: Restore all deleted frames
           deleteAllAction.data.frames.forEach((frame, index) => {
             if (index === 0) {
               // Replace the default frame created by clearAllFrames
-              animationStore.setFrameData(0, frame.data);
-              animationStore.updateFrameName(0, frame.name);
-              animationStore.updateFrameDuration(0, frame.duration);
+              getAnimationStore().setFrameData(0, frame.data);
+              getAnimationStore().updateFrameName(0, frame.name);
+              getAnimationStore().updateFrameDuration(0, frame.duration);
             } else {
               // Add additional frames
-              animationStore.addFrame(index, frame.data, frame.duration);
-              animationStore.updateFrameName(index, frame.name);
+              getAnimationStore().addFrame(index, frame.data, frame.duration);
+              getAnimationStore().updateFrameName(index, frame.name);
             }
           });
-          animationStore.setCurrentFrame(deleteAllAction.data.previousCurrentFrame);
+          getAnimationStore().setCurrentFrame(deleteAllAction.data.previousCurrentFrame);
         }
         break;
       }
@@ -404,17 +407,17 @@ export const CanvasActionButtons: React.FC = () => {
         if (isRedo) {
           // Redo: Re-apply bezier shape to canvas
           setCanvasData(bezierAction.data.newCanvasData);
-          animationStore.setFrameData(bezierAction.data.frameIndex, bezierAction.data.newCanvasData);
-          if (animationStore.currentFrameIndex !== bezierAction.data.frameIndex) {
-            animationStore.setCurrentFrame(bezierAction.data.frameIndex);
+          getAnimationStore().setFrameData(bezierAction.data.frameIndex, bezierAction.data.newCanvasData);
+          if (getAnimationStore().currentFrameIndex !== bezierAction.data.frameIndex) {
+            getAnimationStore().setCurrentFrame(bezierAction.data.frameIndex);
           }
         } else {
           // Undo: Restore canvas AND bezier editing state
           // First restore canvas
           setCanvasData(bezierAction.data.previousCanvasData);
-          animationStore.setFrameData(bezierAction.data.frameIndex, bezierAction.data.previousCanvasData);
-          if (animationStore.currentFrameIndex !== bezierAction.data.frameIndex) {
-            animationStore.setCurrentFrame(bezierAction.data.frameIndex);
+          getAnimationStore().setFrameData(bezierAction.data.frameIndex, bezierAction.data.previousCanvasData);
+          if (getAnimationStore().currentFrameIndex !== bezierAction.data.frameIndex) {
+            getAnimationStore().setCurrentFrame(bezierAction.data.frameIndex);
           }
           
           // Then restore bezier tool state so user can continue editing
@@ -554,7 +557,7 @@ export const CanvasActionButtons: React.FC = () => {
         break;
       }
     }
-  }, [setCanvasData, setCanvasSize, animationStore, bezierStore, setActiveTool, setSelectedChar, setSelectedColor, setSelectedBgColor, activeTool]);
+  }, [setCanvasData, setCanvasSize, bezierStore, setActiveTool, setSelectedChar, setSelectedColor, setSelectedBgColor, activeTool]);
 
   const handleUndo = () => {
     if (canUndo()) {

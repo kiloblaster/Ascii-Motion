@@ -15,18 +15,32 @@
 
 import React, { useMemo } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
+import { useToolStore } from '../../stores/toolStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { usePlaybackOnlySnapshot } from '../../hooks/usePlaybackOnlySnapshot';
 import { getPropertyValueAtFrame, getTransformAtFrame, getContentFrameAtTime, applyRotation } from '../../utils/layerCompositing';
 import { cn } from '@/lib/utils';
+import type { Layer } from '../../types/timeline';
+
+const EMPTY_LAYERS: Layer[] = [];
 
 export const AnchorPointOverlay: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
   const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
-  const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
-  const layers = useTimelineStore((s) => s.layers);
-  const currentFrame = useTimelineStore((s) => s.view.currentFrame);
-  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const activeTool = useToolStore((s) => s.activeTool);
+
+  // Early bail — don't subscribe to expensive state when we won't render.
+  // This overlay is only shown when editing transform keyframes or the layer
+  // properties panel is open, AND the layer transform tool isn't active
+  // (it has its own overlay). Without this gate, the s.layers subscription
+  // causes re-renders on every timeline store change.
+  const mightShow = (editingKeyframeId !== null || showLayerProperties) && activeTool !== 'layertransform';
+
+  // Only subscribe to layers/frame data when we're actually going to show
+  const activeLayerId = useTimelineStore((s) => mightShow ? s.view.activeLayerId : null);
+  const layers = useTimelineStore((s) => mightShow ? s.layers : EMPTY_LAYERS);
+  const currentFrame = useTimelineStore((s) => mightShow ? s.view.currentFrame : 0);
+  const durationFrames = useTimelineStore((s) => mightShow ? s.config.durationFrames : 0);
 
   const { cellWidth, cellHeight, zoom, panOffset } = useCanvasContext();
   const playbackSnapshot = usePlaybackOnlySnapshot();
@@ -47,7 +61,7 @@ export const AnchorPointOverlay: React.FC = () => {
     return false;
   }, [editingKeyframeId, activeLayer]);
 
-  // Show when: editing a transform keyframe OR layer properties panel is open
+  // Final show decision
   const shouldShow = isEditingTransform || showLayerProperties;
 
   // Calculate motion path points

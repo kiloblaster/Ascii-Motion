@@ -1158,7 +1158,10 @@ const processHistoryAction = (
 export const useKeyboardShortcuts = () => {
   const { cells, setCanvasData, width, height } = useCanvasStore();
   const { startPasteMode, commitPaste, pasteMode } = useCanvasContext();
-  const { toggleOnionSkin, currentFrameIndex, frames, selectedFrameIndices } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const frames = useAnimationStore((s) => s.frames);
+  const selectedFrameIndices = useAnimationStore((s) => s.selectedFrameIndices);
+  const toggleOnionSkin = useAnimationStore((s) => s.toggleOnionSkin);
   const { zoomIn, zoomOut } = useZoomControls();
   const { showSaveProjectDialog, showSaveAsDialog, showOpenProjectDialog } = useProjectFileActions();
   

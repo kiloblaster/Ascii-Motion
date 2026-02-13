@@ -606,14 +606,26 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     updateContentFrameData: (layerId, frameId, data) => {
-      set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          contentFrames: l.contentFrames.map((cf) =>
-            cf.id === frameId ? { ...cf, data } : cf,
-          ),
-        })),
-      }));
+      // PERF FIX: Mutate the content frame's data in-place instead of creating
+      // new layers/contentFrames arrays. This avoids triggering re-renders in
+      // ALL timelineStore subscribers on every auto-save (which fires every 150ms
+      // during drawing). Components that need to react to cell data changes
+      // already subscribe to canvasStore.cells directly.
+      //
+      // This is safe because:
+      // 1. Cell data maps are large objects — cloning them on every save is expensive
+      // 2. No component renders content frame cell data directly from timelineStore
+      //    (they all use canvasStore or useCompositedCanvas)
+      // 3. Structural selectors (layer count, frame count, etc.) don't change
+      //
+      // If you need to trigger re-renders after updating cell data (e.g., for export
+      // or thumbnails), call `set({ layers: [...get().layers] })` explicitly.
+      const { layers } = get();
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+      const cf = layer.contentFrames.find((c) => c.id === frameId);
+      if (!cf) return;
+      cf.data = data;
     },
 
     splitContentFrame: (layerId, frameId, atFrame) => {

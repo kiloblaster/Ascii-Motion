@@ -98,7 +98,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
   const { activeTool, setActiveTool, rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
   const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
   const { altKeyDown, ctrlKeyDown } = useCanvasContext();
   const { flipHorizontal, flipVertical } = useFlipUtilities();
   const { canCrop, cropToSelection } = useCropToSelection();

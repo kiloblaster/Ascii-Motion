@@ -10,12 +10,10 @@ import { useAnimationStore } from '../../stores/animationStore';
  * Positioned between PlaybackControls and FrameControls in the timeline
  */
 export const OnionSkinControls: React.FC = () => {
-  const {
-    onionSkin,
-    toggleOnionSkin,
-    setPreviousFrames,
-    setNextFrames
-  } = useAnimationStore();
+  const onionSkin = useAnimationStore((s) => s.onionSkin);
+  const toggleOnionSkin = useAnimationStore((s) => s.toggleOnionSkin);
+  const setPreviousFrames = useAnimationStore((s) => s.setPreviousFrames);
+  const setNextFrames = useAnimationStore((s) => s.setNextFrames);
 
   const handlePreviousFramesChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value, 10);

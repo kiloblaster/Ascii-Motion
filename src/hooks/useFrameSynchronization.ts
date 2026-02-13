@@ -29,23 +29,36 @@ export const useFrameSynchronization = (
     currentOffset: { x: number; y: number };
   } | null>>
 ) => {
-  const { cells, setCanvasData, width, height } = useCanvasStore();
-  const { 
-    currentFrameIndex, 
-    setFrameData: legacySetFrameData, 
-    getFrameData: legacyGetFrameData, 
-    getCurrentFrame,
-    isPlaying,
-    isDraggingFrame,
-    isDeletingFrame,
-    isImportingSession
-  } = useAnimationStore();
+  // PERF FIX: Only subscribe to `cells` reactively (needed for auto-save effect).
+  // Use getState() for action functions and dimensions that are only needed
+  // inside callbacks.
+  const cells = useCanvasStore((s) => s.cells);
+  const setCanvasData = useCanvasStore.getState().setCanvasData;
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  
+  // PERF FIX: Use individual selectors instead of broad useAnimationStore()
+  // to avoid re-rendering this hook (which lives in CanvasProvider and affects
+  // the entire app) on every animationStore change.
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const isPlaying = useAnimationStore((s) => s.isPlaying);
+  const isDraggingFrame = useAnimationStore((s) => s.isDraggingFrame);
+  const isDeletingFrame = useAnimationStore((s) => s.isDeletingFrame);
+  const isImportingSession = useAnimationStore((s) => s.isImportingSession);
+  // Action functions — read from getState() since they're stable references
+  // and don't need to trigger re-renders
+  const legacySetFrameData = useAnimationStore.getState().setFrameData;
+  const legacyGetFrameData = useAnimationStore.getState().getFrameData;
+  const getCurrentFrame = useAnimationStore.getState().getCurrentFrame;
 
   // Timeline store state for layer-aware sync
-  const layers = useTimelineStore((s) => s.layers);
+  // PERF FIX: Use scalar selectors instead of subscribing to the entire layers array.
+  // The full layers array changes on every updateContentFrameData call, which would
+  // trigger re-renders in CanvasProvider → entire app cascade.
+  const layerCount = useTimelineStore((s) => s.layers.length);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const tlCurrentFrame = useTimelineStore((s) => s.view.currentFrame);
-  const isLayerMode = layers.length > 0;
+  const isLayerMode = layerCount > 0;
 
   // In layer mode, use the timeline store's currentFrame (the source of truth).
   // The original animationStore.currentFrameIndex is a separate Zustand store
@@ -273,9 +286,12 @@ export const useFrameSynchronization = (
       // Save current canvas (with committed moves) to the frame we're leaving
       if (!isPlaying && !isLoadingFrameRef.current && !isDraggingFrame && !isDeletingFrame && !isImportingSession && !isProcessingHistory) {
         // Only save if the canvas content has actually changed from what was last loaded
+        // PERF FIX: Use reference inequality instead of JSON.stringify comparison.
+        // This runs during frame switches which are less frequent, but still saves
+        // the cost of serializing the entire cell map.
         const lastLoadedCells = lastCellsRef.current;
-        const cellsChanged = JSON.stringify(Array.from(currentCellsToSave.entries()).sort()) !== 
-                           JSON.stringify(Array.from(lastLoadedCells.entries()).sort());
+        const cellsChanged = currentCellsToSave !== lastLoadedCells && 
+                           (currentCellsToSave.size !== lastLoadedCells.size || currentCellsToSave.size > 0);
         
         // Don't save to frames that were empty when loaded unless user actually added content
         const previousFrameData = getFrameData(previousFrameIndex);
@@ -298,21 +314,24 @@ export const useFrameSynchronization = (
   useEffect(() => {
     if (isLoadingFrameRef.current || isPlaying || isDraggingFrame || isDeletingFrame || isImportingSession || isProcessingHistory) return;
     
-    // Check if cells actually changed from the last known state to avoid unnecessary saves
-    const currentCellsString = JSON.stringify(Array.from(cells.entries()).sort());
-    const lastCellsString = JSON.stringify(Array.from(lastCellsRef.current.entries()).sort());
+    // PERF FIX: Use cheap reference + size check instead of JSON.stringify.
+    // JSON.stringify(Array.from(cells.entries()).sort()) was O(N) on every cell
+    // change — with 80x24 = 1920 potential cells, this serialized the entire Map
+    // to a string on every keystroke/mouse-move, blocking the main thread.
+    // Since cells is a new Map reference on every Zustand update, reference
+    // inequality is sufficient to detect changes. The size check catches the
+    // edge case of loading an existing frame (same size, different reference).
+    const lastCells = lastCellsRef.current;
+    if (cells === lastCells) return; // Same Map reference — no change
+    if (cells.size === lastCells.size && cells.size === 0) return; // Both empty
     
-    if (currentCellsString !== lastCellsString) {
-      // Only save if the canvas content doesn't match the current frame's stored content
-      // This prevents saving when the canvas is loaded with frame data
-      const timeoutId = setTimeout(() => {
-        if (!isLoadingFrameRef.current && !isPlaying && !isDraggingFrame && !isDeletingFrame && !isImportingSession && !isProcessingHistory) {
-          saveCurrentCanvasToFrame();
-        }
-      }, 150);
-      
-      return () => clearTimeout(timeoutId);
-    }
+    const timeoutId = setTimeout(() => {
+      if (!isLoadingFrameRef.current && !isPlaying && !isDraggingFrame && !isDeletingFrame && !isImportingSession && !isProcessingHistory) {
+        saveCurrentCanvasToFrame();
+      }
+    }, 150);
+    
+    return () => clearTimeout(timeoutId);
   }, [cells, saveCurrentCanvasToFrame, isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory]);
 
   // Initialize first frame with current canvas data if empty (only on app startup)
