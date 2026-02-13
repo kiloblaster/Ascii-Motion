@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAsciiTypeTool } from './useAsciiTypeTool';
 import { useToolStore } from '../stores/toolStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
