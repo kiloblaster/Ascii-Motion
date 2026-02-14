@@ -293,7 +293,10 @@ export type HistoryActionType =
   | 'content_frame_reorder'
   | 'timeline_duration_change'
   | 'trim_to_work_area'
-  | 'apply_transforms';
+  | 'apply_transforms'
+  | 'merge_layers'
+  | 'create_group'
+  | 'ungroup_layers';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -868,7 +871,10 @@ export type AnyHistoryAction =
   | ContentFrameReorderHistoryAction
   | TimelineDurationChangeHistoryAction
   | TrimToWorkAreaHistoryAction
-  | ApplyTransformsHistoryAction;
+  | ApplyTransformsHistoryAction
+  | MergeLayersHistoryAction
+  | CreateGroupHistoryAction
+  | UngroupLayersHistoryAction;
 
 export interface ApplyTransformsHistoryAction extends HistoryAction {
   type: 'apply_transforms';
@@ -876,5 +882,35 @@ export interface ApplyTransformsHistoryAction extends HistoryAction {
     layerId: string;
     previousLayer: import('../types/timeline').Layer;
     newLayer: import('../types/timeline').Layer;
+  };
+}
+
+export interface MergeLayersHistoryAction extends HistoryAction {
+  type: 'merge_layers';
+  data: {
+    /** The layer IDs that were merged (in order, bottom to top) */
+    removedLayers: import('../types/timeline').Layer[];
+    /** The indices in the original layers array */
+    removedIndices: number[];
+    /** The new merged layer */
+    mergedLayer: import('../types/timeline').Layer;
+    /** Index where the merged layer was inserted */
+    insertIndex: number;
+  };
+}
+
+export interface CreateGroupHistoryAction extends HistoryAction {
+  type: 'create_group';
+  data: {
+    groupId: string;
+    groupName: string;
+    layerIds: string[];
+  };
+}
+
+export interface UngroupLayersHistoryAction extends HistoryAction {
+  type: 'ungroup_layers';
+  data: {
+    group: import('../types/timeline').LayerGroup;
   };
 }

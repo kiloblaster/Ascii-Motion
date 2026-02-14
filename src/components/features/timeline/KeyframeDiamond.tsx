@@ -12,6 +12,26 @@ import { cn } from '@/lib/utils';
 import type { Keyframe, KeyframeId, LayerId, PropertyTrackId } from '../../../types/timeline';
 import type { KeyframeUpdateHistoryAction, KeyframeAddHistoryAction } from '../../../types';
 
+/** Find a track and keyframe across both layers and layerGroups */
+function findTrackAndKeyframe(trackId: PropertyTrackId, kfId: KeyframeId) {
+  const tl = useTimelineStore.getState();
+  for (const layer of tl.layers) {
+    const track = layer.propertyTracks.find((t) => t.id === trackId);
+    if (track) {
+      const kf = track.keyframes.find((k) => k.id === kfId);
+      return { track, kf: kf ?? null };
+    }
+  }
+  for (const group of tl.layerGroups) {
+    const track = group.propertyTracks.find((t) => t.id === trackId);
+    if (track) {
+      const kf = track.keyframes.find((k) => k.id === kfId);
+      return { track, kf: kf ?? null };
+    }
+  }
+  return { track: null, kf: null };
+}
+
 interface KeyframeDiamondProps {
   layerId: LayerId;
   trackId: PropertyTrackId;
@@ -81,12 +101,25 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
       const entries: KfEntry[] = [];
 
       if (isInSelection) {
-        const layers = useTimelineStore.getState().layers;
-        for (const layer of layers) {
+        const tl = useTimelineStore.getState();
+        // Search layers
+        for (const layer of tl.layers) {
           for (const track of layer.propertyTracks) {
             for (const kf of track.keyframes) {
               if (selectedIds.has(kf.id)) {
                 entries.push({ layerId: layer.id, trackId: track.id, kfId: kf.id, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+              }
+            }
+          }
+        }
+        // Also search layerGroups
+        for (const group of tl.layerGroups) {
+          for (const track of group.propertyTracks) {
+            for (const kf of track.keyframes) {
+              if (selectedIds.has(kf.id)) {
+                // Use first child layer ID as proxy (store actions fall back to groups)
+                const proxyLayerId = group.childLayerIds[0] ?? layerId;
+                entries.push({ layerId: proxyLayerId, trackId: track.id, kfId: kf.id, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
               }
             }
           }
@@ -143,10 +176,7 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
             const finalFrame = Math.max(0, entry.startFrame + lastDelta);
             if (finalFrame !== entry.startFrame) {
               moveKeyframeDirect(entry.layerId, entry.trackId, entry.kfId, entry.startFrame);
-              const tl = useTimelineStore.getState();
-              const layer = tl.layers.find((l) => l.id === entry.layerId);
-              const track = layer?.propertyTracks.find((t) => t.id === entry.trackId);
-              const kf = track?.keyframes.find((k) => k.id === entry.kfId);
+              const { kf } = findTrackAndKeyframe(entry.trackId, entry.kfId);
               if (kf) {
                 const oldKf = structuredClone(kf);
                 moveKeyframeDirect(entry.layerId, entry.trackId, entry.kfId, finalFrame);
@@ -167,10 +197,7 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
             const newId = tl.addKeyframe(entry.layerId, entry.trackId, entry.startFrame, entry.value);
             if (newId) {
               tl.updateKeyframe(entry.layerId, entry.trackId, newId, { easing: entry.easing });
-              // Find the created keyframe and record history
-              const layer = useTimelineStore.getState().layers.find((l) => l.id === entry.layerId);
-              const track = layer?.propertyTracks.find((t) => t.id === entry.trackId);
-              const dupKf = track?.keyframes.find((k) => k.id === newId);
+              const { kf: dupKf } = findTrackAndKeyframe(entry.trackId, newId);
               if (dupKf) {
                 pushToHistory({
                   type: 'keyframe_add',
@@ -187,10 +214,7 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
             const finalFrame = Math.max(0, entry.startFrame + lastDelta);
             if (finalFrame !== entry.startFrame) {
               moveKeyframeDirect(entry.layerId, entry.trackId, entry.kfId, entry.startFrame);
-              const tl = useTimelineStore.getState();
-              const layer = tl.layers.find((l) => l.id === entry.layerId);
-              const track = layer?.propertyTracks.find((t) => t.id === entry.trackId);
-              const kf = track?.keyframes.find((k) => k.id === entry.kfId);
+              const { kf } = findTrackAndKeyframe(entry.trackId, entry.kfId);
               if (kf) {
                 const oldKf = structuredClone(kf);
                 moveKeyframeDirect(entry.layerId, entry.trackId, entry.kfId, finalFrame);

@@ -711,6 +711,123 @@ export function useTimelineHistory() {
   }, [pushToHistory]);
 
   // ============================================
+  // MERGE / GROUP OPERATIONS (with history)
+  // ============================================
+
+  const mergeDown = useCallback((layerId: import('../types/timeline').LayerId) => {
+    const tl = useTimelineStore.getState();
+    const layers = tl.layers;
+    const index = layers.findIndex((l) => l.id === layerId);
+    if (index <= 0) return null;
+
+    // Snapshot the layers to be removed for undo
+    const upperLayer = JSON.parse(JSON.stringify(layers[index], (_k, v) => v instanceof Map ? Object.fromEntries(v) : v));
+    const lowerLayer = JSON.parse(JSON.stringify(layers[index - 1], (_k, v) => v instanceof Map ? Object.fromEntries(v) : v));
+
+    const mergedId = tl.mergeDown(layerId);
+    if (!mergedId) return null;
+
+    const mergedLayer = useTimelineStore.getState().layers.find(l => l.id === mergedId);
+    if (!mergedLayer) return null;
+
+    const historyAction: import('../types').MergeLayersHistoryAction = {
+      type: 'merge_layers',
+      timestamp: Date.now(),
+      description: `Merge ${layers[index].name} into ${layers[index - 1].name}`,
+      data: {
+        removedLayers: [lowerLayer, upperLayer].map(l => ({
+          ...l,
+          contentFrames: l.contentFrames.map((cf: Record<string, unknown>) => ({
+            ...cf,
+            data: cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data as Record<string, unknown>)),
+          })),
+        })) as import('../types/timeline').Layer[],
+        removedIndices: [index - 1, index],
+        mergedLayer: JSON.parse(JSON.stringify(mergedLayer, (_k, v) => v instanceof Map ? Object.fromEntries(v) : v)),
+        insertIndex: index - 1,
+      },
+    };
+    pushToHistory(historyAction);
+    return mergedId;
+  }, [pushToHistory]);
+
+  const mergeVisible = useCallback(() => {
+    const tl = useTimelineStore.getState();
+    const layers = tl.layers;
+    const visibleLayers = layers.filter(l => l.visible);
+    if (visibleLayers.length < 2) return null;
+
+    // Snapshot visible layers for undo
+    const removedLayers = visibleLayers.map(l =>
+      JSON.parse(JSON.stringify(l, (_k, v) => v instanceof Map ? Object.fromEntries(v) : v))
+    );
+    const removedIndices = visibleLayers.map(l => layers.indexOf(l));
+
+    const mergedId = tl.mergeVisible();
+    if (!mergedId) return null;
+
+    const mergedLayer = useTimelineStore.getState().layers.find(l => l.id === mergedId);
+    if (!mergedLayer) return null;
+
+    const historyAction: import('../types').MergeLayersHistoryAction = {
+      type: 'merge_layers',
+      timestamp: Date.now(),
+      description: `Merge ${visibleLayers.length} visible layers`,
+      data: {
+        removedLayers: removedLayers.map((l: Record<string, unknown>) => ({
+          ...l,
+          contentFrames: (l.contentFrames as Array<Record<string, unknown>>).map((cf) => ({
+            ...cf,
+            data: cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data as Record<string, unknown>)),
+          })),
+        })) as import('../types/timeline').Layer[],
+        removedIndices,
+        mergedLayer: JSON.parse(JSON.stringify(mergedLayer, (_k, v) => v instanceof Map ? Object.fromEntries(v) : v)),
+        insertIndex: 0,
+      },
+    };
+    pushToHistory(historyAction);
+    return mergedId;
+  }, [pushToHistory]);
+
+  const createGroup = useCallback((name: string, layerIds: import('../types/timeline').LayerId[]) => {
+    const tl = useTimelineStore.getState();
+    const groupId = tl.createGroup(name, layerIds);
+    if (!groupId) return null;
+
+    const historyAction: import('../types').CreateGroupHistoryAction = {
+      type: 'create_group',
+      timestamp: Date.now(),
+      description: `Create group "${name}" with ${layerIds.length} layers`,
+      data: {
+        groupId: groupId as string,
+        groupName: name,
+        layerIds: layerIds.map(id => id as string),
+      },
+    };
+    pushToHistory(historyAction);
+    return groupId;
+  }, [pushToHistory]);
+
+  const ungroupLayers = useCallback((groupId: import('../types/timeline').LayerGroupId) => {
+    const tl = useTimelineStore.getState();
+    const group = tl.layerGroups.find(g => g.id === groupId);
+    if (!group) return;
+
+    tl.ungroupLayers(groupId);
+
+    const historyAction: import('../types').UngroupLayersHistoryAction = {
+      type: 'ungroup_layers',
+      timestamp: Date.now(),
+      description: `Ungroup "${group.name}"`,
+      data: {
+        group: JSON.parse(JSON.stringify(group)),
+      },
+    };
+    pushToHistory(historyAction);
+  }, [pushToHistory]);
+
+  // ============================================
   // PASS-THROUGH (no history needed)
   // ============================================
 
@@ -757,6 +874,12 @@ export function useTimelineHistory() {
 
     // Remove blank space (with history)
     removeBlankSpace,
+
+    // Merge / group operations (with history)
+    mergeDown,
+    mergeVisible,
+    createGroup,
+    ungroupLayers,
 
     // Pass-through without history (from store directly)
     setLayerSolo: useTimelineStore.getState().setLayerSolo,

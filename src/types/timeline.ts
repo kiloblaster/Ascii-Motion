@@ -117,6 +117,7 @@ export interface LayerGroup {
 
   // Group-level transform tracks
   propertyTracks: PropertyTrack[];
+  staticProperties: Record<string, number>;
 }
 
 /**
@@ -356,6 +357,7 @@ export interface TimelineViewState {
 
   // Selection
   activeLayerId: LayerId | null;
+  activeGroupId: LayerGroupId | null;
   selectedLayerIds: Set<LayerId>;
   selectedKeyframeIds: Set<KeyframeId>;
   selectedContentFrameIds: Set<ContentFrameId>;

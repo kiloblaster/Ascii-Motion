@@ -30,7 +30,7 @@ import {
   ArrowLeftToLine,
 } from 'lucide-react';
 import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../../../types/timeline';
-import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
+import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/layerCompositing';
 import type { ContentFrameReorderHistoryAction } from '../../../types';
 
 // ============================================
@@ -368,12 +368,28 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
               icon={<Diamond className="w-4 h-4" />}
               label="Add keyframe here"
               onClick={() => act(() => {
+                // Search layers first, then groups
                 const layer = layers.find((l) => l.id === ctx.layerId);
-                if (!layer) return;
-                const track = layer.propertyTracks.find((t) => t.id === ctx.trackId);
-                if (!track) return;
-                const currentValue = getPropertyValueAtFrame(layer, track.propertyPath, ctx.clickFrame);
-                addKeyframe(ctx.layerId, ctx.trackId, ctx.clickFrame, currentValue);
+                let trackPropertyPath: string | undefined;
+                if (layer) {
+                  const track = layer.propertyTracks.find((t) => t.id === ctx.trackId);
+                  if (track) {
+                    trackPropertyPath = track.propertyPath;
+                    const currentValue = getPropertyValueAtFrame(layer, track.propertyPath, ctx.clickFrame);
+                    addKeyframe(ctx.layerId, ctx.trackId, ctx.clickFrame, currentValue);
+                    return;
+                  }
+                }
+                // Fall back to groups
+                const tl = useTimelineStore.getState();
+                for (const group of tl.layerGroups) {
+                  const track = group.propertyTracks.find((t) => t.id === ctx.trackId);
+                  if (track) {
+                    const currentValue = getGroupPropertyValue(group, track.propertyPath, ctx.clickFrame);
+                    addKeyframe(ctx.layerId, ctx.trackId, ctx.clickFrame, currentValue);
+                    return;
+                  }
+                }
               })}
             />
             <MenuItem

@@ -25,23 +25,35 @@ import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER } from '../../../types/tim
 interface LayerListItemProps {
   layer: Layer;
   isActive: boolean;
-  onSelect: () => void;
+  isSelected?: boolean;
+  isInGroup?: boolean;
+  isRenaming?: boolean;
+  onStartRename?: () => void;
+  onFinishRename?: () => void;
+  onSelect: (e: React.MouseEvent) => void;
   isDragOver: boolean;
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
   onDragEnd: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function LayerListItem({
   layer,
   isActive,
+  isSelected,
+  isInGroup,
+  isRenaming,
+  onStartRename,
+  onFinishRename,
   onSelect,
   isDragOver,
   onDragStart,
   onDragOver,
   onDrop,
   onDragEnd,
+  onContextMenu,
 }) {
   const setLayerVisible = useTimelineStore((s) => s.setLayerVisible);
   const setLayerSolo = useTimelineStore((s) => s.setLayerSolo);
@@ -72,10 +84,19 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
     }
   }, [isEditing]);
 
+  // Trigger rename from external source (context menu)
+  useEffect(() => {
+    if (isRenaming && !isEditing) {
+      setEditName(layer.name);
+      setIsEditing(true);
+    }
+  }, [isRenaming, isEditing, layer.name]);
+
   const handleDoubleClick = useCallback(() => {
     setEditName(layer.name);
     setIsEditing(true);
-  }, [layer.name]);
+    onStartRename?.();
+  }, [layer.name, onStartRename]);
 
   const handleNameCommit = useCallback(() => {
     const trimmed = editName.trim();
@@ -83,7 +104,8 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
       renameLayer(layer.id, trimmed);
     }
     setIsEditing(false);
-  }, [editName, layer.id, layer.name, renameLayer]);
+    onFinishRename?.();
+  }, [editName, layer.id, layer.name, renameLayer, onFinishRename]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -101,9 +123,12 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
       className={cn(
         'border-b border-border/50 select-none',
         isActive && 'bg-accent/50',
+        isSelected && !isActive && 'bg-accent/30',
+        isInGroup && 'pl-3', // Indent grouped layers
         isDragOver && 'border-t-2 border-t-primary',
       )}
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';

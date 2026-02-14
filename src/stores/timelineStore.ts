@@ -40,6 +40,7 @@ import {
 } from '../types/timeline';
 import { defaultEasing } from '../types/easing';
 import { canAddLayer } from '../utils/layerLimits';
+import { compositeLayersAtFrame } from '../utils/layerCompositing';
 
 // ============================================
 // STORE INTERFACE
@@ -83,6 +84,20 @@ export interface TimelineState {
 
   /** Get a layer by ID */
   getLayer: (layerId: LayerId) => Layer | undefined;
+
+  /** Multi-layer selection */
+  selectLayers: (layerIds: LayerId[]) => void;
+  toggleLayerSelected: (layerId: LayerId) => void;
+  clearLayerSelection: () => void;
+
+  /** Toggle group collapsed state */
+  toggleGroupCollapsed: (groupId: LayerGroupId) => void;
+
+  /** Set/clear the active group (for properties panel) */
+  setActiveGroup: (groupId: LayerGroupId | null) => void;
+
+  /** Get a group by ID */
+  getGroup: (groupId: LayerGroupId) => LayerGroup | undefined;
 
   // ============================================
   // CONTENT FRAME ACTIONS
@@ -223,6 +238,29 @@ export interface TimelineState {
   pasteKeyframes: (layerId: LayerId, trackId: PropertyTrackId, atFrame: number) => void;
 
   // ============================================
+  // MERGE / FLATTEN ACTIONS
+  // ============================================
+
+  /** Merge the given layer with the layer directly below it */
+  mergeDown: (layerId: LayerId) => LayerId | null;
+
+  /** Merge all visible layers into a single new layer */
+  mergeVisible: () => LayerId | null;
+
+  /** Flatten a layer — bake transforms into content frame data, reset transforms */
+  flattenLayer: (layerId: LayerId) => void;
+
+  // ============================================
+  // LAYER GROUP ACTIONS
+  // ============================================
+
+  /** Create a group from the given layer IDs */
+  createGroup: (name: string, layerIds: LayerId[]) => LayerGroupId | null;
+
+  /** Ungroup — remove group, children remain as independent layers */
+  ungroupLayers: (groupId: LayerGroupId) => void;
+
+  // ============================================
   // PROJECT LIFECYCLE
   // ============================================
 
@@ -252,6 +290,7 @@ const INITIAL_VIEW: TimelineViewState = {
   isPlaying: false,
   looping: true,
   activeLayerId: null,
+  activeGroupId: null,
   selectedLayerIds: new Set(),
   selectedKeyframeIds: new Set(),
   selectedContentFrameIds: new Set(),
@@ -506,12 +545,59 @@ export const useTimelineStore = create<TimelineState>()(
 
     setActiveLayer: (layerId) => {
       set((state) => ({
-        view: { ...state.view, activeLayerId: layerId },
+        view: { ...state.view, activeLayerId: layerId, activeGroupId: null },
       }));
     },
 
     getLayer: (layerId) => {
       return get().layers.find((l) => l.id === layerId);
+    },
+
+    selectLayers: (layerIds) => {
+      set((state) => ({
+        view: { ...state.view, selectedLayerIds: new Set(layerIds) },
+      }));
+    },
+
+    toggleLayerSelected: (layerId) => {
+      set((state) => {
+        const selected = new Set(state.view.selectedLayerIds);
+        if (selected.has(layerId)) {
+          selected.delete(layerId);
+        } else {
+          selected.add(layerId);
+        }
+        return { view: { ...state.view, selectedLayerIds: selected } };
+      });
+    },
+
+    clearLayerSelection: () => {
+      set((state) => ({
+        view: { ...state.view, selectedLayerIds: new Set() },
+      }));
+    },
+
+    toggleGroupCollapsed: (groupId) => {
+      set((state) => ({
+        layerGroups: state.layerGroups.map((g) =>
+          g.id === groupId ? { ...g, collapsed: !g.collapsed } : g
+        ),
+      }));
+    },
+
+    setActiveGroup: (groupId) => {
+      set((state) => ({
+        view: {
+          ...state.view,
+          activeGroupId: groupId,
+          // Clear active layer and showLayerProperties when selecting a group
+          ...(groupId ? { activeLayerId: null, showLayerProperties: false } : {}),
+        },
+      }));
+    },
+
+    getGroup: (groupId) => {
+      return get().layerGroups.find((g) => g.id === groupId);
     },
 
     // ============================================
@@ -770,60 +856,126 @@ export const useTimelineStore = create<TimelineState>()(
       // Auto-expand timeline
       get().ensureTimelineContains(frame);
 
-      set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          propertyTracks: l.propertyTracks.map((pt) => {
-            if (pt.id !== trackId) return pt;
-
-            // Replace existing keyframe at same frame, or add new one
-            const existingIndex = pt.keyframes.findIndex((kf) => kf.frame === frame);
-            if (existingIndex !== -1) {
-              const updated = [...pt.keyframes];
-              updated[existingIndex] = { ...updated[existingIndex], value };
-              return { ...pt, keyframes: updated };
-            }
-
-            // Insert sorted by frame
-            const keyframes = [...pt.keyframes, newKeyframe].sort((a, b) => a.frame - b.frame);
-            return { ...pt, keyframes };
+      // Try layers first
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer && layer.propertyTracks.some((pt) => pt.id === trackId)) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            propertyTracks: l.propertyTracks.map((pt) => {
+              if (pt.id !== trackId) return pt;
+              const existingIndex = pt.keyframes.findIndex((kf) => kf.frame === frame);
+              if (existingIndex !== -1) {
+                const updated = [...pt.keyframes];
+                updated[existingIndex] = { ...updated[existingIndex], value };
+                return { ...pt, keyframes: updated };
+              }
+              const keyframes = [...pt.keyframes, newKeyframe].sort((a, b) => a.frame - b.frame);
+              return { ...pt, keyframes };
+            }),
+          })),
+        }));
+      } else {
+        // Fall back to layerGroups
+        set((state) => ({
+          layerGroups: state.layerGroups.map((g) => {
+            const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
+            if (!hasTrack) return g;
+            return {
+              ...g,
+              propertyTracks: g.propertyTracks.map((pt) => {
+                if (pt.id !== trackId) return pt;
+                const existingIndex = pt.keyframes.findIndex((kf) => kf.frame === frame);
+                if (existingIndex !== -1) {
+                  const updated = [...pt.keyframes];
+                  updated[existingIndex] = { ...updated[existingIndex], value };
+                  return { ...pt, keyframes: updated };
+                }
+                const keyframes = [...pt.keyframes, newKeyframe].sort((a, b) => a.frame - b.frame);
+                return { ...pt, keyframes };
+              }),
+            };
           }),
-        })),
-      }));
+        }));
+      }
 
       return id;
     },
 
     removeKeyframe: (layerId, trackId, keyframeId) => {
-      set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          propertyTracks: l.propertyTracks.map((pt) =>
-            pt.id === trackId
-              ? { ...pt, keyframes: pt.keyframes.filter((kf) => kf.id !== keyframeId) }
-              : pt,
-          ),
-        })),
-      }));
+      // Try layers first — check if the layer actually has this track
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer && layer.propertyTracks.some((pt) => pt.id === trackId)) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            propertyTracks: l.propertyTracks.map((pt) =>
+              pt.id === trackId
+                ? { ...pt, keyframes: pt.keyframes.filter((kf) => kf.id !== keyframeId) }
+                : pt,
+            ),
+          })),
+        }));
+      } else {
+        // Fall back to layerGroups
+        set((state) => ({
+          layerGroups: state.layerGroups.map((g) => {
+            const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
+            if (!hasTrack) return g;
+            return {
+              ...g,
+              propertyTracks: g.propertyTracks.map((pt) =>
+                pt.id === trackId
+                  ? { ...pt, keyframes: pt.keyframes.filter((kf) => kf.id !== keyframeId) }
+                  : pt,
+              ),
+            };
+          }),
+        }));
+      }
     },
 
     updateKeyframe: (layerId, trackId, keyframeId, updates) => {
-      set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          propertyTracks: l.propertyTracks.map((pt) => {
-            if (pt.id !== trackId) return pt;
-            const keyframes = pt.keyframes.map((kf) =>
-              kf.id === keyframeId ? { ...kf, ...updates } : kf,
-            );
-            // Re-sort if frame changed
-            if (updates.frame !== undefined) {
-              keyframes.sort((a, b) => a.frame - b.frame);
-            }
-            return { ...pt, keyframes };
+      // Try layers first — check if the layer actually has this track
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer && layer.propertyTracks.some((pt) => pt.id === trackId)) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            propertyTracks: l.propertyTracks.map((pt) => {
+              if (pt.id !== trackId) return pt;
+              const keyframes = pt.keyframes.map((kf) =>
+                kf.id === keyframeId ? { ...kf, ...updates } : kf,
+              );
+              if (updates.frame !== undefined) {
+                keyframes.sort((a, b) => a.frame - b.frame);
+              }
+              return { ...pt, keyframes };
+            }),
+          })),
+        }));
+      } else {
+        // Fall back to layerGroups
+        set((state) => ({
+          layerGroups: state.layerGroups.map((g) => {
+            const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
+            if (!hasTrack) return g;
+            return {
+              ...g,
+              propertyTracks: g.propertyTracks.map((pt) => {
+                if (pt.id !== trackId) return pt;
+                const keyframes = pt.keyframes.map((kf) =>
+                  kf.id === keyframeId ? { ...kf, ...updates } : kf,
+                );
+                if (updates.frame !== undefined) {
+                  keyframes.sort((a, b) => a.frame - b.frame);
+                }
+                return { ...pt, keyframes };
+              }),
+            };
           }),
-        })),
-      }));
+        }));
+      }
     },
 
     moveKeyframe: (layerId, trackId, keyframeId, newFrame) => {
@@ -1263,7 +1415,7 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     copyKeyframes: (keyframeIds) => {
-      // Collect all selected keyframes across all layers/tracks
+      // Collect all selected keyframes across all layers/tracks AND groups
       type Entry = { layerId: string; trackId: string; propertyPath: string; frame: number; value: number; easing: import('../types/timeline').Keyframe['easing'] };
       const entries: Entry[] = [];
       for (const layer of get().layers) {
@@ -1272,6 +1424,23 @@ export const useTimelineStore = create<TimelineState>()(
             if (keyframeIds.includes(kf.id)) {
               entries.push({
                 layerId: layer.id as string,
+                trackId: track.id as string,
+                propertyPath: track.propertyPath,
+                frame: kf.frame,
+                value: kf.value as number,
+                easing: kf.easing,
+              });
+            }
+          }
+        }
+      }
+      // Also search layerGroups
+      for (const group of get().layerGroups) {
+        for (const track of group.propertyTracks) {
+          for (const kf of track.keyframes) {
+            if (keyframeIds.includes(kf.id)) {
+              entries.push({
+                layerId: (group.childLayerIds[0] ?? group.id) as string,
                 trackId: track.id as string,
                 propertyPath: track.propertyPath,
                 frame: kf.frame,
@@ -1455,6 +1624,320 @@ export const useTimelineStore = create<TimelineState>()(
           workAreaEnd: trimDuration,
           workAreaEnabled: false,
         },
+      });
+    },
+
+    // ============================================
+    // MERGE / FLATTEN ACTIONS
+    // ============================================
+
+    mergeDown: (layerId) => {
+      const { layers, view, config } = get();
+      const index = layers.findIndex((l) => l.id === layerId);
+      if (index <= 0) return null; // Can't merge bottom layer or not found
+
+      const upperLayer = layers[index];
+      const lowerLayer = layers[index - 1];
+
+      // Composite the two layers across all frames into the lower layer
+      const canvasWidth = useCanvasStore.getState().width;
+      const canvasHeight = useCanvasStore.getState().height;
+
+      // Build a new set of content frames for the merged result
+      // Determine the frame range covered by both layers
+      const allFrames = [...upperLayer.contentFrames, ...lowerLayer.contentFrames];
+      const minStart = Math.min(...allFrames.map(cf => cf.startFrame));
+      const maxEnd = Math.max(...allFrames.map(cf => cf.startFrame + cf.durationFrames));
+
+      // Composite frame-by-frame and detect unique content blocks
+      const mergedContentFrames: ContentFrame[] = [];
+      let currentBlockStart = -1;
+      let currentBlockData: Map<string, Cell> | null = null;
+
+      for (let f = minStart; f < maxEnd; f++) {
+        const compositedCells = compositeLayersAtFrame(
+          [lowerLayer, upperLayer], // bottom-to-top
+          f,
+          canvasWidth,
+          canvasHeight,
+          undefined,
+          false,
+        );
+
+        if (compositedCells.size === 0) {
+          // Gap frame — close any open block
+          if (currentBlockData) {
+            mergedContentFrames.push({
+              id: generateContentFrameId(),
+              name: `Frame ${mergedContentFrames.length + 1}`,
+              startFrame: currentBlockStart,
+              durationFrames: f - currentBlockStart,
+              data: currentBlockData,
+            });
+            currentBlockData = null;
+          }
+        } else if (!currentBlockData) {
+          // Start a new block
+          currentBlockStart = f;
+          currentBlockData = new Map(compositedCells);
+        }
+        // else: continue existing block (keep first frame's data if 1-frame-per-block isn't needed)
+      }
+      // Close final block
+      if (currentBlockData) {
+        mergedContentFrames.push({
+          id: generateContentFrameId(),
+          name: `Frame ${mergedContentFrames.length + 1}`,
+          startFrame: currentBlockStart,
+          durationFrames: maxEnd - currentBlockStart,
+          data: currentBlockData,
+        });
+      }
+
+      // If no content was produced, create a single empty frame
+      if (mergedContentFrames.length === 0) {
+        mergedContentFrames.push({
+          id: generateContentFrameId(),
+          name: 'Frame 1',
+          startFrame: 0,
+          durationFrames: 1,
+          data: new Map(),
+        });
+      }
+
+      // Create merged layer with lower layer's name
+      const mergedLayer: Layer = {
+        id: generateLayerId(),
+        name: lowerLayer.name,
+        visible: true,
+        solo: false,
+        locked: false,
+        opacity: 100,
+        contentFrames: mergedContentFrames,
+        propertyTracks: [],
+        staticProperties: {
+          'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
+          'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
+        },
+      };
+
+      // Replace the two layers with the merged one
+      const newLayers = [
+        ...layers.slice(0, index - 1),
+        mergedLayer,
+        ...layers.slice(index + 1),
+      ];
+
+      set({
+        layers: newLayers,
+        view: { ...view, activeLayerId: mergedLayer.id },
+      });
+
+      return mergedLayer.id;
+    },
+
+    mergeVisible: () => {
+      const { layers, view, config } = get();
+      const visibleLayers = layers.filter((l) => l.visible);
+      if (visibleLayers.length < 2) return null; // Need at least 2 to merge
+
+      const canvasWidth = useCanvasStore.getState().width;
+      const canvasHeight = useCanvasStore.getState().height;
+
+      // Determine the frame range covered by all visible layers
+      const allFrames = visibleLayers.flatMap(l => l.contentFrames);
+      if (allFrames.length === 0) return null;
+      const minStart = Math.min(...allFrames.map(cf => cf.startFrame));
+      const maxEnd = Math.max(...allFrames.map(cf => cf.startFrame + cf.durationFrames));
+
+      // Composite all visible layers frame-by-frame
+      const mergedContentFrames: ContentFrame[] = [];
+      let currentBlockStart = -1;
+      let currentBlockData: Map<string, Cell> | null = null;
+
+      for (let f = minStart; f < maxEnd; f++) {
+        const compositedCells = compositeLayersAtFrame(
+          visibleLayers,
+          f,
+          canvasWidth,
+          canvasHeight,
+          undefined,
+          false,
+        );
+
+        if (compositedCells.size === 0) {
+          if (currentBlockData) {
+            mergedContentFrames.push({
+              id: generateContentFrameId(),
+              name: `Frame ${mergedContentFrames.length + 1}`,
+              startFrame: currentBlockStart,
+              durationFrames: f - currentBlockStart,
+              data: currentBlockData,
+            });
+            currentBlockData = null;
+          }
+        } else if (!currentBlockData) {
+          currentBlockStart = f;
+          currentBlockData = new Map(compositedCells);
+        }
+      }
+      if (currentBlockData) {
+        mergedContentFrames.push({
+          id: generateContentFrameId(),
+          name: `Frame ${mergedContentFrames.length + 1}`,
+          startFrame: currentBlockStart,
+          durationFrames: maxEnd - currentBlockStart,
+          data: currentBlockData,
+        });
+      }
+
+      if (mergedContentFrames.length === 0) {
+        mergedContentFrames.push({
+          id: generateContentFrameId(),
+          name: 'Frame 1',
+          startFrame: 0,
+          durationFrames: 1,
+          data: new Map(),
+        });
+      }
+
+      const mergedLayer: Layer = {
+        id: generateLayerId(),
+        name: 'Merged',
+        visible: true,
+        solo: false,
+        locked: false,
+        opacity: 100,
+        contentFrames: mergedContentFrames,
+        propertyTracks: [],
+        staticProperties: {
+          'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
+          'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
+        },
+      };
+
+      // Remove all visible layers; keep invisible ones; insert merged at top visible position
+      const invisibleLayers = layers.filter((l) => !l.visible);
+      const topVisibleIndex = layers.findIndex((l) => l.visible);
+      const insertIndex = topVisibleIndex !== -1 ? topVisibleIndex : 0;
+
+      const newLayers = [
+        ...invisibleLayers.slice(0, insertIndex),
+        mergedLayer,
+        ...invisibleLayers.slice(insertIndex),
+      ];
+
+      set({
+        layers: newLayers,
+        view: { ...view, activeLayerId: mergedLayer.id },
+      });
+
+      return mergedLayer.id;
+    },
+
+    flattenLayer: (layerId) => {
+      const { layers, config } = get();
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+
+      // Only flatten if there are transforms to bake
+      const hasTransforms = layer.propertyTracks.length > 0 ||
+        Object.keys(layer.staticProperties).some((k) => {
+          if (k === 'transform.anchorPoint.x' || k === 'transform.anchorPoint.y') return false;
+          const v = layer.staticProperties[k];
+          if (k === 'transform.scale.x' || k === 'transform.scale.y') return v !== 1;
+          return v !== 0;
+        });
+
+      if (!hasTransforms) return; // Nothing to flatten
+
+      const canvasWidth = useCanvasStore.getState().width;
+      const canvasHeight = useCanvasStore.getState().height;
+
+      // Composite the single layer (applies its transforms) and write the result back
+      const flattenedFrames = layer.contentFrames.map((cf) => {
+        const compositedCells = compositeLayersAtFrame(
+          [layer],
+          cf.startFrame,
+          canvasWidth,
+          canvasHeight,
+          undefined,
+          false,
+        );
+
+        return {
+          ...cf,
+          data: compositedCells,
+        };
+      });
+
+      // Reset transforms
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          contentFrames: flattenedFrames,
+          propertyTracks: [],
+          staticProperties: {
+            'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
+            'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
+          },
+        })),
+      }));
+    },
+
+    // ============================================
+    // LAYER GROUP ACTIONS
+    // ============================================
+
+    createGroup: (name, layerIds) => {
+      const { layers, layerGroups, view } = get();
+      if (layerIds.length < 2) return null; // Need at least 2 layers
+
+      // Verify all layers exist
+      const validIds = layerIds.filter((id) => layers.some((l) => l.id === id));
+      if (validIds.length < 2) return null;
+
+      const groupId = generateLayerGroupId();
+      const newGroup: LayerGroup = {
+        id: groupId,
+        name,
+        childLayerIds: validIds,
+        visible: true,
+        solo: false,
+        locked: false,
+        collapsed: false,
+        propertyTracks: [],
+        staticProperties: {},
+      };
+
+      // Update layers to reference the group
+      const updatedLayers = layers.map((l) =>
+        validIds.includes(l.id) ? { ...l, parentGroupId: groupId } : l,
+      );
+
+      set({
+        layers: updatedLayers,
+        layerGroups: [...layerGroups, newGroup],
+      });
+
+      return groupId;
+    },
+
+    ungroupLayers: (groupId) => {
+      const { layers, layerGroups } = get();
+      const group = layerGroups.find((g) => g.id === groupId);
+      if (!group) return;
+
+      // Remove group reference from child layers
+      const updatedLayers = layers.map((l) =>
+        l.parentGroupId === groupId
+          ? { ...l, parentGroupId: undefined }
+          : l,
+      );
+
+      set({
+        layers: updatedLayers,
+        layerGroups: layerGroups.filter((g) => g.id !== groupId),
       });
     },
 

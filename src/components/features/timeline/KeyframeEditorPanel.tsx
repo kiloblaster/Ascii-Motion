@@ -27,6 +27,7 @@ export const KeyframeEditorPanel: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
   const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const layers = useTimelineStore((s) => s.layers);
+  const layerGroups = useTimelineStore((s) => s.layerGroups);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const moveKeyframe = useTimelineStore((s) => s.moveKeyframe);
   const updateKeyframe = useTimelineStore((s) => s.updateKeyframe);
@@ -39,6 +40,7 @@ export const KeyframeEditorPanel: React.FC = () => {
   // Find the keyframe being edited across all layers/tracks
   const kfData = useMemo(() => {
     if (!editingKeyframeId) return null;
+    // Search layers
     for (const layer of layers) {
       for (const track of layer.propertyTracks) {
         const kf = track.keyframes.find((k) => k.id === editingKeyframeId);
@@ -47,8 +49,18 @@ export const KeyframeEditorPanel: React.FC = () => {
         }
       }
     }
+    // Search groups
+    for (const group of layerGroups) {
+      for (const track of group.propertyTracks) {
+        const kf = track.keyframes.find((k) => k.id === editingKeyframeId);
+        if (kf) {
+          const proxyLayerId = group.childLayerIds[0] ?? ('' as typeof layers[0]['id']);
+          return { layerId: proxyLayerId, trackId: track.id, keyframe: kf, track };
+        }
+      }
+    }
     return null;
-  }, [editingKeyframeId, layers]);
+  }, [editingKeyframeId, layers, layerGroups]);
 
   // Build a lookup for all selected keyframes (for batch operations)
   const selectedKeyframeEntries = useMemo(() => {
@@ -63,8 +75,18 @@ export const KeyframeEditorPanel: React.FC = () => {
         }
       }
     }
+    for (const group of layerGroups) {
+      for (const track of group.propertyTracks) {
+        for (const kf of track.keyframes) {
+          if (selectedKeyframeIds.has(kf.id)) {
+            const proxyLayerId = group.childLayerIds[0] ?? ('' as typeof layers[0]['id']);
+            entries.push({ layerId: proxyLayerId, trackId: track.id, keyframe: kf });
+          }
+        }
+      }
+    }
     return entries;
-  }, [selectedKeyframeIds, layers]);
+  }, [selectedKeyframeIds, layers, layerGroups]);
 
   if (!kfData) {
     return null;

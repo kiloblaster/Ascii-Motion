@@ -12,10 +12,11 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
-import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
+import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
-import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER } from '../../../types/timeline';
+import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
+import { defaultEasing } from '../../../types/easing';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import { TimelineContextMenu, type TimelineContextMenuState } from './TimelineContextMenu';
 import type { KeyframeId, ContentFrameId, LayerId } from '../../../types/timeline';
@@ -30,6 +31,7 @@ interface TimelineTrackAreaProps {
 
 export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef }) => {
   const layers = useTimelineStore((s) => s.layers);
+  const layerGroups = useTimelineStore((s) => s.layerGroups);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
@@ -146,8 +148,37 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
       const result: KeyframeId[] = [];
       let yOffset = 0;
+      const renderedGroupIds = new Set<string>();
 
       for (const layer of displayLayers) {
+        // Check for group header
+        const group = layer.parentGroupId
+          ? layerGroups.find(g => g.id === layer.parentGroupId)
+          : null;
+        if (group && !renderedGroupIds.has(group.id as string)) {
+          renderedGroupIds.add(group.id as string);
+          yOffset += 28; // Group header height (min-h-[28px])
+
+          // Group property track rows (when expanded)
+          const groupExpanded = !group.collapsed;
+          if (groupExpanded && group.propertyTracks.length > 0) {
+            for (const track of group.propertyTracks) {
+              const trackTop = yOffset;
+              const trackBottom = yOffset + TRACK_ROW_H;
+              for (const kf of track.keyframes) {
+                const kfX = kf.frame * pxPerFrame;
+                if (kfX >= left - 6 && kfX <= right + 6 && trackBottom > top && trackTop < bottom) {
+                  result.push(kf.id);
+                }
+              }
+              yOffset += TRACK_ROW_H;
+            }
+          }
+        }
+
+        // Skip collapsed group children
+        if (group && group.collapsed) continue;
+
         // Content frame row
         yOffset += CONTENT_ROW_H;
 
@@ -175,7 +206,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
       return result;
     },
-    [displayLayers, expandedLayerIds, pxPerFrame],
+    [displayLayers, expandedLayerIds, pxPerFrame, layerGroups],
   );
 
   const handleTrackAreaMouseDown = useCallback(
@@ -250,7 +281,101 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
       onMouseDown={handleTrackAreaMouseDown}
     >
       <div className="relative" style={{ width: totalWidth, minWidth: '100%' }}>
-        {displayLayers.map((layer) => (
+        {(() => {
+          const renderedGroupIds = new Set<string>();
+          const items: React.ReactNode[] = [];
+
+          displayLayers.forEach((layer) => {
+            // Check for group header
+            const group = layer.parentGroupId
+              ? layerGroups.find(g => g.id === layer.parentGroupId)
+              : null;
+
+            // Insert group header spacer to match LayerList
+            if (group && !renderedGroupIds.has(group.id as string)) {
+              renderedGroupIds.add(group.id as string);
+              // Group header row
+              items.push(
+                <div
+                  key={`group-spacer-${group.id}`}
+                  className="border-b border-border/50 bg-muted/40"
+                  style={{ minHeight: 28 }}
+                />
+              );
+
+              // Group property track rows (when expanded)
+              const groupExpanded = !group.collapsed;
+              if (groupExpanded && group.propertyTracks.length > 0) {
+                const sortedTracks = [...group.propertyTracks].sort((a, b) => {
+                  const idxA = PROPERTY_DISPLAY_ORDER.indexOf(a.propertyPath);
+                  const idxB = PROPERTY_DISPLAY_ORDER.indexOf(b.propertyPath);
+                  return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+                });
+
+                for (const track of sortedTracks) {
+                  // Use first child layer as proxy layerId for KeyframeDiamond
+                  const proxyLayerId = group.childLayerIds[0];
+                  items.push(
+                    <div
+                      key={`group-track-${group.id}-${track.id}`}
+                      className="relative border-b border-border/30 min-h-[24px] bg-muted/10 cursor-crosshair"
+                      onDoubleClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left;
+                        const frame = Math.round(clickX / pxPerFrame);
+                        if (frame >= 0) {
+                          const currentValue = getGroupPropertyValue(group, track.propertyPath, frame);
+                          const kfId = generateKeyframeId();
+                          useTimelineStore.setState((s) => ({
+                            layerGroups: s.layerGroups.map(g => g.id !== group.id ? g : {
+                              ...g, propertyTracks: g.propertyTracks.map(t => t.id !== track.id ? t : {
+                                ...t, keyframes: [...t.keyframes, { id: kfId, frame, value: currentValue, easing: defaultEasing() }].sort((a: { frame: number }, b: { frame: number }) => a.frame - b.frame),
+                              }),
+                            }),
+                          }));
+                          selectKeyframes([kfId]);
+                          setEditingKeyframe(kfId);
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        if ((e.target as HTMLElement).closest('[data-keyframe]')) return;
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0);
+                        const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+                        setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'property-track', layerId: proxyLayerId, trackId: track.id, clickFrame } });
+                      }}
+                    >
+                      {track.keyframes.map((kf) => (
+                        <KeyframeDiamond
+                          key={kf.id}
+                          layerId={proxyLayerId}
+                          trackId={track.id}
+                          keyframe={kf}
+                          pxPerFrame={pxPerFrame}
+                          scrollX={scrollX}
+                          isSelected={selectedKeyframeIds.has(kf.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const selKfIds = useTimelineStore.getState().view.selectedKeyframeIds;
+                            const kfIds = selKfIds.has(kf.id) && selKfIds.size > 0
+                              ? [...selKfIds]
+                              : [kf.id];
+                            setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'keyframe', layerId: proxyLayerId, trackId: track.id, keyframeIds: kfIds } });
+                          }}
+                        />
+                      ))}
+                    </div>
+                  );
+                }
+              }
+            }
+
+            // Skip collapsed group children
+            if (group && group.collapsed) return;
+
+            items.push(
           <div key={layer.id} data-layer-id={layer.id}>
             {/* Layer content frame row */}
             <div
@@ -440,7 +565,11 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
               <div className="min-h-[24px] border-b border-border/30 bg-muted/5" />
             )}
           </div>
-        ))}
+            );
+          });
+
+          return items;
+        })()}
 
         {/* Marquee selection rectangle */}
         {marquee && (

@@ -163,10 +163,11 @@ export const useOptimizedPlayback = () => {
     let precomputedFrames: Map<string, import('../types').Cell>[] | null = null;
 
     if (isLayerMode) {
+      const groups = useTimelineStore.getState().layerGroups;
       precomputedFrames = [];
       for (let f = 0; f < durationFrames; f++) {
         precomputedFrames.push(
-          compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight, undefined, true),
+          compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight, undefined, true, groups),
         );
       }
     }

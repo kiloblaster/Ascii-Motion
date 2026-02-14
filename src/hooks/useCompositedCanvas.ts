@@ -38,6 +38,7 @@ import {
  */
 export function useCompositedCanvas() {
   const layers = useTimelineStore((s) => s.layers);
+  const layerGroups = useTimelineStore((s) => s.layerGroups);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const canvasWidth = useCanvasStore((s) => s.width);
@@ -98,8 +99,9 @@ export function useCompositedCanvas() {
       canvasHeight,
       undefined,
       false,
+      layerGroups,
     );
-  }, [layers, currentFrame, activeLayerId, canvasCells, canvasWidth, canvasHeight, isLayerMode]);
+  }, [layers, layerGroups, currentFrame, activeLayerId, canvasCells, canvasWidth, canvasHeight, isLayerMode]);
 
   // Cell getter function for the renderer
   const getCompositedCell = useMemo(() => {

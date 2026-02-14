@@ -103,6 +103,7 @@ const KEYBOARD_SHORTCUTS: ShortcutSection[] = [
       { keys: ['1'], description: 'Zoom out timeline' },
       { keys: ['2'], description: 'Zoom in timeline' },
       { keys: ['U'], description: 'Show/hide all keyframes' },
+      { keys: ['Cmd', 'G'], description: 'Group selected layers' },
       { keys: ['Shift', 'O'], description: 'Toggle onion skinning' },
     ]
   },

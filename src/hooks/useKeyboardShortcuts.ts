@@ -1155,6 +1155,91 @@ const processHistoryAction = (
       }
       break;
     }
+
+    case 'merge_layers': {
+      const mergeAction = action as import('../types').MergeLayersHistoryAction;
+      const tl = useTimelineStore.getState();
+      
+      if (isRedo) {
+        // Redo: remove the original layers, insert the merged one
+        const idsToRemove = new Set(mergeAction.data.removedLayers.map(l => l.id));
+        const withoutRemoved = tl.layers.filter(l => !idsToRemove.has(l.id));
+        const mergedLayerRestored = {
+          ...mergeAction.data.mergedLayer,
+          contentFrames: mergeAction.data.mergedLayer.contentFrames.map((cf: { data: unknown } & Record<string, unknown>) => ({
+            ...cf,
+            data: cf.data instanceof Map ? cf.data : new Map(Object.entries((cf.data ?? {}) as Record<string, unknown>)),
+          })),
+        };
+        const insertIdx = Math.min(mergeAction.data.insertIndex, withoutRemoved.length);
+        const newLayers = [
+          ...withoutRemoved.slice(0, insertIdx),
+          mergedLayerRestored,
+          ...withoutRemoved.slice(insertIdx),
+        ];
+        useTimelineStore.setState({
+          layers: newLayers as import('../types/timeline').Layer[],
+          view: { ...tl.view, activeLayerId: mergedLayerRestored.id as import('../types/timeline').LayerId },
+        });
+      } else {
+        // Undo: remove the merged layer, restore the original layers at their indices
+        const mergedId = mergeAction.data.mergedLayer.id;
+        const withoutMerged = tl.layers.filter(l => (l.id as string) !== (mergedId as string));
+        
+        // Re-insert original layers at their original positions
+        const restoredLayers = [...withoutMerged];
+        const sortedEntries = mergeAction.data.removedLayers
+          .map((l, i) => ({ layer: l, index: mergeAction.data.removedIndices[i] }))
+          .sort((a, b) => a.index - b.index);
+        
+        for (const entry of sortedEntries) {
+          const restored = {
+            ...entry.layer,
+            contentFrames: entry.layer.contentFrames.map((cf: { data: unknown } & Record<string, unknown>) => ({
+              ...cf,
+              data: cf.data instanceof Map ? cf.data : new Map(Object.entries((cf.data ?? {}) as Record<string, unknown>)),
+            })),
+          };
+          const idx = Math.min(entry.index, restoredLayers.length);
+          restoredLayers.splice(idx, 0, restored as import('../types/timeline').Layer);
+        }
+        
+        useTimelineStore.setState({
+          layers: restoredLayers,
+          view: { ...tl.view, activeLayerId: sortedEntries[0]?.layer.id as import('../types/timeline').LayerId },
+        });
+      }
+      // Sync canvas
+      const updated = useTimelineStore.getState();
+      const activeL = updated.layers.find(l => l.id === updated.view.activeLayerId);
+      if (activeL && activeL.contentFrames.length > 0) {
+        canvasStore.setCanvasData(activeL.contentFrames[0].data instanceof Map ? activeL.contentFrames[0].data : new Map());
+      }
+      break;
+    }
+
+    case 'create_group': {
+      const groupAction = action as import('../types').CreateGroupHistoryAction;
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        tl.createGroup(groupAction.data.groupName, groupAction.data.layerIds.map(id => id as import('../types/timeline').LayerId));
+      } else {
+        tl.ungroupLayers(groupAction.data.groupId as import('../types/timeline').LayerGroupId);
+      }
+      break;
+    }
+
+    case 'ungroup_layers': {
+      const ungroupAction = action as import('../types').UngroupLayersHistoryAction;
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        tl.ungroupLayers(ungroupAction.data.group.id);
+      } else {
+        // Re-create the group
+        tl.createGroup(ungroupAction.data.group.name, ungroupAction.data.group.childLayerIds);
+      }
+      break;
+    }
       
     default:
       console.warn('Unknown history action type:', action);
@@ -1203,7 +1288,7 @@ export const useKeyboardShortcuts = () => {
   const { canCrop, cropToSelection } = useCropToSelection();
 
   // Timeline layer-aware content frame operations
-  const { addContentFrame, removeContentFrame, duplicateContentFrame, splitContentFrame, updateContentFrameTiming } = useTimelineHistory();
+  const { addContentFrame, removeContentFrame, duplicateContentFrame, splitContentFrame, updateContentFrameTiming, createGroup } = useTimelineHistory();
 
   // Helper function to handle different types of history actions
   const handleHistoryAction = useCallback((action: AnyHistoryAction, isRedo: boolean) => {
@@ -1807,6 +1892,17 @@ export const useKeyboardShortcuts = () => {
               );
               const toExpand = withKfs.length > 0 ? withKfs : current.layers;
               current.setExpandedLayerIds(new Set(toExpand.map((l) => l.id)));
+              // Also expand any collapsed groups so their children are visible
+              if (current.layerGroups.length > 0) {
+                const hasCollapsed = current.layerGroups.some((g) => g.collapsed);
+                if (hasCollapsed) {
+                  useTimelineStore.setState({
+                    layerGroups: current.layerGroups.map((g) =>
+                      g.collapsed ? { ...g, collapsed: false } : g
+                    ),
+                  });
+                }
+              }
             } else {
               // Collapse all
               current.setExpandedLayerIds(new Set());
@@ -1904,6 +2000,26 @@ export const useKeyboardShortcuts = () => {
     }
 
     switch (normalizedKey) {
+      case 'g': {
+        // Cmd/Ctrl+G = Group selected layers
+        if (!event.shiftKey) {
+          event.preventDefault();
+          const tl = useTimelineStore.getState();
+          const selectedIds = Array.from(tl.view.selectedLayerIds);
+          if (selectedIds.length >= 2) {
+            // Check none are already in a group
+            const allFree = selectedIds.every(id => {
+              const l = tl.layers.find(layer => layer.id === id);
+              return l && !l.parentGroupId;
+            });
+            if (allFree) {
+              createGroup('Group', selectedIds);
+            }
+          }
+        }
+        break;
+      }
+
       case 'n': {
         // Ctrl+N = Add new frame block at playhead
         if (!event.shiftKey) {

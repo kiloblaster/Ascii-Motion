@@ -20,6 +20,7 @@ import { TimelineToolbar } from './timeline/TimelineToolbar';
 import { TimecodeDisplay, TimelineDurationInput } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
+import { GroupPropertiesPanel } from './timeline/GroupPropertiesPanel';
 import { OnionSkinControls } from './OnionSkinControls';
 import { FrameRateControl } from './timeline/FrameRateControl';
 import { Button } from '../ui/button';
@@ -215,8 +216,8 @@ export const TimelinePanel: React.FC = () => {
               />
             </div>
 
-            {/* Right: Keyframe editor or Layer properties */}
-            {editingKeyframeId ? <KeyframeEditorPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : null}
+            {/* Right: Keyframe editor or Layer/Group properties */}
+            {editingKeyframeId ? <KeyframeEditorPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : <GroupPropertiesPanel />}
           </div>
         </div>
   );

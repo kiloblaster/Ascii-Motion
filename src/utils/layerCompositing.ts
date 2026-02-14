@@ -15,6 +15,7 @@
 import type { Cell } from '../types';
 import type {
   Layer,
+  LayerGroup,
   ContentFrame,
   PropertyPath,
   PropertyTrack,
@@ -45,6 +46,7 @@ export function compositeLayersAtFrame(
   canvasHeight: number,
   cellAspectRatio: number = CELL_ASPECT_RATIO,
   clip: boolean = true,
+  groups?: LayerGroup[],
 ): Map<string, Cell> {
   const result = new Map<string, Cell>();
 
@@ -64,13 +66,31 @@ export function compositeLayersAtFrame(
     if (!contentFrame) continue;
 
     // Get transform values at this frame via keyframe interpolation
-    const posX = getPropertyValueAtFrame(layer, 'transform.position.x', frame);
-    const posY = getPropertyValueAtFrame(layer, 'transform.position.y', frame);
-    const scaleX = getPropertyValueAtFrame(layer, 'transform.scale.x', frame);
-    const scaleY = getPropertyValueAtFrame(layer, 'transform.scale.y', frame);
-    const rotation = getPropertyValueAtFrame(layer, 'transform.rotation', frame);
+    let posX = getPropertyValueAtFrame(layer, 'transform.position.x', frame);
+    let posY = getPropertyValueAtFrame(layer, 'transform.position.y', frame);
+    let scaleX = getPropertyValueAtFrame(layer, 'transform.scale.x', frame);
+    let scaleY = getPropertyValueAtFrame(layer, 'transform.scale.y', frame);
+    let rotation = getPropertyValueAtFrame(layer, 'transform.rotation', frame);
     const anchorX = getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', frame);
     const anchorY = getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', frame);
+
+    // Compose group transforms if this layer belongs to a group
+    if (layer.parentGroupId && groups) {
+      const group = groups.find((g) => g.id === layer.parentGroupId);
+      if (group) {
+        const gPosX = getGroupPropertyValue(group, 'transform.position.x', frame);
+        const gPosY = getGroupPropertyValue(group, 'transform.position.y', frame);
+        const gScaleX = getGroupPropertyValue(group, 'transform.scale.x', frame);
+        const gScaleY = getGroupPropertyValue(group, 'transform.scale.y', frame);
+        const gRotation = getGroupPropertyValue(group, 'transform.rotation', frame);
+        // Compose: group transform applied after layer transform
+        posX += gPosX;
+        posY += gPosY;
+        scaleX *= gScaleX;
+        scaleY *= gScaleY;
+        rotation += gRotation;
+      }
+    }
 
     // Check if transforms are identity (common case — skip expensive math)
     const hasTransform =
@@ -389,4 +409,31 @@ export function inverseTransformPoint(
   const localY = scaleY !== 0 ? Math.round(invRotY / scaleY + anchorPointY) : anchorPointY;
 
   return { x: localX, y: localY };
+}
+
+// ============================================
+// GROUP PROPERTY HELPERS
+// ============================================
+
+/**
+ * Get a property value from a LayerGroup at a given frame.
+ * Mirrors getPropertyValueAtFrame but works with LayerGroup's propertyTracks.
+ */
+export function getGroupPropertyValue(
+  group: LayerGroup,
+  propertyPath: PropertyPath,
+  frame: number,
+): number {
+  const track = group.propertyTracks.find((t) => t.propertyPath === propertyPath);
+
+  if (!track || track.keyframes.length === 0) {
+    // Check group static properties first, then defaults
+    if (group.staticProperties && propertyPath in group.staticProperties) {
+      return group.staticProperties[propertyPath];
+    }
+    const def = PROPERTY_DEFINITIONS[propertyPath];
+    return (def?.defaultValue as number) ?? 0;
+  }
+
+  return interpolateKeyframes(track.keyframes, frame, track.loopKeyframes);
 }
