@@ -789,6 +789,10 @@ export interface ContentFrameReorderHistoryAction extends HistoryAction {
     previousKeyframes?: Array<{ layerId: string; trackId: string; keyframeId: string; frame: number }>;
     /** Keyframe positions after reorder */
     newKeyframes?: Array<{ layerId: string; trackId: string; keyframeId: string; frame: number }>;
+    /** Timeline duration before (for remove blank space / trimming) */
+    previousTimelineDuration?: number;
+    /** Timeline duration after */
+    newTimelineDuration?: number;
   };
 }
 

@@ -1063,6 +1063,12 @@ const processHistoryAction = (
           );
         }
       }
+
+      // Restore timeline duration if it changed (e.g., remove blank space)
+      const targetDuration = isRedo ? action.data.newTimelineDuration : action.data.previousTimelineDuration;
+      if (targetDuration !== undefined) {
+        useTimelineStore.getState().setDuration(targetDuration);
+      }
       break;
     }
 

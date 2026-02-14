@@ -638,6 +638,79 @@ export function useTimelineHistory() {
   }, [pushToHistory]);
 
   // ============================================
+  // REMOVE BLANK SPACE (with history)
+  // ============================================
+
+  const removeBlankSpace = useCallback((layerId: import('../types/timeline').LayerId, clickFrame: number) => {
+    const tl = useTimelineStore.getState();
+    const layer = tl.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+
+    // Snapshot before
+    const previousState = [{
+      layerId: layerId as string,
+      contentFrames: layer.contentFrames.map((cf) => ({
+        id: cf.id as string,
+        startFrame: cf.startFrame,
+        durationFrames: cf.durationFrames,
+        name: cf.name,
+        data: new Map(cf.data),
+      })),
+    }];
+    const previousKeyframes = layer.propertyTracks.flatMap((track) =>
+      track.keyframes.map((kf) => ({
+        layerId: layerId as string,
+        trackId: track.id as string,
+        keyframeId: kf.id as string,
+        frame: kf.frame,
+      }))
+    );
+    const previousDuration = tl.config.durationFrames;
+
+    // Execute
+    tl.removeBlankSpace(layerId, clickFrame);
+
+    // Snapshot after
+    const afterState = useTimelineStore.getState();
+    const afterLayer = afterState.layers.find((l) => l.id === layerId);
+    if (!afterLayer) return;
+
+    const newState = [{
+      layerId: layerId as string,
+      contentFrames: afterLayer.contentFrames.map((cf) => ({
+        id: cf.id as string,
+        startFrame: cf.startFrame,
+        durationFrames: cf.durationFrames,
+        name: cf.name,
+        data: new Map(cf.data),
+      })),
+    }];
+    const newKeyframes = afterLayer.propertyTracks.flatMap((track) =>
+      track.keyframes.map((kf) => ({
+        layerId: layerId as string,
+        trackId: track.id as string,
+        keyframeId: kf.id as string,
+        frame: kf.frame,
+      }))
+    );
+
+    const historyAction: import('../types').ContentFrameReorderHistoryAction = {
+      type: 'content_frame_reorder',
+      timestamp: Date.now(),
+      description: `Remove blank space on ${layer.name} at frame ${clickFrame}`,
+      data: {
+        previousState,
+        newState,
+        previousKeyframes: previousKeyframes.length > 0 ? previousKeyframes : undefined,
+        newKeyframes: newKeyframes.length > 0 ? newKeyframes : undefined,
+        previousTimelineDuration: previousDuration,
+        newTimelineDuration: afterState.config.durationFrames,
+      },
+    };
+    pushToHistory(historyAction);
+  }, [pushToHistory]);
+
+  // ============================================
   // PASS-THROUGH (no history needed)
   // ============================================
 
@@ -681,6 +754,9 @@ export function useTimelineHistory() {
 
     // Work area (with history)
     trimToWorkArea,
+
+    // Remove blank space (with history)
+    removeBlankSpace,
 
     // Pass-through without history (from store directly)
     setLayerSolo: useTimelineStore.getState().setLayerSolo,

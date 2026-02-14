@@ -211,6 +211,9 @@ export interface TimelineState {
   trimToWorkArea: () => void;
   setTimecodeFormat: (format: import('../types/timeline').TimecodeFormat) => void;
 
+  /** Remove blank space at clickFrame on a layer, shifting subsequent content left */
+  removeBlankSpace: (layerId: LayerId, clickFrame: number) => void;
+
   // Clipboard (for right-click copy/paste of frames and keyframes)
   copiedFrames: Array<{ durationFrames: number; data: Map<string, import('../types').Cell>; hidden?: boolean }> | null;
   copiedKeyframes: Array<{ value: number; easing: import('../types/timeline').Keyframe['easing']; frameOffset: number }> | null;
@@ -1143,6 +1146,88 @@ export const useTimelineStore = create<TimelineState>()(
 
     setTimecodeFormat: (format) => {
       set((state) => ({ view: { ...state.view, timecodeFormat: format } }));
+    },
+
+    // ============================================
+    // REMOVE BLANK SPACE
+    // ============================================
+
+    removeBlankSpace: (layerId, clickFrame) => {
+      const { layers, config } = get();
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+
+      const sorted = [...layer.contentFrames].sort((a, b) => a.startFrame - b.startFrame);
+
+      // Determine if click is after all content frames (trailing space)
+      const lastFrame = sorted.length > 0
+        ? sorted[sorted.length - 1].startFrame + sorted[sorted.length - 1].durationFrames
+        : 0;
+
+      if (clickFrame >= lastFrame) {
+        // Trailing space — shrink timeline to end of last content frame
+        const newDuration = Math.max(1, lastFrame);
+        set((state) => ({
+          config: {
+            ...state.config,
+            durationFrames: newDuration,
+            durationMs: (newDuration / state.config.frameRate) * 1000,
+          },
+        }));
+        return;
+      }
+
+      // Find the gap that contains clickFrame
+      let gapStart = 0;
+      let gapEnd = 0;
+      let foundGap = false;
+
+      for (let i = 0; i < sorted.length; i++) {
+        const cf = sorted[i];
+        if (clickFrame < cf.startFrame && clickFrame >= gapStart) {
+          // Click is in the gap BEFORE this content frame
+          gapEnd = cf.startFrame;
+          foundGap = true;
+          break;
+        }
+        // Move gapStart past this content frame
+        gapStart = cf.startFrame + cf.durationFrames;
+      }
+
+      if (!foundGap) return; // Click was inside a content frame, not a gap
+
+      const gapSize = gapEnd - gapStart;
+      if (gapSize <= 0) return;
+
+      // Shift all content frames that start at or after gapEnd left by gapSize
+      const syncKeyframes = layer.syncKeyframesToFrames ?? false;
+
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => {
+          const newContentFrames = l.contentFrames.map((cf) => {
+            if (cf.startFrame >= gapEnd) {
+              return { ...cf, startFrame: cf.startFrame - gapSize };
+            }
+            return cf;
+          });
+
+          // If sync keyframes is on, shift keyframes in the same range
+          let newPropertyTracks = l.propertyTracks;
+          if (syncKeyframes && l.propertyTracks.length > 0) {
+            newPropertyTracks = l.propertyTracks.map((track) => ({
+              ...track,
+              keyframes: track.keyframes.map((kf) => {
+                if (kf.frame >= gapEnd) {
+                  return { ...kf, frame: kf.frame - gapSize };
+                }
+                return kf;
+              }),
+            }));
+          }
+
+          return { ...l, contentFrames: newContentFrames, propertyTracks: newPropertyTracks };
+        }),
+      }));
     },
 
     // ── Clipboard ──

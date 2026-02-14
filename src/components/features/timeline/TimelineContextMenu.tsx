@@ -27,6 +27,7 @@ import {
   CopyPlus,
   Plus,
   Diamond,
+  ArrowLeftToLine,
 } from 'lucide-react';
 import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../../../types/timeline';
 import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
@@ -107,6 +108,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     addContentFrame,
     addKeyframe,
     removeKeyframe,
+    removeBlankSpace,
   } = useTimelineHistory();
 
   // Close on click outside or Escape
@@ -346,6 +348,14 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
                 pasteFramesWithHistory(ctx.layerId, currentFrame);
               })}
               disabled={!copiedFrames}
+            />
+            <MenuSeparator />
+            <MenuItem
+              icon={<ArrowLeftToLine className="w-4 h-4" />}
+              label="Remove blank space"
+              onClick={() => act(() => {
+                removeBlankSpace(ctx.layerId, ctx.clickFrame);
+              })}
             />
           </>
         );
