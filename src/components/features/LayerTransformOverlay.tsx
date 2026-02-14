@@ -20,7 +20,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useToolStore } from '../../stores/toolStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
-import { getPropertyValueAtFrame } from '../../utils/layerCompositing';
+import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../utils/layerCompositing';
 import { useLayerTransformTool, layerTransformHandlersRef } from '../../hooks/useLayerTransformTool';
 import { usePlaybackOnlySnapshot } from '../../hooks/usePlaybackOnlySnapshot';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,8 @@ export const LayerTransformOverlay: React.FC = () => {
     anchorScreenPos,
     isLocked,
     activeLayer,
+    activeGroup,
+    hasActiveEntity,
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
@@ -128,7 +130,7 @@ export const LayerTransformOverlay: React.FC = () => {
 
   // Hide during playback
   if (activeTool !== 'layertransform') return null;
-  if (!activeLayer) return null;
+  if (!hasActiveEntity) return null;
   if (playbackSnapshot.isActive) return null;
 
   const toPixelX = (cellX: number) => cellX * effectiveCellWidth + panOffset.x;
@@ -139,21 +141,31 @@ export const LayerTransformOverlay: React.FC = () => {
 
   // Motion path dots (same as AnchorPointOverlay)
   const motionPath = (() => {
-    if (!activeLayer) return [];
+    const entity = activeLayer ?? activeGroup;
+    if (!entity) return [];
     const hasTransformData =
-      activeLayer.propertyTracks.some(
+      entity.propertyTracks.some(
         (t) => t.propertyPath.startsWith('transform.') && t.keyframes.length > 0,
       ) ||
-      (activeLayer.staticProperties &&
-        Object.keys(activeLayer.staticProperties).some((k) => k.startsWith('transform.')));
+      (entity.staticProperties &&
+        Object.keys(entity.staticProperties).some((k) => k.startsWith('transform.')));
     if (!hasTransformData) return [];
 
+    const isGroupEntity = !activeLayer && !!activeGroup;
     const points: { x: number; y: number; frame: number }[] = [];
     for (let f = 0; f < durationFrames; f++) {
-      const px = getPropertyValueAtFrame(activeLayer, 'transform.position.x', f);
-      const py = getPropertyValueAtFrame(activeLayer, 'transform.position.y', f);
-      const ax = getPropertyValueAtFrame(activeLayer, 'transform.anchorPoint.x', f);
-      const ay = getPropertyValueAtFrame(activeLayer, 'transform.anchorPoint.y', f);
+      const px = isGroupEntity
+        ? getGroupPropertyValue(activeGroup!, 'transform.position.x', f)
+        : getPropertyValueAtFrame(activeLayer!, 'transform.position.x', f);
+      const py = isGroupEntity
+        ? getGroupPropertyValue(activeGroup!, 'transform.position.y', f)
+        : getPropertyValueAtFrame(activeLayer!, 'transform.position.y', f);
+      const ax = isGroupEntity
+        ? getGroupPropertyValue(activeGroup!, 'transform.anchorPoint.x', f)
+        : getPropertyValueAtFrame(activeLayer!, 'transform.anchorPoint.x', f);
+      const ay = isGroupEntity
+        ? getGroupPropertyValue(activeGroup!, 'transform.anchorPoint.y', f)
+        : getPropertyValueAtFrame(activeLayer!, 'transform.anchorPoint.y', f);
       points.push({ x: px + ax, y: py + ay, frame: f });
     }
     return points;

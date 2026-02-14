@@ -24,7 +24,7 @@ import {
   type PropertyPath,
   type LayerId,
 } from '../types/timeline';
-import { getPropertyValueAtFrame } from '../utils/layerCompositing';
+import { getPropertyValueAtFrame, getGroupPropertyValue } from '../utils/layerCompositing';
 import type {
   KeyframeUpdateHistoryAction,
   KeyframeAddHistoryAction,
@@ -54,11 +54,19 @@ export function useKeyframeableProperty(
   layerId: LayerId | null,
   propertyPath: PropertyPath,
 ) {
-  // Only subscribe to layer data when we have a real layerId
+  // Subscribe to layer OR group data when we have a real layerId
+  // (layerId may actually be a group ID passed from the transform tool)
   const layer = useTimelineStore((s) =>
     layerId ? s.layers.find((l) => l.id === layerId) : null,
   );
-  // Only subscribe to currentFrame when we have a layerId
+  const groupEntity = useTimelineStore((s) =>
+    layerId && !s.layers.find((l) => l.id === layerId)
+      ? s.layerGroups.find((g) => (g.id as unknown as LayerId) === layerId)
+      : null,
+  );
+  const isGroup = !!groupEntity;
+  const entity = layer ?? groupEntity;
+  // Only subscribe to currentFrame when we have an entity
   const currentFrame = useTimelineStore((s) =>
     layerId ? s.view.currentFrame : 0,
   );
@@ -67,14 +75,15 @@ export function useKeyframeableProperty(
   const defaultValue = (definition?.defaultValue as number) ?? 0;
 
   const track = useMemo(
-    () => layer?.propertyTracks.find((t) => t.propertyPath === propertyPath) ?? null,
-    [layer, propertyPath],
+    () => entity?.propertyTracks.find((t) => t.propertyPath === propertyPath) ?? null,
+    [entity, propertyPath],
   );
 
   const value = useMemo(() => {
-    if (!layer) return defaultValue;
-    return getPropertyValueAtFrame(layer, propertyPath, currentFrame);
-  }, [layer, propertyPath, currentFrame, defaultValue]);
+    if (!entity) return defaultValue;
+    if (isGroup) return getGroupPropertyValue(groupEntity!, propertyPath, currentFrame);
+    return getPropertyValueAtFrame(layer!, propertyPath, currentFrame);
+  }, [entity, isGroup, groupEntity, layer, propertyPath, currentFrame, defaultValue]);
 
   const keyframeAtCurrentFrame = useMemo(
     () => track?.keyframes.find((kf) => kf.frame === currentFrame) ?? null,
@@ -84,14 +93,14 @@ export function useKeyframeableProperty(
   // Use a ref to hold the latest values for action callbacks.
   // This avoids recreating useCallback on every render while keeping
   // the callbacks correct.
-  const stateRef = useRef({ layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, value });
-  stateRef.current = { layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, value };
+  const stateRef = useRef({ layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, value, isGroup });
+  stateRef.current = { layerId, track, keyframeAtCurrentFrame, currentFrame, propertyPath, value, isGroup };
 
   // Set value — uses getState() directly instead of useTimelineHistory
   // to avoid creating reactive subscriptions in the CanvasGrid tree
   const setValue = useCallback(
     (newValue: number) => {
-      const { layerId: lid, track: t, keyframeAtCurrentFrame: kf, currentFrame: cf, propertyPath: pp } = stateRef.current;
+      const { layerId: lid, track: t, keyframeAtCurrentFrame: kf, currentFrame: cf, propertyPath: pp, isGroup: ig } = stateRef.current;
       if (!lid) return;
       const tl = useTimelineStore.getState();
       const { pushToHistory } = useToolStore.getState();
@@ -102,12 +111,25 @@ export function useKeyframeableProperty(
           pushToHistory({ type: 'keyframe_update', timestamp: Date.now(), description: `Update keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kf.id, oldValue: oldKf, newValue: { ...oldKf, value: newValue } } } as KeyframeUpdateHistoryAction);
         } else {
           const kfId = tl.addKeyframe(lid, t.id, cf, newValue);
-          const newKf = tl.getLayer(lid)?.propertyTracks.find(pt => pt.id === t.id)?.keyframes.find(k => k.id === kfId);
+          // Find the newly added keyframe across layers and groups
+          const findKf = () => {
+            const layer = tl.getLayer(lid);
+            if (layer) {
+              const track = layer.propertyTracks.find(pt => pt.id === t.id);
+              return track?.keyframes.find(k => k.id === kfId);
+            }
+            for (const g of tl.layerGroups) {
+              const track = g.propertyTracks.find(pt => pt.id === t.id);
+              if (track) return track.keyframes.find(k => k.id === kfId);
+            }
+            return undefined;
+          };
+          const newKf = findKf();
           if (newKf) pushToHistory({ type: 'keyframe_add', timestamp: Date.now(), description: `Add keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kfId, keyframe: structuredClone(newKf) } } as KeyframeAddHistoryAction);
         }
       } else {
         const layer = tl.getLayer(lid);
-        const oldValue = layer?.staticProperties?.[pp];
+        const oldValue = layer?.staticProperties?.[pp] ?? (ig ? tl.layerGroups.find(g => (g.id as unknown) === lid)?.staticProperties?.[pp] : undefined);
         tl.setStaticProperty(lid, pp, newValue);
         pushToHistory({ type: 'static_property_change', timestamp: Date.now(), description: `Set ${pp}`, data: { layerId: lid, propertyPath: pp, oldValue, newValue } } as StaticPropertyChangeHistoryAction);
       }
@@ -144,7 +166,20 @@ export function useKeyframeableProperty(
       pushToHistory({ type: 'keyframe_remove', timestamp: Date.now(), description: `Remove keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kf.id, keyframe: kfData } } as KeyframeRemoveHistoryAction);
     } else {
       const kfId = tl.addKeyframe(lid, t.id, cf, v);
-      const newKf = tl.getLayer(lid)?.propertyTracks.find(pt => pt.id === t.id)?.keyframes.find(k => k.id === kfId);
+      // Find keyframe across layers and groups
+      const findKf = () => {
+        const layer = tl.getLayer(lid);
+        if (layer) {
+          const track = layer.propertyTracks.find(pt => pt.id === t.id);
+          return track?.keyframes.find(k => k.id === kfId);
+        }
+        for (const g of tl.layerGroups) {
+          const track = g.propertyTracks.find(pt => pt.id === t.id);
+          if (track) return track.keyframes.find(k => k.id === kfId);
+        }
+        return undefined;
+      };
+      const newKf = findKf();
       if (newKf) pushToHistory({ type: 'keyframe_add', timestamp: Date.now(), description: `Add keyframe`, data: { layerId: lid, trackId: t.id, keyframeId: kfId, keyframe: structuredClone(newKf) } } as KeyframeAddHistoryAction);
     }
   }, []);

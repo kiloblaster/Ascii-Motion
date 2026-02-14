@@ -23,6 +23,7 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import {
   getContentFrameAtTime,
   getTransformAtFrame,
+  getGroupPropertyValue,
   applyRotation,
 } from '../utils/layerCompositing';
 import { PROPERTY_DEFINITIONS, type PropertyPath, type Layer } from '../types/timeline';
@@ -149,26 +150,30 @@ export function useLayerTransformTool() {
   const isTransformToolActive = activeTool === 'layertransform';
 
   // Timeline state — only subscribe to layers when transform tool is active
-  // to avoid running .find() on every CanvasGrid render
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
+  const activeGroupId = useTimelineStore((s) => s.view.activeGroupId);
   const layers = useTimelineStore((s) => isTransformToolActive ? s.layers : EMPTY_LAYERS);
+  const layerGroups = useTimelineStore((s) => isTransformToolActive ? s.layerGroups : []);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const isPlaying = useTimelineStore((s) => s.view.isPlaying);
 
   // Canvas state
   const { cellWidth, cellHeight, shiftKeyDown } = useCanvasContext();
 
-  // PERF FIX: Only pass the real layerId to useKeyframeableProperty when the
-  // layer transform tool is active. Otherwise pass null, which makes each
-  // hook short-circuit (no selector evaluation, no useMemo recalculation).
-  // This eliminates ~56 unnecessary hooks from the CanvasGrid render path
-  // when using pencil, eraser, selection, or any other tool.
-  const kfLayerId = isTransformToolActive ? activeLayerId : null;
+  // Determine the effective entity ID: layer or group (cast group ID as LayerId for the hook)
+  const effectiveEntityId = activeLayerId ?? (activeGroupId as unknown as import('../types/timeline').LayerId) ?? null;
+  const kfLayerId = isTransformToolActive ? effectiveEntityId : null;
 
   const activeLayer = useMemo(
     () => layers.find((l) => l.id === activeLayerId) ?? null,
     [layers, activeLayerId],
   );
+  const activeGroup = useMemo(
+    () => activeGroupId ? layerGroups.find((g) => g.id === activeGroupId) ?? null : null,
+    [layerGroups, activeGroupId],
+  );
+  // Either a layer or a group is the active entity
+  const hasActiveEntity = !!activeLayer || !!activeGroup;
 
   const cellAspectRatio = useMemo(
     () => (cellWidth && cellHeight ? cellWidth / cellHeight : 0.6),
@@ -187,46 +192,109 @@ export function useLayerTransformTool() {
   // Auto-keyframe mode
   const autoKeyframe = useToolStore((s) => s.layerTransformAutoKeyframe);
 
-  const isDisabled = !activeLayer || isPlaying || isPlaybackMode || !isTransformToolActive;
-  const isLocked = activeLayer?.locked ?? false;
+  const isDisabled = !hasActiveEntity || isPlaying || isPlaybackMode || !isTransformToolActive;
+  const isLocked = (activeLayer?.locked ?? activeGroup?.locked) ?? false;
 
   /**
    * Write a property value directly to the store WITHOUT recording history.
    * Used during drag for live preview. History is recorded on mouseUp as a batch.
    */
   const setPropertyDirect = useCallback((propertyPath: PropertyPath, newValue: number) => {
-    if (!activeLayerId) return;
+    const entityId = effectiveEntityId;
+    if (!entityId) return;
     const tl = useTimelineStore.getState();
-    const layer = tl.layers.find((l) => l.id === activeLayerId);
-    if (!layer) return;
 
-    const track = layer.propertyTracks.find((t) => t.propertyPath === propertyPath);
+    // Find the entity's property tracks (layer or group)
+    const layer = tl.layers.find((l) => l.id === entityId);
+    const group = !layer ? tl.layerGroups.find((g) => (g.id as unknown) === entityId) : null;
+    const entity = layer ?? group;
+    if (!entity) return;
+
+    const track = entity.propertyTracks.find((t) => t.propertyPath === propertyPath);
     if (track) {
-      // Has property track — update or create keyframe directly (no history)
       const currentFrame = tl.view.currentFrame;
       const existingKf = track.keyframes.find((kf) => kf.frame === currentFrame);
       if (existingKf) {
-        tl.updateKeyframe(activeLayerId, track.id, existingKf.id, { value: newValue });
+        tl.updateKeyframe(entityId, track.id, existingKf.id, { value: newValue });
       } else {
-        tl.addKeyframe(activeLayerId, track.id, currentFrame, newValue);
+        tl.addKeyframe(entityId, track.id, currentFrame, newValue);
       }
     } else {
-      // No track — set static property directly (no history)
-      tl.setStaticProperty(activeLayerId, propertyPath, newValue);
+      tl.setStaticProperty(entityId, propertyPath, newValue);
     }
-  }, [activeLayerId]);
+  }, [effectiveEntityId]);
 
   // ============================================
   // Bounding Box Calculation
   // ============================================
 
   const boundingBox = useMemo((): TransformBoundingBox | null => {
+    if (!hasActiveEntity) return null;
+
+    // For groups, compute bounding box from all child layers
+    if (activeGroup) {
+      const childLayers = layers.filter(l => activeGroup.childLayerIds.includes(l.id));
+      if (childLayers.length === 0) return null;
+
+      // Get group transform
+      const groupTransform = {
+        positionX: getGroupPropertyValue(activeGroup, 'transform.position.x', currentFrame),
+        positionY: getGroupPropertyValue(activeGroup, 'transform.position.y', currentFrame),
+        scaleX: getGroupPropertyValue(activeGroup, 'transform.scale.x', currentFrame),
+        scaleY: getGroupPropertyValue(activeGroup, 'transform.scale.y', currentFrame),
+        rotation: getGroupPropertyValue(activeGroup, 'transform.rotation', currentFrame),
+        anchorPointX: getGroupPropertyValue(activeGroup, 'transform.anchorPoint.x', currentFrame),
+        anchorPointY: getGroupPropertyValue(activeGroup, 'transform.anchorPoint.y', currentFrame),
+      };
+
+      // Union of all child layer bounds (in screen space after their individual transforms)
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const child of childLayers) {
+        const cf = getContentFrameAtTime(child, currentFrame);
+        if (!cf || cf.data.size === 0) continue;
+        for (const key of cf.data.keys()) {
+          const [x, y] = key.split(',').map(Number);
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x + 1);
+          maxY = Math.max(maxY, y + 1);
+        }
+      }
+      if (minX === Infinity) return null;
+
+      // Forward-transform corners using group transform
+      const corners = [
+        forwardTransformPoint(minX, minY, groupTransform, cellAspectRatio),
+        forwardTransformPoint(maxX, minY, groupTransform, cellAspectRatio),
+        forwardTransformPoint(maxX, maxY, groupTransform, cellAspectRatio),
+        forwardTransformPoint(minX, maxY, groupTransform, cellAspectRatio),
+      ];
+
+      return {
+        corners,
+        localBounds: { minX, minY, maxX, maxY },
+        transform: groupTransform,
+      };
+    }
+
     if (!activeLayer) return null;
 
     const contentFrame = getContentFrameAtTime(activeLayer, currentFrame);
     if (!contentFrame || contentFrame.data.size === 0) return null;
 
     const transform = getTransformAtFrame(activeLayer, currentFrame);
+
+    // If this layer belongs to a group, compose the group's transforms
+    if (activeLayer.parentGroupId) {
+      const parentGroup = layerGroups.find((g) => g.id === activeLayer.parentGroupId);
+      if (parentGroup) {
+        transform.positionX += getGroupPropertyValue(parentGroup, 'transform.position.x', currentFrame);
+        transform.positionY += getGroupPropertyValue(parentGroup, 'transform.position.y', currentFrame);
+        transform.scaleX *= getGroupPropertyValue(parentGroup, 'transform.scale.x', currentFrame);
+        transform.scaleY *= getGroupPropertyValue(parentGroup, 'transform.scale.y', currentFrame);
+        transform.rotation += getGroupPropertyValue(parentGroup, 'transform.rotation', currentFrame);
+      }
+    }
 
     // Find local-space extent
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -250,16 +318,24 @@ export function useLayerTransformTool() {
     ];
 
     return { corners, localBounds: { minX, minY, maxX, maxY } };
-  }, [activeLayer, currentFrame, cellAspectRatio]);
+  }, [hasActiveEntity, activeLayer, activeGroup, layers, currentFrame, cellAspectRatio,
+      posX.value, posY.value, scaleX.value, scaleY.value, rotation.value, anchorX.value, anchorY.value]);
 
   // Current anchor position in screen space (for overlay & hit testing)
   const anchorScreenPos = useMemo(() => {
-    if (!activeLayer) return { x: 0, y: 0 };
-    return {
-      x: anchorX.value + posX.value,
-      y: anchorY.value + posY.value,
-    };
-  }, [activeLayer, anchorX.value, anchorY.value, posX.value, posY.value]);
+    if (!hasActiveEntity) return { x: 0, y: 0 };
+    let x = anchorX.value + posX.value;
+    let y = anchorY.value + posY.value;
+    // If this is a layer with a parent group, add group position offset
+    if (activeLayer?.parentGroupId) {
+      const parentGroup = layerGroups.find((g) => g.id === activeLayer.parentGroupId);
+      if (parentGroup) {
+        x += getGroupPropertyValue(parentGroup, 'transform.position.x', currentFrame);
+        y += getGroupPropertyValue(parentGroup, 'transform.position.y', currentFrame);
+      }
+    }
+    return { x, y };
+  }, [hasActiveEntity, activeLayer, layerGroups, currentFrame, anchorX.value, anchorY.value, posX.value, posY.value]);
 
   // ============================================
   // Hit Testing
@@ -351,7 +427,7 @@ export function useLayerTransformTool() {
       setDragState(state);
 
       // Auto-keyframe: create property tracks for affected properties if they don't exist
-      if (autoKeyframe && activeLayerId) {
+      if (autoKeyframe && effectiveEntityId) {
         const propsForMode: Record<TransformDragMode, PropertyPath[]> = {
           move: ['transform.position.x', 'transform.position.y'],
           scale: ['transform.scale.x', 'transform.scale.y'],
@@ -360,16 +436,16 @@ export function useLayerTransformTool() {
           none: [],
         };
         const affectedProps = propsForMode[mode] ?? [];
-        const layer = useTimelineStore.getState().layers.find((l) => l.id === activeLayerId);
-        if (layer) {
+        const tl = useTimelineStore.getState();
+        const layer = tl.layers.find((l) => l.id === effectiveEntityId);
+        const group = !layer ? tl.layerGroups.find((g) => (g.id as unknown) === effectiveEntityId) : null;
+        const entity = layer ?? group;
+        if (entity) {
           for (const prop of affectedProps) {
-            const hasTrack = layer.propertyTracks.some((t) => t.propertyPath === prop);
+            const hasTrack = entity.propertyTracks.some((t) => t.propertyPath === prop);
             if (!hasTrack) {
-              // Create the property track directly (no useTimelineHistory to avoid subscriptions)
-              const tl = useTimelineStore.getState();
-              const trackId = tl.addPropertyTrack(activeLayerId, prop);
+              const trackId = tl.addPropertyTrack(effectiveEntityId, prop);
               if (trackId) {
-                // Add an initial keyframe at current frame with the current value
                 const currentValue = startValues[
                   prop === 'transform.position.x' ? 'positionX' :
                   prop === 'transform.position.y' ? 'positionY' :
@@ -379,14 +455,14 @@ export function useLayerTransformTool() {
                   prop === 'transform.anchorPoint.x' ? 'anchorPointX' :
                   'anchorPointY'
                 ];
-                tl.addKeyframe(activeLayerId, trackId, tl.view.currentFrame, currentValue);
+                tl.addKeyframe(effectiveEntityId, trackId, tl.view.currentFrame, currentValue);
               }
             }
           }
         }
       }
     },
-    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scaleX.value, scaleY.value, rotation.value, anchorX.value, anchorY.value, autoKeyframe, activeLayerId],
+    [isDisabled, isLocked, hitTest, findCornerIndex, posX.value, posY.value, scaleX.value, scaleY.value, rotation.value, anchorX.value, anchorY.value, autoKeyframe, effectiveEntityId],
   );
 
   const handleMouseMove = useCallback(
@@ -587,6 +663,8 @@ export function useLayerTransformTool() {
     handleMouseUp,
     getCursorForZone,
     activeLayer,
+    activeGroup,
+    hasActiveEntity,
   };
 }
 

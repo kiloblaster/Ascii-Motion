@@ -28,6 +28,8 @@ const GROUP_TRANSFORM_PROPERTIES: PropertyPath[] = [
   'transform.scale.x',
   'transform.scale.y',
   'transform.rotation',
+  'transform.anchorPoint.x',
+  'transform.anchorPoint.y',
 ];
 
 interface GroupPropertyRowProps {

@@ -25,7 +25,8 @@ import {
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { getGroupPropertyValue } from '../../../utils/layerCompositing';
-import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER } from '../../../types/timeline';
+import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
+import { defaultEasing } from '../../../types/easing';
 import type { LayerGroup, LayerGroupId } from '../../../types/timeline';
 
 interface GroupHeaderProps {
@@ -293,7 +294,34 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button className="p-0.5 hover:bg-muted rounded" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        className="p-0.5 hover:bg-muted rounded"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (existingKf) {
+                            // Remove keyframe
+                            useTimelineStore.setState((s) => ({
+                              layerGroups: s.layerGroups.map(g => g.id !== group.id ? g : {
+                                ...g, propertyTracks: g.propertyTracks.map(t => t.id !== track.id ? t : {
+                                  ...t, keyframes: t.keyframes.filter(kf => kf.id !== existingKf.id),
+                                }),
+                              }),
+                            }));
+                          } else {
+                            // Add keyframe at current frame
+                            const kfId = generateKeyframeId();
+                            useTimelineStore.setState((s) => ({
+                              layerGroups: s.layerGroups.map(g => g.id !== group.id ? g : {
+                                ...g, propertyTracks: g.propertyTracks.map(t => t.id !== track.id ? t : {
+                                  ...t, keyframes: [...t.keyframes, { id: kfId, frame: currentFrame, value: currentValue, easing: defaultEasing() }].sort((a: { frame: number }, b: { frame: number }) => a.frame - b.frame),
+                                }),
+                              }),
+                            }));
+                            selectKeyframes([kfId]);
+                            setEditingKeyframe(kfId);
+                          }
+                        }}
+                      >
                         {existingKf ? (
                           <Diamond className="w-3 h-3 text-yellow-400 fill-yellow-400" />
                         ) : (

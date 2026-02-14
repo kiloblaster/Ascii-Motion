@@ -42,6 +42,29 @@ import { defaultEasing } from '../types/easing';
 import { canAddLayer } from '../utils/layerLimits';
 import { compositeLayersAtFrame } from '../utils/layerCompositing';
 
+/** Helper: find a track and a keyframe at a specific frame across layers and groups */
+function findTrackKeyframeByFrame(
+  state: { layers: Layer[]; layerGroups: LayerGroup[] },
+  trackId: PropertyTrackId,
+  frame: number,
+) {
+  for (const layer of state.layers) {
+    const track = layer.propertyTracks.find((t) => t.id === trackId);
+    if (track) {
+      const kf = track.keyframes.find((k) => k.frame === frame);
+      return { track, kf: kf ?? null };
+    }
+  }
+  for (const group of state.layerGroups) {
+    const track = group.propertyTracks.find((t) => t.id === trackId);
+    if (track) {
+      const kf = track.keyframes.find((k) => k.frame === frame);
+      return { track, kf: kf ?? null };
+    }
+  }
+  return { track: null, kf: null };
+}
+
 // ============================================
 // STORE INTERFACE
 // ============================================
@@ -529,12 +552,25 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     setStaticProperty: (layerId, propertyPath, value) => {
-      set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          staticProperties: { ...l.staticProperties, [propertyPath]: value },
-        })),
-      }));
+      // Try layers first
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            staticProperties: { ...l.staticProperties, [propertyPath]: value },
+          })),
+        }));
+      } else {
+        // Fall back to groups
+        set((state) => ({
+          layerGroups: state.layerGroups.map((g) =>
+            (g.id as unknown) === layerId
+              ? { ...g, staticProperties: { ...g.staticProperties, [propertyPath]: value } }
+              : g,
+          ),
+        }));
+      }
     },
 
     getActiveLayer: () => {
@@ -824,23 +860,47 @@ export const useTimelineStore = create<TimelineState>()(
         loopKeyframes: false,
       };
 
-      set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          propertyTracks: [...l.propertyTracks, newTrack],
-        })),
-      }));
+      // Try layers first
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            propertyTracks: [...l.propertyTracks, newTrack],
+          })),
+        }));
+      } else {
+        // Fall back to groups
+        set((state) => ({
+          layerGroups: state.layerGroups.map((g) =>
+            (g.id as unknown) === layerId
+              ? { ...g, propertyTracks: [...g.propertyTracks, newTrack] }
+              : g,
+          ),
+        }));
+      }
 
       return id;
     },
 
     removePropertyTrack: (layerId, trackId) => {
-      set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          propertyTracks: l.propertyTracks.filter((pt) => pt.id !== trackId),
-        })),
-      }));
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer && layer.propertyTracks.some((pt) => pt.id === trackId)) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            propertyTracks: l.propertyTracks.filter((pt) => pt.id !== trackId),
+          })),
+        }));
+      } else {
+        set((state) => ({
+          layerGroups: state.layerGroups.map((g) => {
+            const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
+            if (!hasTrack) return g;
+            return { ...g, propertyTracks: g.propertyTracks.filter((pt) => pt.id !== trackId) };
+          }),
+        }));
+      }
     },
 
     addKeyframe: (layerId, trackId, frame, value) => {
@@ -1482,14 +1542,27 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     pasteKeyframes: (layerId, trackId, atFrame) => {
-      const { copiedKeyframes, layers } = get();
+      const { copiedKeyframes, layers, layerGroups } = get();
       if (!copiedKeyframes || copiedKeyframes.length === 0) return;
 
+      // Find target track — check layers first, then groups
+      let targetPath: string | undefined;
       const targetLayer = layers.find((l) => l.id === layerId);
-      if (!targetLayer) return;
-      const targetTrack = targetLayer.propertyTracks.find((t) => t.id === trackId);
-      if (!targetTrack) return;
-      const targetPath = targetTrack.propertyPath;
+      if (targetLayer) {
+        const track = targetLayer.propertyTracks.find((t) => t.id === trackId);
+        if (track) targetPath = track.propertyPath;
+      }
+      if (!targetPath) {
+        // Search groups
+        for (const group of layerGroups) {
+          const track = group.propertyTracks.find((t) => t.id === trackId);
+          if (track) {
+            targetPath = track.propertyPath;
+            break;
+          }
+        }
+      }
+      if (!targetPath) return;
 
       // Determine how many source layers are in the clipboard
       const maxLayerIndex = Math.max(...copiedKeyframes.map((kf) => kf.layerIndex));
@@ -1536,17 +1609,27 @@ export const useTimelineStore = create<TimelineState>()(
           }
         }
       } else if (targetMatchesCopied) {
-        // Single-layer multi-track paste: paste to matching property tracks on target layer
+        // Single-layer multi-track paste: paste to matching property tracks
         for (const entry of copiedKeyframes) {
-          const destTrack = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
-          if (!destTrack) continue;
+          // Find dest track on layer or group
+          let destTrackId: typeof trackId | undefined;
+          if (targetLayer) {
+            const dt = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+            if (dt) destTrackId = dt.id;
+          }
+          if (!destTrackId) {
+            for (const g of get().layerGroups) {
+              const dt = g.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+              if (dt) { destTrackId = dt.id; break; }
+            }
+          }
+          if (!destTrackId) continue;
           const targetFrame = atFrame + entry.frameOffset;
-          get().addKeyframe(layerId, destTrack.id, targetFrame, entry.value);
-          const updatedLayer = get().layers.find((l) => l.id === layerId);
-          const updatedTrack = updatedLayer?.propertyTracks.find((t) => t.id === destTrack.id);
-          const addedKf = updatedTrack?.keyframes.find((kf) => kf.frame === targetFrame);
+          get().addKeyframe(layerId, destTrackId, targetFrame, entry.value);
+          // Apply easing
+          const { track: ut, kf: addedKf } = findTrackKeyframeByFrame(get(), destTrackId, targetFrame);
           if (addedKf) {
-            get().updateKeyframe(layerId, destTrack.id, addedKf.id, { easing: entry.easing });
+            get().updateKeyframe(layerId, destTrackId, addedKf.id, { easing: entry.easing });
           }
         }
       } else {
@@ -1555,9 +1638,7 @@ export const useTimelineStore = create<TimelineState>()(
           if (entry.trackIndex !== 0 || entry.layerIndex !== 0) continue;
           const targetFrame = atFrame + entry.frameOffset;
           get().addKeyframe(layerId, trackId, targetFrame, entry.value);
-          const updatedLayer = get().layers.find((l) => l.id === layerId);
-          const updatedTrack = updatedLayer?.propertyTracks.find((t) => t.id === trackId);
-          const addedKf = updatedTrack?.keyframes.find((kf) => kf.frame === targetFrame);
+          const { track: ut, kf: addedKf } = findTrackKeyframeByFrame(get(), trackId, targetFrame);
           if (addedKf) {
             get().updateKeyframe(layerId, trackId, addedKf.id, { easing: entry.easing });
           }
@@ -1898,6 +1979,12 @@ export const useTimelineStore = create<TimelineState>()(
       if (validIds.length < 2) return null;
 
       const groupId = generateLayerGroupId();
+
+      // Default anchor point to canvas center (same as layers)
+      const { width, height } = useCanvasStore.getState();
+      const anchorX = Math.floor(width / 2);
+      const anchorY = Math.floor(height / 2);
+
       const newGroup: LayerGroup = {
         id: groupId,
         name,
@@ -1907,7 +1994,10 @@ export const useTimelineStore = create<TimelineState>()(
         locked: false,
         collapsed: false,
         propertyTracks: [],
-        staticProperties: {},
+        staticProperties: {
+          'transform.anchorPoint.x': anchorX,
+          'transform.anchorPoint.y': anchorY,
+        },
       };
 
       // Update layers to reference the group

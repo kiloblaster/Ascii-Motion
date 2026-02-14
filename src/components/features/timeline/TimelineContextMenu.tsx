@@ -184,14 +184,26 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     const copiedKfs = useTimelineStore.getState().copiedKeyframes;
     if (!copiedKfs || copiedKfs.length === 0) return;
 
-    const layers = useTimelineStore.getState().layers;
+    const tl = useTimelineStore.getState();
+    const layers = tl.layers;
+
+    // Find target track — search layers first, then groups
+    let targetPropertyPath: string | undefined;
     const targetLayer = layers.find((l) => l.id === layerId);
-    if (!targetLayer) return;
-    const targetTrack = targetLayer.propertyTracks.find((t) => t.id === trackId);
-    if (!targetTrack) return;
+    if (targetLayer) {
+      const track = targetLayer.propertyTracks.find((t) => t.id === trackId);
+      if (track) targetPropertyPath = track.propertyPath;
+    }
+    if (!targetPropertyPath) {
+      for (const group of tl.layerGroups) {
+        const track = group.propertyTracks.find((t) => t.id === trackId);
+        if (track) { targetPropertyPath = track.propertyPath; break; }
+      }
+    }
+    if (!targetPropertyPath) return;
 
     const copiedPaths = [...new Set(copiedKfs.map((kf) => kf.propertyPath))];
-    const targetMatchesCopied = copiedPaths.includes(targetTrack.propertyPath);
+    const targetMatchesCopied = copiedPaths.includes(targetPropertyPath);
     const maxLayerIndex = Math.max(...copiedKfs.map((kf) => kf.layerIndex));
     const isMultiLayer = maxLayerIndex > 0;
 
@@ -218,9 +230,20 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
         destTrackId = destTrack.id;
       } else if (targetMatchesCopied) {
         // Single-layer multi-track: route to matching property
-        const destTrack = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
-        if (!destTrack) continue;
-        destTrackId = destTrack.id;
+        // Search layers and groups for matching track
+        let destTrackId2: typeof trackId | undefined;
+        if (targetLayer) {
+          const dt = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+          if (dt) destTrackId2 = dt.id;
+        }
+        if (!destTrackId2) {
+          for (const g of useTimelineStore.getState().layerGroups) {
+            const dt = g.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+            if (dt) { destTrackId2 = dt.id; break; }
+          }
+        }
+        if (!destTrackId2) continue;
+        destTrackId = destTrackId2;
       } else {
         // Unmatched: only paste trackIndex 0 from layerIndex 0
         if (entry.trackIndex !== 0 || entry.layerIndex !== 0) continue;

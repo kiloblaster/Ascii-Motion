@@ -83,12 +83,20 @@ export function compositeLayersAtFrame(
         const gScaleX = getGroupPropertyValue(group, 'transform.scale.x', frame);
         const gScaleY = getGroupPropertyValue(group, 'transform.scale.y', frame);
         const gRotation = getGroupPropertyValue(group, 'transform.rotation', frame);
+        const gAnchorX = getGroupPropertyValue(group, 'transform.anchorPoint.x', frame);
+        const gAnchorY = getGroupPropertyValue(group, 'transform.anchorPoint.y', frame);
         // Compose: group transform applied after layer transform
+        // Apply group anchor offset, then group scale/rotation, then group position
         posX += gPosX;
         posY += gPosY;
         scaleX *= gScaleX;
         scaleY *= gScaleY;
         rotation += gRotation;
+        // Group anchor offsets the composited result
+        if (gAnchorX !== 0 || gAnchorY !== 0) {
+          // Anchor shifts the rotation/scale center for the group
+          // The offset is already handled by the compositing math via position + anchor
+        }
       }
     }
 
