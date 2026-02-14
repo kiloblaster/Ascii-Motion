@@ -189,6 +189,26 @@ export function EffectsPanel() {
 
       {/* Footer */}
       <div className="border-t border-border p-3 space-y-3">
+        {/* Layer Scope Selection */}
+        <div className="flex gap-2">
+          <Button
+            variant={targetScope === 'active-layer' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setTargetScope('active-layer')}
+            className="flex-1 h-7 text-xs"
+          >
+            Active Layer
+          </Button>
+          <Button
+            variant={targetScope === 'all-layers' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setTargetScope('all-layers')}
+            className="flex-1 h-7 text-xs"
+          >
+            All Layers
+          </Button>
+        </div>
+
         {/* Apply to Timeline Toggle */}
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -200,33 +220,14 @@ export function EffectsPanel() {
           </label>
         </div>
         
-        {applyToTimeline && (
-          <div className="flex gap-2">
-            <Button
-              variant={targetScope === 'active-layer' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTargetScope('active-layer')}
-              className="flex-1 h-7 text-xs"
-            >
-              Active Layer
-            </Button>
-            <Button
-              variant={targetScope === 'all-layers' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTargetScope('all-layers')}
-              className="flex-1 h-7 text-xs"
-            >
-              All Layers
-            </Button>
-          </div>
-        )}
-        
         <div className="text-xs text-muted-foreground">
           {applyToTimeline 
             ? targetScope === 'all-layers'
-              ? 'Effect will be applied to all visible, unlocked layers'
+              ? 'Effect will be applied to all frames on all visible, unlocked layers'
               : 'Effect will be applied to all frames on the active layer'
-            : 'Effect will be applied to current canvas only'
+            : targetScope === 'all-layers'
+              ? 'Effect will be applied to all visible, unlocked layers at the current frame'
+              : 'Effect will be applied to the active layer at the current frame'
           }
         </div>
         

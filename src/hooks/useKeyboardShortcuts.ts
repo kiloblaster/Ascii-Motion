@@ -231,90 +231,69 @@ const processHistoryAction = (
       const tl = useTimelineStore.getState();
       
       if (isRedo) {
-        if (effectAction.data.applyToTimeline) {
-          if (effectAction.data.targetScope === 'all-layers' && effectAction.data.newLayerFramesData) {
-            // Multi-layer redo: restore each layer's frames from stored data
-            for (const { layerId, framesData } of effectAction.data.newLayerFramesData) {
-              const layer = tl.layers.find(l => (l.id as string) === layerId);
-              if (layer) {
-                for (const { frameIndex, data } of framesData) {
-                  const cf = layer.contentFrames[frameIndex];
-                  if (cf) {
-                    tl.updateContentFrameData(layer.id, cf.id, data);
-                  }
-                }
+        if (effectAction.data.targetScope === 'all-layers' && effectAction.data.newLayerFramesData) {
+          // Multi-layer redo: restore each layer's frames from stored data
+          for (const { layerId, framesData } of effectAction.data.newLayerFramesData) {
+            const layer = tl.layers.find(l => (l.id as string) === layerId);
+            if (layer) {
+              for (const { frameIndex, data } of framesData) {
+                const cf = layer.contentFrames[frameIndex];
+                if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
               }
             }
-            // Sync canvas
-            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
-            if (currentData) canvasStore.setCanvasData(currentData);
-            console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${effectAction.data.newLayerFramesData.length} layers`);
-          } else if (effectAction.data.newFramesData) {
-            // Single-layer redo: use stored affectedLayerIds or fall back to active
-            const targetLayerId = effectAction.data.affectedLayerIds?.[0];
-            const targetLayer = targetLayerId
-              ? tl.layers.find(l => (l.id as string) === targetLayerId)
-              : tl.layers.find(l => l.id === tl.view.activeLayerId);
-            if (targetLayer) {
-              effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
-                const cf = targetLayer.contentFrames[frameIndex];
-                if (cf) {
-                  tl.updateContentFrameData(targetLayer.id, cf.id, data);
-                }
-              });
-            }
-            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
-            if (currentData) canvasStore.setCanvasData(currentData);
-            console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${effectAction.data.newFramesData.length} frames`);
           }
-        } else {
-          if (effectAction.data.newCanvasData) {
-            canvasStore.setCanvasData(effectAction.data.newCanvasData);
-            console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to canvas`);
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.applyToTimeline && effectAction.data.newFramesData) {
+          // Single-layer timeline redo
+          const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+          const targetLayer = targetLayerId
+            ? tl.layers.find(l => (l.id as string) === targetLayerId)
+            : tl.layers.find(l => l.id === tl.view.activeLayerId);
+          if (targetLayer) {
+            effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
+              const cf = targetLayer.contentFrames[frameIndex];
+              if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
+            });
           }
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.newCanvasData) {
+          // Single-layer current frame redo
+          canvasStore.setCanvasData(effectAction.data.newCanvasData);
         }
       } else {
         // Undo: Restore previous data
-        if (effectAction.data.applyToTimeline) {
-          if (effectAction.data.targetScope === 'all-layers' && effectAction.data.previousLayerFramesData) {
-            // Multi-layer undo: restore each layer's frames from stored data
-            for (const { layerId, framesData } of effectAction.data.previousLayerFramesData) {
-              const layer = tl.layers.find(l => (l.id as string) === layerId);
-              if (layer) {
-                for (const { frameIndex, data } of framesData) {
-                  const cf = layer.contentFrames[frameIndex];
-                  if (cf) {
-                    tl.updateContentFrameData(layer.id, cf.id, data);
-                  }
-                }
+        if (effectAction.data.targetScope === 'all-layers' && effectAction.data.previousLayerFramesData) {
+          // Multi-layer undo: restore each layer's frames from stored data
+          for (const { layerId, framesData } of effectAction.data.previousLayerFramesData) {
+            const layer = tl.layers.find(l => (l.id as string) === layerId);
+            if (layer) {
+              for (const { frameIndex, data } of framesData) {
+                const cf = layer.contentFrames[frameIndex];
+                if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
               }
             }
-            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
-            if (currentData) canvasStore.setCanvasData(currentData);
-            console.log(`✅ Undo: Restored ${effectAction.data.previousLayerFramesData.length} layers from ${effectAction.data.effectType} effect`);
-          } else if (effectAction.data.previousFramesData) {
-            // Single-layer undo: use stored affectedLayerIds or fall back to active
-            const targetLayerId = effectAction.data.affectedLayerIds?.[0];
-            const targetLayer = targetLayerId
-              ? tl.layers.find(l => (l.id as string) === targetLayerId)
-              : tl.layers.find(l => l.id === tl.view.activeLayerId);
-            if (targetLayer) {
-              effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
-                const cf = targetLayer.contentFrames[frameIndex];
-                if (cf) {
-                  tl.updateContentFrameData(targetLayer.id, cf.id, data);
-                }
-              });
-            }
-            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
-            if (currentData) canvasStore.setCanvasData(currentData);
-            console.log(`✅ Undo: Restored ${effectAction.data.previousFramesData.length} frames from ${effectAction.data.effectType} effect`);
           }
-        } else {
-          if (effectAction.data.previousCanvasData) {
-            canvasStore.setCanvasData(effectAction.data.previousCanvasData);
-            console.log(`✅ Undo: Restored canvas from ${effectAction.data.effectType} effect`);
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.applyToTimeline && effectAction.data.previousFramesData) {
+          // Single-layer timeline undo
+          const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+          const targetLayer = targetLayerId
+            ? tl.layers.find(l => (l.id as string) === targetLayerId)
+            : tl.layers.find(l => l.id === tl.view.activeLayerId);
+          if (targetLayer) {
+            effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
+              const cf = targetLayer.contentFrames[frameIndex];
+              if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
+            });
           }
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.previousCanvasData) {
+          // Single-layer current frame undo
+          canvasStore.setCanvasData(effectAction.data.previousCanvasData);
         }
       }
       break;

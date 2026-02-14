@@ -267,13 +267,15 @@ export const useCanvasRenderer = () => {
     }
 
     // Draw static cells (excluding cells being moved)
-    // When effect preview is active, draw at 50% opacity so other layers remain visible
     const isEffectPreviewMode = isTimeEffectPreviewActive || isEffectPreviewActive;
-    if (isEffectPreviewMode) {
-      ctx.save();
-      ctx.globalAlpha = 0.5;
-    }
-    // Draw all static cells (during preview, at reduced opacity)
+    // During effects preview, the preview data contains the full composited result
+    // (all layers composited with the effect applied). Skip the normal cell-drawing
+    // pass entirely and let the preview pass handle all rendering to avoid
+    // unaffected cells (e.g. scatter source positions) bleeding through.
+    const skipBaseRenderForEffectPreview = isEffectPreviewMode && isPreviewActive && previewData.size > 0;
+    
+    if (!skipBaseRenderForEffectPreview) {
+    // Draw all static cells
     for (let y = 0; y < canvasConfig.height; y++) {
         for (let x = 0; x < canvasConfig.width; x++) {
           const key = `${x},${y}`;
@@ -308,10 +310,7 @@ export const useCanvasRenderer = () => {
           drawCell(ctx, cx, cy, cell);
         }
       }
-    if (isEffectPreviewMode) {
-      ctx.restore();
-    }
-
+    } // end skipBaseRenderForEffectPreview
     // Draw moved cells at their new positions
     if (overlayState.moveState && overlayState.moveState.originalData.size > 0) {
       const totalOffset = getTotalOffset(overlayState.moveState);

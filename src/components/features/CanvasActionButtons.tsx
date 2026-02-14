@@ -245,66 +245,62 @@ export const CanvasActionButtons: React.FC = () => {
         const tl = useTimelineStore.getState();
         
         if (isRedo) {
-          if (effectAction.data.applyToTimeline) {
-            if (effectAction.data.targetScope === 'all-layers' && effectAction.data.newLayerFramesData) {
-              for (const { layerId, framesData } of effectAction.data.newLayerFramesData) {
-                const layer = tl.layers.find(l => (l.id as string) === layerId);
-                if (layer) {
-                  for (const { frameIndex, data } of framesData) {
-                    const cf = layer.contentFrames[frameIndex];
-                    if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
-                  }
+          if (effectAction.data.targetScope === 'all-layers' && effectAction.data.newLayerFramesData) {
+            for (const { layerId, framesData } of effectAction.data.newLayerFramesData) {
+              const layer = tl.layers.find(l => (l.id as string) === layerId);
+              if (layer) {
+                for (const { frameIndex, data } of framesData) {
+                  const cf = layer.contentFrames[frameIndex];
+                  if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
                 }
-              }
-            } else if (effectAction.data.newFramesData) {
-              const targetLayerId = effectAction.data.affectedLayerIds?.[0];
-              const targetLayer = targetLayerId
-                ? tl.layers.find(l => (l.id as string) === targetLayerId)
-                : tl.layers.find(l => l.id === tl.view.activeLayerId);
-              if (targetLayer) {
-                effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
-                  const cf = targetLayer.contentFrames[frameIndex];
-                  if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
-                });
               }
             }
             const currentData = getAnimationStore().getFrameData(getAnimationStore().currentFrameIndex);
             if (currentData) setCanvasData(currentData);
-          } else {
-            if (effectAction.data.newCanvasData) {
-              setCanvasData(effectAction.data.newCanvasData);
+          } else if (effectAction.data.applyToTimeline && effectAction.data.newFramesData) {
+            const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+            const targetLayer = targetLayerId
+              ? tl.layers.find(l => (l.id as string) === targetLayerId)
+              : tl.layers.find(l => l.id === tl.view.activeLayerId);
+            if (targetLayer) {
+              effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
+                const cf = targetLayer.contentFrames[frameIndex];
+                if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
+              });
             }
+            const currentData = getAnimationStore().getFrameData(getAnimationStore().currentFrameIndex);
+            if (currentData) setCanvasData(currentData);
+          } else if (effectAction.data.newCanvasData) {
+            setCanvasData(effectAction.data.newCanvasData);
           }
         } else {
-          if (effectAction.data.applyToTimeline) {
-            if (effectAction.data.targetScope === 'all-layers' && effectAction.data.previousLayerFramesData) {
-              for (const { layerId, framesData } of effectAction.data.previousLayerFramesData) {
-                const layer = tl.layers.find(l => (l.id as string) === layerId);
-                if (layer) {
-                  for (const { frameIndex, data } of framesData) {
-                    const cf = layer.contentFrames[frameIndex];
-                    if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
-                  }
+          if (effectAction.data.targetScope === 'all-layers' && effectAction.data.previousLayerFramesData) {
+            for (const { layerId, framesData } of effectAction.data.previousLayerFramesData) {
+              const layer = tl.layers.find(l => (l.id as string) === layerId);
+              if (layer) {
+                for (const { frameIndex, data } of framesData) {
+                  const cf = layer.contentFrames[frameIndex];
+                  if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
                 }
-              }
-            } else if (effectAction.data.previousFramesData) {
-              const targetLayerId = effectAction.data.affectedLayerIds?.[0];
-              const targetLayer = targetLayerId
-                ? tl.layers.find(l => (l.id as string) === targetLayerId)
-                : tl.layers.find(l => l.id === tl.view.activeLayerId);
-              if (targetLayer) {
-                effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
-                  const cf = targetLayer.contentFrames[frameIndex];
-                  if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
-                });
               }
             }
             const currentData = getAnimationStore().getFrameData(getAnimationStore().currentFrameIndex);
             if (currentData) setCanvasData(currentData);
-          } else {
-            if (effectAction.data.previousCanvasData) {
-              setCanvasData(effectAction.data.previousCanvasData);
+          } else if (effectAction.data.applyToTimeline && effectAction.data.previousFramesData) {
+            const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+            const targetLayer = targetLayerId
+              ? tl.layers.find(l => (l.id as string) === targetLayerId)
+              : tl.layers.find(l => l.id === tl.view.activeLayerId);
+            if (targetLayer) {
+              effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
+                const cf = targetLayer.contentFrames[frameIndex];
+                if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
+              });
             }
+            const currentData = getAnimationStore().getFrameData(getAnimationStore().currentFrameIndex);
+            if (currentData) setCanvasData(currentData);
+          } else if (effectAction.data.previousCanvasData) {
+            setCanvasData(effectAction.data.previousCanvasData);
           }
         }
         break;

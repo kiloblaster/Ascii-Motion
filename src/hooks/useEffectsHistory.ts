@@ -120,14 +120,50 @@ export const useEffectsHistory = () => {
           };
         }
       } else {
-        // Save current canvas state for undo
-        historyData = {
-          effectType,
-          effectSettings: { ...settings },
-          applyToTimeline: false,
-          affectedFrameIndices: [currentFrameIndex],
-          previousCanvasData: new Map(canvasData)
-        };
+        // Current frame only
+        if (targetScope === 'all-layers') {
+          // All-layers at current frame: snapshot each visible/unlocked layer's
+          // content frame that overlaps the playhead
+          const tl = useTimelineStore.getState();
+          const { getContentFrameAtTime } = await import('../utils/layerCompositing');
+          const currentFrame = tl.view.currentFrame;
+          const targetLayers = tl.layers.filter(l => l.visible && !l.locked);
+          
+          const previousLayerFramesData = targetLayers
+            .map(layer => {
+              const cf = getContentFrameAtTime(layer, currentFrame);
+              if (!cf) return null;
+              const cfIndex = layer.contentFrames.indexOf(cf);
+              return {
+                layerId: layer.id as string,
+                framesData: [{
+                  frameIndex: cfIndex,
+                  data: new Map(cf.data)
+                }]
+              };
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null);
+          
+          historyData = {
+            effectType,
+            effectSettings: { ...settings },
+            applyToTimeline: false,
+            targetScope: 'all-layers',
+            affectedLayerIds: targetLayers.map(l => l.id as string),
+            affectedFrameIndices: [currentFrameIndex],
+            previousLayerFramesData
+          };
+        } else {
+          // Active layer at current frame — save canvas state for undo
+          historyData = {
+            effectType,
+            effectSettings: { ...settings },
+            applyToTimeline: false,
+            targetScope: 'active-layer',
+            affectedFrameIndices: [currentFrameIndex],
+            previousCanvasData: new Map(canvasData)
+          };
+        }
       }
 
       // Create history action
@@ -148,10 +184,14 @@ export const useEffectsHistory = () => {
       
       if (success) {
         // Capture the "after" state for redo
-        if (applyToTimeline) {
-          if (targetScope === 'all-layers') {
-            const tl = useTimelineStore.getState();
-            const affectedIds = historyData.affectedLayerIds || [];
+        if (targetScope === 'all-layers') {
+          // Multi-layer: capture updated content frames for each affected layer
+          const tl = useTimelineStore.getState();
+          const { getContentFrameAtTime } = await import('../utils/layerCompositing');
+          const affectedIds = historyData.affectedLayerIds || [];
+          
+          if (applyToTimeline) {
+            // All frames on all layers
             const newLayerFramesData = affectedIds.map(layerId => {
               const layer = tl.layers.find(l => (l.id as string) === layerId);
               return {
@@ -164,14 +204,31 @@ export const useEffectsHistory = () => {
             });
             historyData.newLayerFramesData = newLayerFramesData;
           } else {
-            const { frames: updatedFrames } = useAnimationStore.getState();
-            const newFramesData = updatedFrames.map((frame, index) => ({
-              frameIndex: index,
-              data: new Map(frame.data)
-            }));
-            historyData.newFramesData = newFramesData;
+            // Current frame only on all layers
+            const currentFrame = tl.view.currentFrame;
+            const newLayerFramesData = affectedIds.map(layerId => {
+              const layer = tl.layers.find(l => (l.id as string) === layerId);
+              if (!layer) return { layerId, framesData: [] };
+              const cf = getContentFrameAtTime(layer, currentFrame);
+              if (!cf) return { layerId, framesData: [] };
+              const cfIndex = layer.contentFrames.indexOf(cf);
+              return {
+                layerId,
+                framesData: [{ frameIndex: cfIndex, data: new Map(cf.data) }]
+              };
+            });
+            historyData.newLayerFramesData = newLayerFramesData;
           }
+        } else if (applyToTimeline) {
+          // Single layer, all frames
+          const { frames: updatedFrames } = useAnimationStore.getState();
+          const newFramesData = updatedFrames.map((frame, index) => ({
+            frameIndex: index,
+            data: new Map(frame.data)
+          }));
+          historyData.newFramesData = newFramesData;
         } else {
+          // Single layer, current frame only
           const { cells: updatedCells } = useCanvasStore.getState();
           historyData.newCanvasData = new Map(updatedCells);
         }
@@ -326,14 +383,42 @@ export const useEffectsHistory = () => {
           };
         }
       } else {
-        // Save current canvas state for undo
-        historyData = {
-          effectType,
-          effectSettings: { ...effectSettings },
-          applyToTimeline: false,
-          affectedFrameIndices: [currentFrameIndex],
-          previousCanvasData: new Map(canvasData)
-        };
+        if (currentTargetScope === 'all-layers') {
+          const tl = useTimelineStore.getState();
+          const { getContentFrameAtTime } = await import('../utils/layerCompositing');
+          const currentFrame = tl.view.currentFrame;
+          const targetLayers = tl.layers.filter(l => l.visible && !l.locked);
+          
+          const previousLayerFramesData = targetLayers
+            .map(layer => {
+              const cf = getContentFrameAtTime(layer, currentFrame);
+              if (!cf) return null;
+              const cfIndex = layer.contentFrames.indexOf(cf);
+              return {
+                layerId: layer.id as string,
+                framesData: [{ frameIndex: cfIndex, data: new Map(cf.data) }]
+              };
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null);
+          
+          historyData = {
+            effectType,
+            effectSettings: { ...effectSettings },
+            applyToTimeline: false,
+            targetScope: 'all-layers',
+            affectedLayerIds: targetLayers.map(l => l.id as string),
+            affectedFrameIndices: [currentFrameIndex],
+            previousLayerFramesData
+          };
+        } else {
+          historyData = {
+            effectType,
+            effectSettings: { ...effectSettings },
+            applyToTimeline: false,
+            affectedFrameIndices: [currentFrameIndex],
+            previousCanvasData: new Map(canvasData)
+          };
+        }
       }
 
       // Create history action
@@ -363,10 +448,12 @@ export const useEffectsHistory = () => {
       
       if (success) {
         // Capture the "after" state for redo
-        if (currentApplyToTimeline) {
-          if (currentTargetScope === 'all-layers') {
-            const tl = useTimelineStore.getState();
-            const affectedIds = historyData.affectedLayerIds || [];
+        if (currentTargetScope === 'all-layers') {
+          const tl = useTimelineStore.getState();
+          const { getContentFrameAtTime } = await import('../utils/layerCompositing');
+          const affectedIds = historyData.affectedLayerIds || [];
+          
+          if (currentApplyToTimeline) {
             const newLayerFramesData = affectedIds.map(layerId => {
               const layer = tl.layers.find(l => (l.id as string) === layerId);
               return {
@@ -379,15 +466,28 @@ export const useEffectsHistory = () => {
             });
             historyData.newLayerFramesData = newLayerFramesData;
           } else {
-            const { frames: updatedFrames } = useAnimationStore.getState();
-            const newFramesData = updatedFrames.map((frame, index) => ({
-              frameIndex: index,
-              data: new Map(frame.data)
-            }));
-            historyData.newFramesData = newFramesData;
+            const currentFrame = tl.view.currentFrame;
+            const newLayerFramesData = affectedIds.map(layerId => {
+              const layer = tl.layers.find(l => (l.id as string) === layerId);
+              if (!layer) return { layerId, framesData: [] };
+              const cf = getContentFrameAtTime(layer, currentFrame);
+              if (!cf) return { layerId, framesData: [] };
+              const cfIndex = layer.contentFrames.indexOf(cf);
+              return {
+                layerId,
+                framesData: [{ frameIndex: cfIndex, data: new Map(cf.data) }]
+              };
+            });
+            historyData.newLayerFramesData = newLayerFramesData;
           }
+        } else if (currentApplyToTimeline) {
+          const { frames: updatedFrames } = useAnimationStore.getState();
+          const newFramesData = updatedFrames.map((frame, index) => ({
+            frameIndex: index,
+            data: new Map(frame.data)
+          }));
+          historyData.newFramesData = newFramesData;
         } else {
-          // Get the updated canvas state for redo
           const { cells: updatedCells } = useCanvasStore.getState();
           historyData.newCanvasData = new Map(updatedCells);
         }
