@@ -39,6 +39,7 @@ export interface EffectsState {
   isOpen: boolean;                           // Main effects panel visibility
   activeEffect: EffectType | null;           // Currently open effect panel
   applyToTimeline: boolean;                  // Timeline vs canvas targeting
+  targetScope: 'active-layer' | 'all-layers'; // Which layers to target when applying to timeline
   
   // Effect Settings State
   levelsSettings: LevelsEffectSettings;
@@ -65,6 +66,7 @@ export interface EffectsState {
   openEffectPanel: (effect: EffectType) => void;
   closeEffectPanel: () => void;
   setApplyToTimeline: (apply: boolean) => void;
+  setTargetScope: (scope: 'active-layer' | 'all-layers') => void;
   
   // Actions - Effect Settings
   updateLevelsSettings: (settings: Partial<LevelsEffectSettings>) => void;
@@ -118,6 +120,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
   isOpen: false,
   activeEffect: null,
   applyToTimeline: false,
+  targetScope: 'active-layer' as const,
   
   // Default effect settings
   levelsSettings: { ...DEFAULT_LEVELS_SETTINGS },
@@ -165,6 +168,10 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
   
   setApplyToTimeline: (apply: boolean) => {
     set({ applyToTimeline: apply });
+  },
+  
+  setTargetScope: (scope: 'active-layer' | 'all-layers') => {
+    set({ targetScope: scope });
   },
   
   // Effect Settings Actions
@@ -517,7 +524,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       const { processEffect, processEffectOnFrames } = await import('../utils/effectsProcessing');
 
       if (state.applyToTimeline) {
-        // Apply effect to ALL content frame blocks on the active layer
+        // Apply effect to content frames, scoped by targetScope
         const { useAnimationStore } = await import('./animationStore');
         const animationStore = useAnimationStore.getState();
         const { useTimelineStore } = await import('./timelineStore');
@@ -527,35 +534,47 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
         const { useCanvasStore } = await import('./canvasStore');
         const canvasBackgroundColor = useCanvasStore.getState().canvasBackgroundColor;
         
-        // Get the active layer's content frames directly (not via timeline position)
-        const activeLayerId = tl.view.activeLayerId;
-        const activeLayer = tl.layers.find(l => l.id === activeLayerId);
-        if (!activeLayer) {
-          set({ lastError: 'No active layer' });
+        // Determine which layers to process based on scope
+        const layersToProcess = state.targetScope === 'all-layers'
+          ? tl.layers.filter(l => l.visible && !l.locked)
+          : (() => {
+              const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+              return activeLayer ? [activeLayer] : [];
+            })();
+        
+        if (layersToProcess.length === 0) {
+          set({ lastError: state.targetScope === 'all-layers' ? 'No visible, unlocked layers' : 'No active layer' });
           return;
         }
         
-        // Build legacy frames from ALL content frame blocks
-        const legacyFrames = animationStore.frames;
-        
-        const result = await processEffectOnFrames(
-          effect,
-          legacyFrames,
-          settings,
-          () => {},
-          canvasBackgroundColor
-        );
+        // Process each target layer
+        for (const layer of layersToProcess) {
+          // Build legacy frames from this layer's content frames
+          const layerFrames = layer.contentFrames.map(cf => ({
+            id: cf.id as unknown as import('../types').FrameId,
+            name: cf.name,
+            duration: Math.round(cf.durationFrames * (1000 / tl.config.frameRate)),
+            data: cf.data,
+          }));
+          
+          const result = await processEffectOnFrames(
+            effect,
+            layerFrames,
+            settings,
+            () => {},
+            canvasBackgroundColor
+          );
 
-        if (result.errors.length > 0) {
-          console.warn('Effect processing had errors:', result.errors);
-        }
+          if (result.errors.length > 0) {
+            console.warn(`Effect processing had errors on layer "${layer.name}":`, result.errors);
+          }
 
-        // Write processed frames back to content frame blocks by index
-        // This correctly handles gaps between blocks and varying durations
-        for (let i = 0; i < result.processedFrames.length && i < activeLayer.contentFrames.length; i++) {
-          const processedFrame = result.processedFrames[i];
-          const contentFrame = activeLayer.contentFrames[i];
-          tl.updateContentFrameData(activeLayer.id, contentFrame.id, processedFrame.data);
+          // Write processed frames back to this layer's content frames
+          for (let i = 0; i < result.processedFrames.length && i < layer.contentFrames.length; i++) {
+            const processedFrame = result.processedFrames[i];
+            const contentFrame = layer.contentFrames[i];
+            tl.updateContentFrameData(layer.id, contentFrame.id, processedFrame.data);
+          }
         }
 
         // Sync the canvas with the current frame's data
@@ -621,6 +640,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       isOpen: false,
       activeEffect: null,
       applyToTimeline: false,
+      targetScope: 'active-layer' as const,
       levelsSettings: { ...DEFAULT_LEVELS_SETTINGS },
       hueSaturationSettings: { ...DEFAULT_HUE_SATURATION_SETTINGS },
       remapColorsSettings: { ...DEFAULT_REMAP_COLORS_SETTINGS },

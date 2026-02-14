@@ -242,29 +242,34 @@ export const CanvasActionButtons: React.FC = () => {
 
       case 'apply_effect': {
         const effectAction = action as ApplyEffectHistoryAction;
+        const tl = useTimelineStore.getState();
+        
         if (isRedo) {
           if (effectAction.data.applyToTimeline) {
-            const { newFramesData } = effectAction.data;
-            if (newFramesData) {
-              // Write directly to content frames by array index
-              const tl = useTimelineStore.getState();
-              const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
-              if (activeLayer) {
-                newFramesData.forEach(({ frameIndex, data }) => {
-                  const cf = activeLayer.contentFrames[frameIndex];
-                  if (cf) {
-                    tl.updateContentFrameData(activeLayer.id, cf.id, data);
+            if (effectAction.data.targetScope === 'all-layers' && effectAction.data.newLayerFramesData) {
+              for (const { layerId, framesData } of effectAction.data.newLayerFramesData) {
+                const layer = tl.layers.find(l => (l.id as string) === layerId);
+                if (layer) {
+                  for (const { frameIndex, data } of framesData) {
+                    const cf = layer.contentFrames[frameIndex];
+                    if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
                   }
+                }
+              }
+            } else if (effectAction.data.newFramesData) {
+              const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+              const targetLayer = targetLayerId
+                ? tl.layers.find(l => (l.id as string) === targetLayerId)
+                : tl.layers.find(l => l.id === tl.view.activeLayerId);
+              if (targetLayer) {
+                effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
+                  const cf = targetLayer.contentFrames[frameIndex];
+                  if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
                 });
               }
-              // Sync canvas
-              const currentIdx = getAnimationStore().currentFrameIndex;
-              const currentData = getAnimationStore().getFrameData(currentIdx);
-              if (currentData) {
-                setCanvasData(currentData);
-              }
-              console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${newFramesData.length} frames`);
             }
+            const currentData = getAnimationStore().getFrameData(getAnimationStore().currentFrameIndex);
+            if (currentData) setCanvasData(currentData);
           } else {
             if (effectAction.data.newCanvasData) {
               setCanvasData(effectAction.data.newCanvasData);
@@ -272,27 +277,30 @@ export const CanvasActionButtons: React.FC = () => {
           }
         } else {
           if (effectAction.data.applyToTimeline) {
-            const { previousFramesData } = effectAction.data;
-            if (previousFramesData) {
-              // Write directly to content frames by array index
-              const tl = useTimelineStore.getState();
-              const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
-              if (activeLayer) {
-                previousFramesData.forEach(({ frameIndex, data }) => {
-                  const cf = activeLayer.contentFrames[frameIndex];
-                  if (cf) {
-                    tl.updateContentFrameData(activeLayer.id, cf.id, data);
+            if (effectAction.data.targetScope === 'all-layers' && effectAction.data.previousLayerFramesData) {
+              for (const { layerId, framesData } of effectAction.data.previousLayerFramesData) {
+                const layer = tl.layers.find(l => (l.id as string) === layerId);
+                if (layer) {
+                  for (const { frameIndex, data } of framesData) {
+                    const cf = layer.contentFrames[frameIndex];
+                    if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
                   }
+                }
+              }
+            } else if (effectAction.data.previousFramesData) {
+              const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+              const targetLayer = targetLayerId
+                ? tl.layers.find(l => (l.id as string) === targetLayerId)
+                : tl.layers.find(l => l.id === tl.view.activeLayerId);
+              if (targetLayer) {
+                effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
+                  const cf = targetLayer.contentFrames[frameIndex];
+                  if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
                 });
               }
-              // Sync canvas
-              const currentIdx = getAnimationStore().currentFrameIndex;
-              const currentData = getAnimationStore().getFrameData(currentIdx);
-              if (currentData) {
-                setCanvasData(currentData);
-              }
-              console.log(`✅ Undo: Restored ${previousFramesData.length} frames from ${effectAction.data.effectType} effect`);
             }
+            const currentData = getAnimationStore().getFrameData(getAnimationStore().currentFrameIndex);
+            if (currentData) setCanvasData(currentData);
           } else {
             if (effectAction.data.previousCanvasData) {
               setCanvasData(effectAction.data.previousCanvasData);

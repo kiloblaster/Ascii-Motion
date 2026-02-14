@@ -54,6 +54,8 @@ export function EffectsPanel() {
     activeEffect, 
     applyToTimeline,
     setApplyToTimeline,
+    targetScope,
+    setTargetScope,
     closeEffectPanel,
     isAnalyzing
   } = useEffectsStore();
@@ -198,9 +200,32 @@ export function EffectsPanel() {
           </label>
         </div>
         
+        {applyToTimeline && (
+          <div className="flex gap-2">
+            <Button
+              variant={targetScope === 'active-layer' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTargetScope('active-layer')}
+              className="flex-1 h-7 text-xs"
+            >
+              Active Layer
+            </Button>
+            <Button
+              variant={targetScope === 'all-layers' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTargetScope('all-layers')}
+              className="flex-1 h-7 text-xs"
+            >
+              All Layers
+            </Button>
+          </div>
+        )}
+        
         <div className="text-xs text-muted-foreground">
           {applyToTimeline 
-            ? 'Effect will be applied to all frames' 
+            ? targetScope === 'all-layers'
+              ? 'Effect will be applied to all visible, unlocked layers'
+              : 'Effect will be applied to all frames on the active layer'
             : 'Effect will be applied to current canvas only'
           }
         </div>

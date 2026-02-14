@@ -228,65 +228,89 @@ const processHistoryAction = (
       
     case 'apply_effect': {
       const effectAction = action as import('../types').ApplyEffectHistoryAction;
+      const tl = useTimelineStore.getState();
+      
       if (isRedo) {
-        // Redo: Restore the "after" state (following the forward snapshot pattern)
         if (effectAction.data.applyToTimeline) {
-          if (effectAction.data.newFramesData) {
-            // Write directly to content frames by array index
-            const tl = useTimelineStore.getState();
-            const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
-            if (activeLayer) {
+          if (effectAction.data.targetScope === 'all-layers' && effectAction.data.newLayerFramesData) {
+            // Multi-layer redo: restore each layer's frames from stored data
+            for (const { layerId, framesData } of effectAction.data.newLayerFramesData) {
+              const layer = tl.layers.find(l => (l.id as string) === layerId);
+              if (layer) {
+                for (const { frameIndex, data } of framesData) {
+                  const cf = layer.contentFrames[frameIndex];
+                  if (cf) {
+                    tl.updateContentFrameData(layer.id, cf.id, data);
+                  }
+                }
+              }
+            }
+            // Sync canvas
+            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+            if (currentData) canvasStore.setCanvasData(currentData);
+            console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${effectAction.data.newLayerFramesData.length} layers`);
+          } else if (effectAction.data.newFramesData) {
+            // Single-layer redo: use stored affectedLayerIds or fall back to active
+            const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+            const targetLayer = targetLayerId
+              ? tl.layers.find(l => (l.id as string) === targetLayerId)
+              : tl.layers.find(l => l.id === tl.view.activeLayerId);
+            if (targetLayer) {
               effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
-                const cf = activeLayer.contentFrames[frameIndex];
+                const cf = targetLayer.contentFrames[frameIndex];
                 if (cf) {
-                  tl.updateContentFrameData(activeLayer.id, cf.id, data);
+                  tl.updateContentFrameData(targetLayer.id, cf.id, data);
                 }
               });
             }
-            // Sync canvas to show the current frame's restored data
-            const currentIdx = animationStore.currentFrameIndex;
-            const currentData = animationStore.getFrameData(currentIdx);
-            if (currentData) {
-              canvasStore.setCanvasData(currentData);
-            }
+            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+            if (currentData) canvasStore.setCanvasData(currentData);
             console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${effectAction.data.newFramesData.length} frames`);
-          } else {
-            console.warn(`⚠️ Redo for ${effectAction.data.effectType} effect: newFramesData missing (legacy entry)`);
           }
         } else {
-          // Restore single canvas to its post-effect state
           if (effectAction.data.newCanvasData) {
             canvasStore.setCanvasData(effectAction.data.newCanvasData);
             console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to canvas`);
-          } else {
-            console.warn(`⚠️ Redo for ${effectAction.data.effectType} effect: newCanvasData missing (legacy entry)`);
           }
         }
       } else {
         // Undo: Restore previous data
         if (effectAction.data.applyToTimeline) {
-          if (effectAction.data.previousFramesData) {
-            // Write directly to content frames by array index
-            const tl = useTimelineStore.getState();
-            const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
-            if (activeLayer) {
+          if (effectAction.data.targetScope === 'all-layers' && effectAction.data.previousLayerFramesData) {
+            // Multi-layer undo: restore each layer's frames from stored data
+            for (const { layerId, framesData } of effectAction.data.previousLayerFramesData) {
+              const layer = tl.layers.find(l => (l.id as string) === layerId);
+              if (layer) {
+                for (const { frameIndex, data } of framesData) {
+                  const cf = layer.contentFrames[frameIndex];
+                  if (cf) {
+                    tl.updateContentFrameData(layer.id, cf.id, data);
+                  }
+                }
+              }
+            }
+            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+            if (currentData) canvasStore.setCanvasData(currentData);
+            console.log(`✅ Undo: Restored ${effectAction.data.previousLayerFramesData.length} layers from ${effectAction.data.effectType} effect`);
+          } else if (effectAction.data.previousFramesData) {
+            // Single-layer undo: use stored affectedLayerIds or fall back to active
+            const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+            const targetLayer = targetLayerId
+              ? tl.layers.find(l => (l.id as string) === targetLayerId)
+              : tl.layers.find(l => l.id === tl.view.activeLayerId);
+            if (targetLayer) {
               effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
-                const cf = activeLayer.contentFrames[frameIndex];
+                const cf = targetLayer.contentFrames[frameIndex];
                 if (cf) {
-                  tl.updateContentFrameData(activeLayer.id, cf.id, data);
+                  tl.updateContentFrameData(targetLayer.id, cf.id, data);
                 }
               });
             }
-            // Sync canvas to show the current frame's restored data
-            const currentIdx = animationStore.currentFrameIndex;
-            const currentData = animationStore.getFrameData(currentIdx);
-            if (currentData) {
-              canvasStore.setCanvasData(currentData);
-            }
+            const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+            if (currentData) canvasStore.setCanvasData(currentData);
             console.log(`✅ Undo: Restored ${effectAction.data.previousFramesData.length} frames from ${effectAction.data.effectType} effect`);
           }
         } else {
-          // Restore single canvas
           if (effectAction.data.previousCanvasData) {
             canvasStore.setCanvasData(effectAction.data.previousCanvasData);
             console.log(`✅ Undo: Restored canvas from ${effectAction.data.effectType} effect`);
@@ -508,31 +532,44 @@ const processHistoryAction = (
     
     case 'apply_generator': {
       const generatorAction = action as import('../types').ApplyGeneratorHistoryAction;
+      const tl = useTimelineStore.getState();
       
-      // Generators always work with frames (not single canvas)
       if (isRedo) {
-        if (generatorAction.data.newFrames) {
-          animationStore.replaceFrames(
-            generatorAction.data.newFrames,
-            generatorAction.data.newCurrentFrame || 0
-          );
-          // Sync canvas to show the restored frame
-          const idx = generatorAction.data.newCurrentFrame || 0;
-          const data = animationStore.getFrameData(idx);
-          if (data) canvasStore.setCanvasData(data);
-          console.log(`✅ Redo: Applied ${generatorAction.data.generatorId} generator (${generatorAction.data.frameCount} frames)`);
+        // Redo: Re-create the generator layer from the snapshot
+        const snapshot = generatorAction.data.layerSnapshot;
+        if (snapshot) {
+          // Add a new layer and populate it from the snapshot
+          const newLayerId = tl.addLayer(generatorAction.data.layerName);
+          if (newLayerId) {
+            // Remove the default empty content frame
+            const newLayer = tl.layers.find(l => l.id === newLayerId);
+            if (newLayer) {
+              for (const cf of [...newLayer.contentFrames]) {
+                tl.removeContentFrame(newLayerId, cf.id);
+              }
+            }
+            // Restore content frames from snapshot
+            const snapshotFrames = (snapshot as { contentFrames?: Array<{ startFrame: number; durationFrames: number; data: Record<string, { char: string; textColor: string; bgColor: string }> }> }).contentFrames;
+            if (snapshotFrames) {
+              for (const cf of snapshotFrames) {
+                const cellData = new Map<string, import('../types').Cell>();
+                if (cf.data) {
+                  for (const [key, cell] of Object.entries(cf.data)) {
+                    cellData.set(key, cell as import('../types').Cell);
+                  }
+                }
+                tl.addContentFrame(newLayerId, cf.startFrame, cf.durationFrames, cellData);
+              }
+            }
+            console.log(`✅ Redo: Re-created ${generatorAction.data.layerName} layer (${generatorAction.data.frameCount} frames)`);
+          }
         }
       } else {
-        if (generatorAction.data.previousFrames) {
-          animationStore.replaceFrames(
-            generatorAction.data.previousFrames,
-            generatorAction.data.previousCurrentFrame || 0
-          );
-          // Sync canvas to show the restored frame
-          const idx = generatorAction.data.previousCurrentFrame || 0;
-          const data = animationStore.getFrameData(idx);
-          if (data) canvasStore.setCanvasData(data);
-          console.log(`✅ Undo: Restored ${generatorAction.data.previousFrames.length} frame(s) before ${generatorAction.data.generatorId} generator`);
+        // Undo: Remove the generator layer
+        const layerId = generatorAction.data.layerId;
+        if (layerId) {
+          tl.removeLayer(layerId as import('../types/timeline').LayerId);
+          console.log(`✅ Undo: Removed ${generatorAction.data.layerName} layer`);
         }
       }
       break;

@@ -30,8 +30,9 @@ import {
   DEFAULT_DIGITAL_RAIN_SETTINGS
 } from '../constants/generators';
 import { useCanvasStore } from './canvasStore';
-import { useAnimationStore } from './animationStore';
 import { useToolStore } from './toolStore';
+import { useTimelineStore } from './timelineStore';
+import { GENERATOR_DEFINITIONS } from '../constants/generators';
 import { generateFrames } from '../utils/generators/generatorEngine';
 import { ASCIIConverter, type ConversionSettings } from '../utils/asciiConverter';
 import { usePaletteStore } from './paletteStore';
@@ -70,7 +71,6 @@ export interface GeneratorsState {
   // UI State
   isOpen: boolean;
   activeGenerator: GeneratorId | null;
-  outputMode: 'overwrite' | 'append';
   uiState: GeneratorUIState;
   
   // Generator Settings
@@ -96,7 +96,6 @@ export interface GeneratorsState {
   // Actions - Panel Management
   openGenerator: (id: GeneratorId) => void;
   closeGenerator: () => void;
-  setOutputMode: (mode: 'overwrite' | 'append') => void;
   setActiveTab: (tab: 'animation' | 'mapping') => void;
   
   // Actions - Playback Control
@@ -139,7 +138,6 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
   // Initial state
   isOpen: false,
   activeGenerator: null,
-  outputMode: 'overwrite',  // Default to overwrite mode
   uiState: { ...DEFAULT_UI_STATE },
   
   // Default generator settings
@@ -227,10 +225,6 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
     });
     usePreviewStore.getState().clearPreview();
     get().clearError();
-  },
-  
-  setOutputMode: (mode: 'overwrite' | 'append') => {
-    set({ outputMode: mode });
   },
   
   setActiveTab: (tab: 'animation' | 'mapping') => {
@@ -641,13 +635,11 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
     set({ isPreviewDirty: true });
   },
   
-  // Apply to Canvas Actions
+  // Apply to Canvas Actions — Creates a new layer with generator output
   applyGenerator: async () => {
     const state = get();
     const { 
       activeGenerator, 
-      convertedFrames, 
-      outputMode,
       isPreviewDirty
     } = state;
     
@@ -679,61 +671,65 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
     try {
       set({ lastError: null });
       
-      // Get current animation state for history
-      const animationStore = useAnimationStore.getState();
-      const { currentFrameIndex, frames, importFramesOverwrite, importFramesAppend } = animationStore;
+      const tl = useTimelineStore.getState();
       
-      // Capture before state for history
-      const previousFrames = outputMode === 'overwrite' ? [...frames] : undefined;
-      const previousCurrentFrame = currentFrameIndex;
+      // Generate auto-incrementing layer name
+      const generatorDef = GENERATOR_DEFINITIONS.find(g => g.id === activeGenerator);
+      const baseName = generatorDef?.name ?? activeGenerator;
+      const existingCount = tl.layers.filter(l => l.name.startsWith(baseName)).length;
+      const layerName = existingCount > 0 ? `${baseName} ${existingCount + 1}` : baseName;
       
-      // Prepare frame data for import
-      const frameData = framesToApply.map(frame => ({
-        data: frame.data,
-        duration: frame.duration
-      }));
-      
-      // Apply based on output mode
-      if (outputMode === 'overwrite') {
-        importFramesOverwrite(frameData, currentFrameIndex);
-      } else {
-        importFramesAppend(frameData);
+      // Create a new layer for the generator output
+      const newLayerId = tl.addLayer(layerName);
+      if (!newLayerId) {
+        set({ lastError: 'Cannot add layer — layer limit reached. Upgrade to Pro for unlimited layers.' });
+        return false;
       }
       
-      // Capture after state and record history
-      const newFrames = [...useAnimationStore.getState().frames];
-      const newCurrentFrame = useAnimationStore.getState().currentFrameIndex;
+      // The new layer comes with a default empty content frame — remove it
+      // Re-read state since addLayer() updated the store
+      const newLayer = useTimelineStore.getState().layers.find(l => l.id === newLayerId);
+      if (newLayer) {
+        for (const cf of [...newLayer.contentFrames]) {
+          tl.removeContentFrame(newLayerId, cf.id);
+        }
+      }
       
+      // Add each generated frame as a content frame on the new layer
+      const fps = tl.config.frameRate;
+      let startFrame = 0;
+      for (const frame of framesToApply) {
+        const durationFrames = Math.max(1, Math.round(frame.duration / (1000 / fps)));
+        tl.addContentFrame(newLayerId, startFrame, durationFrames, new Map(frame.data));
+        startFrame += durationFrames;
+      }
+      
+      // Record history action for undo (remove layer) / redo (re-add layer)
       const historyAction: import('../types').ApplyGeneratorHistoryAction = {
         type: 'apply_generator',
         timestamp: Date.now(),
-        description: `Apply ${activeGenerator} generator (${outputMode})`,
+        description: `Create ${layerName} layer (${framesToApply.length} frames)`,
         data: {
-          mode: outputMode,
           generatorId: activeGenerator,
-          previousFrames,
-          previousCurrentFrame,
-          newFrames,
-          newCurrentFrame,
-          frameCount: convertedFrames.length
+          layerId: newLayerId as string,
+          layerName,
+          frameCount: framesToApply.length,
+          // Snapshot the full layer for redo restoration
+          layerSnapshot: JSON.parse(JSON.stringify(
+            useTimelineStore.getState().layers.find(l => l.id === newLayerId),
+            (_key, value) => value instanceof Map ? Object.fromEntries(value) : value
+          )),
         }
       };
       
       useToolStore.getState().pushToHistory(historyAction);
       
-      // Sync canvas with the current frame's content
-      // Read directly from timelineStore for immediate accuracy
-      const { useTimelineStore } = await import('./timelineStore');
-      const tl = useTimelineStore.getState();
-      const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
-      if (activeLayer && activeLayer.contentFrames.length > 0) {
-        const currentCf = activeLayer.contentFrames[0]; // After overwrite, first frame
-        if (currentCf) {
-          useCanvasStore.getState().setCanvasData(currentCf.data);
-        }
+      // Sync canvas to the new layer's first content frame
+      const updatedLayer = useTimelineStore.getState().layers.find(l => l.id === newLayerId);
+      if (updatedLayer && updatedLayer.contentFrames.length > 0) {
+        useCanvasStore.getState().setCanvasData(updatedLayer.contentFrames[0].data);
       }
-      // Also navigate to frame 0 to ensure sync
-      useAnimationStore.getState().setCurrentFrame(0);
+      tl.goToFrame(0);
       
       // Close panel on success
       get().closeGenerator();
@@ -760,7 +756,6 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
     set({
       isOpen: false,
       activeGenerator: null,
-      outputMode: 'append',
       uiState: { ...DEFAULT_UI_STATE },
       radioWavesSettings: { ...DEFAULT_RADIO_WAVES_SETTINGS },
       turbulentNoiseSettings: { ...DEFAULT_TURBULENT_NOISE_SETTINGS },
@@ -793,8 +788,6 @@ export const useGeneratorUIState = () => {
   return {
     uiState: store.uiState,
     setActiveTab: store.setActiveTab,
-    outputMode: store.outputMode,
-    setOutputMode: store.setOutputMode
   };
 };
 

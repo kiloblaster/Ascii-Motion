@@ -53,7 +53,7 @@ const parseTailwindDuration = (token: string): number | null => {
 
 export function GeneratorsPanel() {
   const { isOpen, activeGenerator, closeGenerator } = useGeneratorPanel();
-  const { uiState, setActiveTab, outputMode, setOutputMode } = useGeneratorUIState();
+  const { uiState, setActiveTab } = useGeneratorUIState();
   const { isGenerating, totalPreviewFrames, applyGenerator } = useGeneratorsStore();
   const previewControls = useGeneratorPreview();
 
@@ -175,33 +175,9 @@ export function GeneratorsPanel() {
 
       {/* Footer */}
       <div className="border-t border-border p-3 space-y-3">
-        {/* Output Mode Selection */}
-        <div className="space-y-2">
-          <div className="text-xs font-medium">Output Mode</div>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant={outputMode === 'overwrite' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setOutputMode('overwrite')}
-              className="h-8 text-xs"
-            >
-              Overwrite
-            </Button>
-            <Button
-              variant={outputMode === 'append' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setOutputMode('append')}
-              className="h-8 text-xs"
-            >
-              Append
-            </Button>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {outputMode === 'overwrite' 
-              ? 'Replace frames starting from current frame'
-              : 'Add frames after the last existing frame'
-            }
-          </div>
+        {/* Info */}
+        <div className="text-xs text-muted-foreground">
+          Generator output will create a new layer above the current selection.
         </div>
 
         {/* Action Buttons */}
@@ -221,7 +197,7 @@ export function GeneratorsPanel() {
             onClick={applyGenerator}
             className="flex-1 h-8 text-xs"
           >
-            {outputMode === 'overwrite' ? 'Apply to Canvas' : 'Generate Animation'}
+            Create Layer
           </Button>
         </div>
       </div>

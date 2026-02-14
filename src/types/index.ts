@@ -447,11 +447,15 @@ export interface ApplyEffectHistoryAction extends HistoryAction {
     effectType: import('./effects').EffectType;
     effectSettings: import('./effects').EffectSettings; // Settings object for the effect
     applyToTimeline: boolean;
+    targetScope?: 'active-layer' | 'all-layers'; // Which layers were targeted
+    affectedLayerIds?: string[]; // Layer IDs affected (for correct undo targeting)
     affectedFrameIndices: number[];
     previousCanvasData?: Map<string, Cell>; // For single canvas effects (before)
-    previousFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (before)
+    previousFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (before) — single layer
+    previousLayerFramesData?: Array<{ layerId: string; framesData: Array<{ frameIndex: number; data: Map<string, Cell> }> }>; // For multi-layer timeline effects (before)
     newCanvasData?: Map<string, Cell>; // For single canvas effects (after) - needed for redo
-    newFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (after) - needed for redo
+    newFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (after) — single layer
+    newLayerFramesData?: Array<{ layerId: string; framesData: Array<{ frameIndex: number; data: Map<string, Cell> }> }>; // For multi-layer timeline effects (after)
   };
 }
 
@@ -495,15 +499,12 @@ export interface ImportMediaHistoryAction extends HistoryAction {
 export interface ApplyGeneratorHistoryAction extends HistoryAction {
   type: 'apply_generator';
   data: {
-    mode: 'overwrite' | 'append';
     generatorId: string;
-    // For overwrite mode
-    previousFrames?: Frame[];
-    previousCurrentFrame?: number;
-    // For both modes
-    newFrames?: Frame[];
-    newCurrentFrame?: number;
+    layerId: string;
+    layerName: string;
     frameCount: number;
+    // Serialized layer snapshot for redo restoration (Maps → Records)
+    layerSnapshot: Record<string, unknown>;
   };
 }
 
