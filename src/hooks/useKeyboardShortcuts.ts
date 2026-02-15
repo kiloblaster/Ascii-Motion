@@ -9,8 +9,8 @@ import { useZoomControls } from './useZoomControls';
 import { useFrameNavigation } from './useFrameNavigation';
 import { useTimelineHistory } from './useTimelineHistory';
 import { useAnimationHistory } from './useAnimationHistory';
-import { getContentFrameAtTime, compositeLayersAtFrame, getTransformAtFrame, inverseTransformPoint } from '../utils/layerCompositing';
-import { screenToLocal } from '../utils/layerTransformUtils';
+import { getContentFrameAtTime, compositeLayersAtFrame } from '../utils/layerCompositing';
+import { screenToLocal, screenToLocalForLayer } from '../utils/layerTransformUtils';
 import { useOptimizedPlayback } from './useOptimizedPlayback';
 import { usePlaybackOnlySnapshot } from './usePlaybackOnlySnapshot';
 import { usePaletteStore } from '../stores/paletteStore';
@@ -1680,10 +1680,10 @@ export const useKeyboardShortcuts = () => {
           const newData = new Map(cf.data);
           let changed = false;
           // Convert screen-space selection keys to this layer's local space
-          const layerTransform = getTransformAtFrame(layer, currentFrame);
+          // (includes group transforms if the layer is in a group)
           for (const key of cellKeys) {
             const [sx, sy] = key.split(',').map(Number);
-            const local = inverseTransformPoint(sx, sy, layerTransform);
+            const local = screenToLocalForLayer(layer.id as string, sx, sy);
             const localKey = `${local.x},${local.y}`;
             if (newData.has(localKey)) {
               newData.delete(localKey);

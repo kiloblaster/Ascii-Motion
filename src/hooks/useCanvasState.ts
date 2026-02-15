@@ -4,8 +4,8 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { useTimelineStore } from '../stores/timelineStore';
-import { screenToLocal } from '../utils/layerTransformUtils';
-import { getContentFrameAtTime, getTransformAtFrame, inverseTransformPoint } from '../utils/layerCompositing';
+import { screenToLocal, getComposedTransformForLayer } from '../utils/layerTransformUtils';
+import { getContentFrameAtTime, inverseTransformPoint } from '../utils/layerCompositing';
 
 /**
  * Custom hook that provides canvas state management functionality
@@ -194,8 +194,8 @@ export const useCanvasState = () => {
         const layerNewCells = new Map(cf.data);
         let changed = false;
         
-        // Get this layer's transform to convert screen-space selection positions to local space
-        const layerTransform = getTransformAtFrame(layer, currentFrame);
+        // Get this layer's composed transform (including group) to convert screen-space selection positions to local space
+        const layerTransform = getComposedTransformForLayer(layer, currentFrame, tl.layerGroups);
         
         // Collect cells at original selection positions (converted to layer-local space)
         const cellsToMove = new Map<string, { localKey: string; cell: Cell }>();

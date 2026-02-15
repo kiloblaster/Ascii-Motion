@@ -6,7 +6,8 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import { calculateBrushCells } from '../utils/brushUtils';
 import { useSelectionStore } from '../stores/selectionStore';
 import { isCellDrawableWithState, constrainCellsToSelectionWithState } from '../utils/selectionConstraint';
-import { isLayerEditable, getTransformAtFrame, inverseTransformPoint } from '../utils/layerCompositing';
+import { isLayerEditable } from '../utils/layerCompositing';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import { toast } from 'sonner';
 import type { Cell } from '../types';
 
@@ -183,21 +184,9 @@ export const useDrawingTool = () => {
     // Apply inverse layer transform so drawing lands at the visual cursor position.
     // The compositing renderer applies forward transforms when displaying, so we
     // need to undo that transform when writing to get visual alignment.
-    const tl = useTimelineStore.getState();
-    let lx = x, ly = y;
-    if (tl.layers.length > 0 && tl.view.activeLayerId) {
-      const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-      if (layer) {
-        const transform = getTransformAtFrame(layer, tl.view.currentFrame);
-        if (transform.positionX !== 0 || transform.positionY !== 0 ||
-            transform.scale !== 1 || transform.rotation !== 0 ||
-            transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
-          const local = inverseTransformPoint(x, y, transform);
-          lx = local.x;
-          ly = local.y;
-        }
-      }
-    }
+    // screenToLocal accounts for both layer and group transforms.
+    const local = screenToLocal(x, y);
+    const lx = local.x, ly = local.y;
 
     switch (toolToUse) {
       case 'pencil': {
@@ -273,20 +262,10 @@ export const useDrawingTool = () => {
     // Guard: check if active layer allows editing
     if (!checkActiveLayerEditable()) return;
 
-    // Inverse layer transform for both corners
-    let sx = startX, sy = startY, ex = endX, ey = endY;
-    const tl = useTimelineStore.getState();
-    if (tl.layers.length > 0 && tl.view.activeLayerId) {
-      const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-      if (layer) {
-        const transform = getTransformAtFrame(layer, tl.view.currentFrame);
-        if (transform.positionX !== 0 || transform.positionY !== 0 || transform.scale !== 1 || transform.rotation !== 0 || transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
-          const ls = inverseTransformPoint(startX, startY, transform);
-          const le = inverseTransformPoint(endX, endY, transform);
-          sx = ls.x; sy = ls.y; ex = le.x; ey = le.y;
-        }
-      }
-    }
+    // Inverse layer + group transform for both corners
+    const ls = screenToLocal(startX, startY);
+    const le = screenToLocal(endX, endY);
+    const sx = ls.x, sy = ls.y, ex = le.x, ey = le.y;
 
     const minX = Math.min(sx, ex);
     const maxX = Math.max(sx, ex);
@@ -370,20 +349,10 @@ export const useDrawingTool = () => {
     // Guard: check if active layer allows editing
     if (!checkActiveLayerEditable()) return;
 
-    // Inverse layer transform for both corners
-    let sx = startX, sy = startY, ex = endX, ey = endY;
-    const tl = useTimelineStore.getState();
-    if (tl.layers.length > 0 && tl.view.activeLayerId) {
-      const layer = tl.layers.find((l) => l.id === tl.view.activeLayerId);
-      if (layer) {
-        const transform = getTransformAtFrame(layer, tl.view.currentFrame);
-        if (transform.positionX !== 0 || transform.positionY !== 0 || transform.scale !== 1 || transform.rotation !== 0 || transform.anchorPointX !== 0 || transform.anchorPointY !== 0) {
-          const ls = inverseTransformPoint(startX, startY, transform);
-          const le = inverseTransformPoint(endX, endY, transform);
-          sx = ls.x; sy = ls.y; ex = le.x; ey = le.y;
-        }
-      }
-    }
+    // Inverse layer + group transform for both corners
+    const ls = screenToLocal(startX, startY);
+    const le = screenToLocal(endX, endY);
+    const sx = ls.x, sy = ls.y, ex = le.x, ey = le.y;
 
     const centerX = (sx + ex) / 2;
     const centerY = (sy + ey) / 2;
