@@ -38,13 +38,18 @@ export const useOnionSkinRenderer = () => {
   const canvasHeight = useCanvasStore((s) => s.height);
   const isLayerMode = useTimelineStore.getState().layers.length > 0;
   const layersRef = useRef(useTimelineStore.getState().layers);
+  const layerGroupsRef = useRef(useTimelineStore.getState().layerGroups);
   // Keep layersRef current via non-reactive subscription
   useEffect(() => {
     const unsub = useTimelineStore.subscribe(
       (state) => state.layers,
       (newLayers) => { layersRef.current = newLayers; }
     );
-    return unsub;
+    const unsubGroups = useTimelineStore.subscribe(
+      (state) => state.layerGroups,
+      (newGroups) => { layerGroupsRef.current = newGroups; }
+    );
+    return () => { unsub(); unsubGroups(); };
   }, []);
   const effectiveFrame = isLayerMode ? tlCurrentFrame : currentFrameIndex;
   // Use a ref for effectiveTotal so it doesn't trigger renderOnionSkins recreation
@@ -91,7 +96,7 @@ export const useOnionSkinRenderer = () => {
   const getOnionFrameData = useCallback((frameIndex: number): Map<string, Cell> | undefined => {
     if (isLayerMode) {
       // Composite all visible layers at this frame
-      return compositeLayersAtFrame(layersRef.current, frameIndex, canvasWidth, canvasHeight);
+      return compositeLayersAtFrame(layersRef.current, frameIndex, canvasWidth, canvasHeight, undefined, false, layerGroupsRef.current);
     } else {
       // Legacy mode: get frame data from the animation store
       const { getFrameData } = useAnimationStore.getState();

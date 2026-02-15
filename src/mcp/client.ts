@@ -11,6 +11,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { useProjectMetadataStore } from '../stores/projectMetadataStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useMCPStore } from './store';
 import type { MCPCommand, MCPServerMessage, MCPClientAuth, MCPClientHeartbeat, MCPClientStateSnapshot } from './types';
 
@@ -125,6 +126,7 @@ export class MCPClient {
     const canvas = useCanvasStore.getState();
     const animation = useAnimationStore.getState();
     const projectMeta = useProjectMetadataStore.getState();
+    const timeline = useTimelineStore.getState();
     
     // Convert frames to serializable format with full cell data
     const frames = animation.frames.map(frame => {
@@ -139,6 +141,68 @@ export class MCPClient {
         data,
       };
     });
+
+    // Build layer data for v2 if in layer mode
+    const isLayerMode = timeline.layers.length > 0;
+    let layerData: Record<string, unknown> | undefined;
+
+    if (isLayerMode) {
+      layerData = {
+        layers: timeline.layers.map(l => ({
+          id: l.id,
+          name: l.name,
+          visible: l.visible,
+          solo: l.solo,
+          locked: l.locked,
+          opacity: l.opacity,
+          parentGroupId: l.parentGroupId,
+          syncKeyframesToFrames: l.syncKeyframesToFrames,
+          contentFrames: l.contentFrames.map(cf => {
+            const cfData: Record<string, { char: string; color: string; bgColor: string }> = {};
+            cf.data.forEach((cell, key) => {
+              cfData[key] = { char: cell.char, color: cell.color, bgColor: cell.bgColor };
+            });
+            return {
+              id: cf.id,
+              name: cf.name,
+              startFrame: cf.startFrame,
+              durationFrames: cf.durationFrames,
+              data: cfData,
+              hidden: cf.hidden,
+            };
+          }),
+          propertyTracks: l.propertyTracks.map(pt => ({
+            id: pt.id,
+            propertyPath: pt.propertyPath,
+            loopKeyframes: pt.loopKeyframes,
+            keyframes: pt.keyframes.map(kf => ({
+              id: kf.id,
+              frame: kf.frame,
+              value: kf.value,
+              easing: kf.easing,
+            })),
+          })),
+          staticProperties: l.staticProperties,
+        })),
+        layerGroups: timeline.layerGroups.map(g => ({
+          id: g.id,
+          name: g.name,
+          childLayerIds: g.childLayerIds,
+          visible: g.visible,
+          solo: g.solo,
+          locked: g.locked,
+          collapsed: g.collapsed,
+          propertyTracks: g.propertyTracks,
+          staticProperties: g.staticProperties,
+        })),
+        activeLayerId: timeline.view.activeLayerId,
+        timeline: {
+          frameRate: timeline.config.frameRate,
+          durationFrames: timeline.config.durationFrames,
+          looping: timeline.view.looping,
+        },
+      };
+    }
     
     const snapshot: MCPClientStateSnapshot = {
       type: 'state_snapshot',
@@ -158,10 +222,12 @@ export class MCPClient {
       },
       project: {
         name: projectMeta.projectName,
-      }
+      },
+      // v2 layer data (included when in layer mode)
+      ...(layerData || {}),
     };
     
-    console.log('[MCP] Sending full state snapshot with', frames.length, 'frames');
+    console.log('[MCP] Sending state snapshot:', isLayerMode ? `${timeline.layers.length} layers` : `${frames.length} frames`);
     this.send(snapshot);
   }
 
@@ -433,6 +499,103 @@ export class MCPClient {
         }
         useAnimationStore.getState().setFrameData(frameData.frameIndex, cellMap);
         console.log('[MCP] Set frame data for frame', frameData.frameIndex, 'with', cellMap.size, 'cells');
+        break;
+      }
+
+      // =====================================================================
+      // Layer operations (v2)
+      // =====================================================================
+      case 'add_layer': {
+        const layerData = data as { layer: { id: string; name: string }; totalLayers: number };
+        console.log('[MCP] Layer added:', layerData.layer.name, '- total:', layerData.totalLayers);
+        // Request full state sync to get the new layer
+        this.sendStateSnapshot();
+        break;
+      }
+
+      case 'remove_layer': {
+        const removeData = data as { layerId: string };
+        console.log('[MCP] Layer removed:', removeData.layerId);
+        this.sendStateSnapshot();
+        break;
+      }
+
+      case 'duplicate_layer': {
+        const dupData = data as { sourceLayerId: string; newLayer: { id: string; name: string } };
+        console.log('[MCP] Layer duplicated:', dupData.newLayer.name);
+        this.sendStateSnapshot();
+        break;
+      }
+
+      case 'set_active_layer': {
+        const activeData = data as { layerId: string };
+        console.log('[MCP] Active layer changed:', activeData.layerId);
+        break;
+      }
+
+      case 'rename_layer': {
+        const renameData = data as { layerId: string; name: string };
+        console.log('[MCP] Layer renamed:', renameData.layerId, '→', renameData.name);
+        break;
+      }
+
+      case 'reorder_layers': {
+        const reorderData = data as { fromIndex: number; toIndex: number };
+        console.log('[MCP] Layers reordered:', reorderData.fromIndex, '→', reorderData.toIndex);
+        break;
+      }
+
+      case 'set_layer_visibility': {
+        const visData = data as { layerId: string; visible?: boolean; solo?: boolean; locked?: boolean; opacity?: number };
+        console.log('[MCP] Layer visibility changed:', visData.layerId);
+        break;
+      }
+
+      case 'add_content_frame': {
+        const cfData = data as { layerId: string; contentFrame: { id: string; name: string; startFrame: number; durationFrames: number } };
+        console.log('[MCP] Content frame added to layer:', cfData.layerId, 'at frame', cfData.contentFrame.startFrame);
+        break;
+      }
+
+      case 'remove_content_frame': {
+        const rcfData = data as { layerId: string; contentFrameId: string };
+        console.log('[MCP] Content frame removed:', rcfData.contentFrameId, 'from layer:', rcfData.layerId);
+        break;
+      }
+
+      case 'add_keyframe': {
+        const kfData = data as { layerId: string; propertyPath: string; keyframe: { id: string; frame: number; value: number } };
+        console.log('[MCP] Keyframe added:', kfData.propertyPath, 'at frame', kfData.keyframe.frame, '=', kfData.keyframe.value);
+        break;
+      }
+
+      case 'remove_keyframe': {
+        const rkfData = data as { layerId: string; trackId: string; keyframeId: string };
+        console.log('[MCP] Keyframe removed:', rkfData.keyframeId);
+        break;
+      }
+
+      case 'create_group': {
+        const grpData = data as { group: { id: string; name: string; childLayerIds: string[] } };
+        console.log('[MCP] Group created:', grpData.group.name);
+        break;
+      }
+
+      case 'ungroup_layers': {
+        const ungroupData = data as { groupId: string };
+        console.log('[MCP] Group dissolved:', ungroupData.groupId);
+        break;
+      }
+
+      case 'set_frame_rate': {
+        const fpsData = data as { fps: number };
+        console.log('[MCP] Frame rate changed:', fpsData.fps, 'fps');
+        break;
+      }
+
+      case 'set_timeline_duration': {
+        const durData = data as { durationFrames: number };
+        console.log('[MCP] Timeline duration changed:', durData.durationFrames, 'frames');
         break;
       }
       

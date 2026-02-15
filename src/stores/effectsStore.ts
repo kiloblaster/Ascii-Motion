@@ -540,6 +540,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
             canvasHeight,
             undefined,
             false,
+            tl.layerGroups,
           );
           
           previewStore.setPreviewData(compositedPreview);
@@ -595,6 +596,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
                     canvasHeight,
                     undefined,
                     false,
+                    tl.layerGroups,
                   );
                   
                   previewStore.setPreviewData(compositedPreview);

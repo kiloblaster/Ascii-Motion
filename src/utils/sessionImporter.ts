@@ -6,7 +6,7 @@ import { useCharacterPaletteStore } from '../stores/characterPaletteStore';
 import { useProjectMetadataStore } from '../stores/projectMetadataStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import type { Cell, Tool } from '../types';
-import type { Layer, LayerId, ContentFrame, ContentFrameId, PropertyTrack, PropertyTrackId, Keyframe, KeyframeId, LayerGroupId, SessionDataV2 } from '../types/timeline';
+import type { Layer, LayerId, ContentFrame, ContentFrameId, PropertyTrack, PropertyTrackId, Keyframe, KeyframeId, LayerGroup, LayerGroupId, SessionDataV2 } from '../types/timeline';
 import { DEFAULT_FRAME_DURATION } from '../constants';
 import type { TypographySettings } from './canvasSizeConversion';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from '../types/palette';
@@ -475,7 +475,30 @@ export class SessionImporter {
       syncKeyframesToFrames: sessionLayer.syncKeyframesToFrames,
     }));
 
-    // Load layers into timeline store
+    // Deserialize layer groups
+    const layerGroups: LayerGroup[] = (sessionData.layerGroups ?? []).map((sessionGroup) => ({
+      id: sessionGroup.id as LayerGroupId,
+      name: sessionGroup.name,
+      childLayerIds: sessionGroup.childLayerIds.map((id) => id as LayerId),
+      visible: sessionGroup.visible,
+      solo: sessionGroup.solo,
+      locked: sessionGroup.locked,
+      collapsed: sessionGroup.collapsed,
+      propertyTracks: (sessionGroup.propertyTracks ?? []).map((track) => ({
+        id: track.id as PropertyTrackId,
+        propertyPath: track.propertyPath as import('../types/timeline').PropertyPath,
+        loopKeyframes: track.loopKeyframes,
+        keyframes: track.keyframes.map((kf) => ({
+          id: kf.id as KeyframeId,
+          frame: kf.frame,
+          value: kf.value,
+          easing: kf.easing,
+        })),
+      })),
+      staticProperties: sessionGroup.staticProperties ?? {},
+    }));
+
+    // Load layers and groups into timeline store
     timelineStore.loadFromSessionData(
       layers,
       {
@@ -485,6 +508,7 @@ export class SessionImporter {
       {
         looping: sessionData.timeline.looping,
       },
+      layerGroups,
     );
 
     // Load first layer's first content frame into canvas for immediate display

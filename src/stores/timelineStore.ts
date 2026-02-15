@@ -361,7 +361,7 @@ export interface TimelineState {
   createNewProject: () => void;
 
   /** Load state from session data (used by session importer) */
-  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>) => void;
+  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>, layerGroups?: LayerGroup[]) => void;
 
   /** Serialize current state to SessionDataV2 format (used by session exporter) */
   getSessionData: () => SessionDataV2;
@@ -2036,7 +2036,7 @@ export const useTimelineStore = create<TimelineState>()(
       });
     },
 
-    loadFromSessionData: (layers, config, viewState) => {
+    loadFromSessionData: (layers, config, viewState, layerGroups) => {
       const mergedConfig: TimelineConfig = {
         frameRate: config.frameRate ?? INITIAL_CONFIG.frameRate,
         durationFrames: config.durationFrames ?? INITIAL_CONFIG.durationFrames,
@@ -2049,7 +2049,7 @@ export const useTimelineStore = create<TimelineState>()(
       set({
         config: mergedConfig,
         layers,
-        layerGroups: [],
+        layerGroups: layerGroups ?? [],
         globalEffects: [],
         view: {
           ...INITIAL_VIEW,
@@ -2128,6 +2128,9 @@ export const useTimelineStore = create<TimelineState>()(
                   easing: kf.easing,
                 })),
               })),
+              staticProperties: Object.keys(group.staticProperties).length > 0
+                ? { ...group.staticProperties }
+                : undefined,
             }))
           : undefined,
       };

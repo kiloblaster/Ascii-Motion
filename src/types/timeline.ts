@@ -556,6 +556,7 @@ export interface SessionLayerGroupV2 {
   locked: boolean;
   collapsed: boolean;
   propertyTracks: SessionPropertyTrackV2[];
+  staticProperties?: Record<string, number>;
 }
 
 /**
