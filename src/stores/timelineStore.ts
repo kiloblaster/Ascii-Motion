@@ -65,6 +65,76 @@ function findTrackKeyframeByFrame(
   return { track: null, kf: null };
 }
 
+/**
+ * Merge multiple layers into a set of content frames by compositing at
+ * every unique segment boundary. This ensures that when content frames
+ * overlap differently across layers, each unique visual combination gets
+ * its own content frame in the result.
+ *
+ * Algorithm:
+ * 1. Collect all boundary points (start and end of every content frame)
+ * 2. Sort and deduplicate to get segment boundaries
+ * 3. For each segment, composite all layers at the segment's start frame
+ * 4. If there's content, create a content frame for that segment
+ * 5. Gaps (no content) produce no content frame
+ */
+function computeMergedContentFrames(
+  sourceLayers: Layer[],
+  canvasWidth: number,
+  canvasHeight: number,
+  groups?: LayerGroup[],
+): ContentFrame[] {
+  // Collect all boundary points from all source layers' content frames
+  const boundaries = new Set<number>();
+  for (const layer of sourceLayers) {
+    for (const cf of layer.contentFrames) {
+      boundaries.add(cf.startFrame);
+      boundaries.add(cf.startFrame + cf.durationFrames);
+    }
+  }
+
+  // Sort boundaries to get ordered segment edges
+  const sortedBoundaries = [...boundaries].sort((a, b) => a - b);
+  if (sortedBoundaries.length < 2) {
+    // No content or single point — nothing to merge
+    return [];
+  }
+
+  const mergedContentFrames: ContentFrame[] = [];
+
+  // Process each segment between consecutive boundaries
+  for (let i = 0; i < sortedBoundaries.length - 1; i++) {
+    const segStart = sortedBoundaries[i];
+    const segEnd = sortedBoundaries[i + 1];
+    const segDuration = segEnd - segStart;
+    if (segDuration <= 0) continue;
+
+    // Composite all layers at this segment's frame
+    const compositedCells = compositeLayersAtFrame(
+      sourceLayers,
+      segStart,
+      canvasWidth,
+      canvasHeight,
+      undefined,
+      false,
+      groups,
+    );
+
+    // Only create a content frame if there's actual content
+    if (compositedCells.size > 0) {
+      mergedContentFrames.push({
+        id: generateContentFrameId(),
+        name: `Frame ${mergedContentFrames.length + 1}`,
+        startFrame: segStart,
+        durationFrames: segDuration,
+        data: compositedCells,
+      });
+    }
+  }
+
+  return mergedContentFrames;
+}
+
 // ============================================
 // STORE INTERFACE
 // ============================================
@@ -1713,69 +1783,24 @@ export const useTimelineStore = create<TimelineState>()(
     // ============================================
 
     mergeDown: (layerId) => {
-      const { layers, view, config } = get();
+      const { layers, view, layerGroups } = get();
       const index = layers.findIndex((l) => l.id === layerId);
-      if (index <= 0) return null; // Can't merge bottom layer or not found
+      if (index <= 0) return null;
 
       const upperLayer = layers[index];
       const lowerLayer = layers[index - 1];
 
-      // Composite the two layers across all frames into the lower layer
       const canvasWidth = useCanvasStore.getState().width;
       const canvasHeight = useCanvasStore.getState().height;
 
-      // Build a new set of content frames for the merged result
-      // Determine the frame range covered by both layers
-      const allFrames = [...upperLayer.contentFrames, ...lowerLayer.contentFrames];
-      const minStart = Math.min(...allFrames.map(cf => cf.startFrame));
-      const maxEnd = Math.max(...allFrames.map(cf => cf.startFrame + cf.durationFrames));
+      // Use boundary-based merge to correctly handle overlapping frame blocks
+      const mergedContentFrames = computeMergedContentFrames(
+        [lowerLayer, upperLayer],
+        canvasWidth,
+        canvasHeight,
+        layerGroups,
+      );
 
-      // Composite frame-by-frame and detect unique content blocks
-      const mergedContentFrames: ContentFrame[] = [];
-      let currentBlockStart = -1;
-      let currentBlockData: Map<string, Cell> | null = null;
-
-      for (let f = minStart; f < maxEnd; f++) {
-        const compositedCells = compositeLayersAtFrame(
-          [lowerLayer, upperLayer], // bottom-to-top
-          f,
-          canvasWidth,
-          canvasHeight,
-          undefined,
-          false,
-        );
-
-        if (compositedCells.size === 0) {
-          // Gap frame — close any open block
-          if (currentBlockData) {
-            mergedContentFrames.push({
-              id: generateContentFrameId(),
-              name: `Frame ${mergedContentFrames.length + 1}`,
-              startFrame: currentBlockStart,
-              durationFrames: f - currentBlockStart,
-              data: currentBlockData,
-            });
-            currentBlockData = null;
-          }
-        } else if (!currentBlockData) {
-          // Start a new block
-          currentBlockStart = f;
-          currentBlockData = new Map(compositedCells);
-        }
-        // else: continue existing block (keep first frame's data if 1-frame-per-block isn't needed)
-      }
-      // Close final block
-      if (currentBlockData) {
-        mergedContentFrames.push({
-          id: generateContentFrameId(),
-          name: `Frame ${mergedContentFrames.length + 1}`,
-          startFrame: currentBlockStart,
-          durationFrames: maxEnd - currentBlockStart,
-          data: currentBlockData,
-        });
-      }
-
-      // If no content was produced, create a single empty frame
       if (mergedContentFrames.length === 0) {
         mergedContentFrames.push({
           id: generateContentFrameId(),
@@ -1786,7 +1811,6 @@ export const useTimelineStore = create<TimelineState>()(
         });
       }
 
-      // Create merged layer with lower layer's name
       const mergedLayer: Layer = {
         id: generateLayerId(),
         name: lowerLayer.name,
@@ -1802,7 +1826,6 @@ export const useTimelineStore = create<TimelineState>()(
         },
       };
 
-      // Replace the two layers with the merged one
       const newLayers = [
         ...layers.slice(0, index - 1),
         mergedLayer,
@@ -1818,59 +1841,23 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     mergeVisible: () => {
-      const { layers, view, config } = get();
+      const { layers, view, layerGroups } = get();
       const visibleLayers = layers.filter((l) => l.visible);
-      if (visibleLayers.length < 2) return null; // Need at least 2 to merge
+      if (visibleLayers.length < 2) return null;
 
       const canvasWidth = useCanvasStore.getState().width;
       const canvasHeight = useCanvasStore.getState().height;
 
-      // Determine the frame range covered by all visible layers
       const allFrames = visibleLayers.flatMap(l => l.contentFrames);
       if (allFrames.length === 0) return null;
-      const minStart = Math.min(...allFrames.map(cf => cf.startFrame));
-      const maxEnd = Math.max(...allFrames.map(cf => cf.startFrame + cf.durationFrames));
 
-      // Composite all visible layers frame-by-frame
-      const mergedContentFrames: ContentFrame[] = [];
-      let currentBlockStart = -1;
-      let currentBlockData: Map<string, Cell> | null = null;
-
-      for (let f = minStart; f < maxEnd; f++) {
-        const compositedCells = compositeLayersAtFrame(
-          visibleLayers,
-          f,
-          canvasWidth,
-          canvasHeight,
-          undefined,
-          false,
-        );
-
-        if (compositedCells.size === 0) {
-          if (currentBlockData) {
-            mergedContentFrames.push({
-              id: generateContentFrameId(),
-              name: `Frame ${mergedContentFrames.length + 1}`,
-              startFrame: currentBlockStart,
-              durationFrames: f - currentBlockStart,
-              data: currentBlockData,
-            });
-            currentBlockData = null;
-          }
-        } else if (!currentBlockData) {
-          currentBlockStart = f;
-          currentBlockData = new Map(compositedCells);
-        }
-      }
-      if (currentBlockData) {
-        mergedContentFrames.push({
-          id: generateContentFrameId(),
-          name: `Frame ${mergedContentFrames.length + 1}`,
-          startFrame: currentBlockStart,
-          durationFrames: maxEnd - currentBlockStart,
-          data: currentBlockData,
-        });
-      }
+      // Use boundary-based merge to correctly handle overlapping frame blocks
+      const mergedContentFrames = computeMergedContentFrames(
+        visibleLayers,
+        canvasWidth,
+        canvasHeight,
+        layerGroups,
+      );
 
       if (mergedContentFrames.length === 0) {
         mergedContentFrames.push({

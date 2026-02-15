@@ -217,7 +217,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
  * Only re-renders when activeTool changes or when the specific tool's settings change.
  */
 const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
-  const { rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection, lassoSelection, magicWandSelection } = useToolStore();
+  const { rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection, lassoSelection, magicWandSelection, selectionAffectsAllLayers, setSelectionAffectsAllLayers } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
   const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
   const { canCrop, cropToSelection } = useCropToSelection();
@@ -423,6 +423,20 @@ const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
                     </div>
                   )}
                   
+                  {/* Multi-layer selection toggle - Available for all selection tools */}
+                  {(effectiveTool === 'select' || effectiveTool === 'lasso' || effectiveTool === 'magicwand') && (
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="selection-all-layers" className="text-xs cursor-pointer">
+                        All Layers
+                      </Label>
+                      <Switch
+                        id="selection-all-layers"
+                        checked={selectionAffectsAllLayers}
+                        onCheckedChange={setSelectionAffectsAllLayers}
+                      />
+                    </div>
+                  )}
+
                   {/* Crop to Selection - Available for all selection tools */}
                   {(effectiveTool === 'select' || effectiveTool === 'lasso' || effectiveTool === 'magicwand') && (
                     <Tooltip>

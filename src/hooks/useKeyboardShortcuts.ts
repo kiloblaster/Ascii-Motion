@@ -9,7 +9,8 @@ import { useZoomControls } from './useZoomControls';
 import { useFrameNavigation } from './useFrameNavigation';
 import { useTimelineHistory } from './useTimelineHistory';
 import { useAnimationHistory } from './useAnimationHistory';
-import { getContentFrameAtTime } from '../utils/layerCompositing';
+import { getContentFrameAtTime, compositeLayersAtFrame, getTransformAtFrame, inverseTransformPoint } from '../utils/layerCompositing';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import { useOptimizedPlayback } from './useOptimizedPlayback';
 import { usePlaybackOnlySnapshot } from './usePlaybackOnlySnapshot';
 import { usePaletteStore } from '../stores/paletteStore';
@@ -1662,6 +1663,51 @@ export const useKeyboardShortcuts = () => {
 
     // Handle Delete/Backspace key (without modifier) - Clear selected cells
     if ((event.key === 'Delete' || event.key === 'Backspace') && !isModifierPressed) {
+      // Helper: clear selection cells from all visible/unlocked layers when multi-layer mode is on
+      // Also records undo history for each affected layer
+      const clearSelectionFromAllLayers = (cellKeys: Set<string> | string[]) => {
+        const { selectionAffectsAllLayers } = useToolStore.getState();
+        if (!selectionAffectsAllLayers) return;
+        const tl = useTimelineStore.getState();
+        const currentFrame = tl.view.currentFrame;
+        const { pushToHistory } = useToolStore.getState();
+        for (const layer of tl.layers) {
+          if (layer.id === tl.view.activeLayerId) continue; // Active layer handled by canvas
+          if (!layer.visible || layer.locked) continue;
+          const cf = getContentFrameAtTime(layer, currentFrame);
+          if (!cf) continue;
+          const previousData = new Map(cf.data);
+          const newData = new Map(cf.data);
+          let changed = false;
+          // Convert screen-space selection keys to this layer's local space
+          const layerTransform = getTransformAtFrame(layer, currentFrame);
+          for (const key of cellKeys) {
+            const [sx, sy] = key.split(',').map(Number);
+            const local = inverseTransformPoint(sx, sy, layerTransform);
+            const localKey = `${local.x},${local.y}`;
+            if (newData.has(localKey)) {
+              newData.delete(localKey);
+              changed = true;
+            }
+          }
+          if (changed) {
+            tl.updateContentFrameData(layer.id, cf.id, newData);
+            // Record history for this layer's content frame change
+            pushToHistory({
+              type: 'content_frame_data',
+              timestamp: Date.now(),
+              description: `Delete selection on ${layer.name}`,
+              data: {
+                layerId: layer.id as string,
+                frameId: cf.id as string,
+                previousData,
+                newData: new Map(newData),
+              },
+            } as import('../types').ContentFrameDataHistoryAction);
+          }
+        }
+      };
+
       // Check if any selection is active and clear the selected cells
       if (magicWandSelection.active && magicWandSelection.selectedCells.size > 0) {
         event.preventDefault();
@@ -1670,13 +1716,18 @@ export const useKeyboardShortcuts = () => {
   const { pushCanvasHistory, finalizeCanvasHistory } = useToolStore.getState();
   pushCanvasHistory(new Map(cells), currentFrameIndex, 'Delete magic wand selection');
         
-        // Clear all selected cells
+        // Clear all selected cells (convert screen-space to local space for active layer)
         const newCells = new Map(cells);
         magicWandSelection.selectedCells.forEach(cellKey => {
-          newCells.delete(cellKey);
+          const [sx, sy] = cellKey.split(',').map(Number);
+          const local = screenToLocal(sx, sy);
+          newCells.delete(`${local.x},${local.y}`);
         });
   setCanvasData(newCells);
   finalizeCanvasHistory(new Map(newCells));
+        
+        // Clear from other layers if multi-layer mode is on
+        clearSelectionFromAllLayers(magicWandSelection.selectedCells);
         
         // Clear the selection after deleting content
         clearMagicWandSelection();
@@ -1690,13 +1741,18 @@ export const useKeyboardShortcuts = () => {
   const { pushCanvasHistory: pushCanvasHistory2, finalizeCanvasHistory: finalizeCanvasHistory2 } = useToolStore.getState();
   pushCanvasHistory2(new Map(cells), currentFrameIndex, 'Delete lasso selection');
         
-        // Clear all selected cells
+        // Clear all selected cells (convert screen-space to local space for active layer)
         const newCells = new Map(cells);
         lassoSelection.selectedCells.forEach(cellKey => {
-          newCells.delete(cellKey);
+          const [sx, sy] = cellKey.split(',').map(Number);
+          const local = screenToLocal(sx, sy);
+          newCells.delete(`${local.x},${local.y}`);
         });
   setCanvasData(newCells);
   finalizeCanvasHistory2(new Map(newCells));
+        
+        // Clear from other layers if multi-layer mode is on
+        clearSelectionFromAllLayers(lassoSelection.selectedCells);
         
         // Clear the selection after deleting content
         clearLassoSelection();
@@ -1720,12 +1776,22 @@ export const useKeyboardShortcuts = () => {
         
         for (let y = minY; y <= maxY; y++) {
           for (let x = minX; x <= maxX; x++) {
-            const cellKey = `${x},${y}`;
-            newCells.delete(cellKey);
+            // Convert screen-space to local space for active layer
+            const local = screenToLocal(x, y);
+            newCells.delete(`${local.x},${local.y}`);
           }
         }
   setCanvasData(newCells);
   finalizeCanvasHistory3(new Map(newCells));
+        
+        // Clear from other layers if multi-layer mode is on
+        const rectKeys = new Set<string>();
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            rectKeys.add(`${x},${y}`);
+          }
+        }
+        clearSelectionFromAllLayers(rectKeys);
         
         // Clear the selection after deleting content
         clearSelection();
@@ -2161,15 +2227,29 @@ export const useKeyboardShortcuts = () => {
         
       case 'c':
         // Copy selection (prioritize magic wand, then lasso, then rectangular)
-        if (magicWandSelection.active) {
-          event.preventDefault();
-          copyMagicWandSelection(cells);
-        } else if (lassoSelection.active) {
-          event.preventDefault();
-          copyLassoSelection(cells);
-        } else if (selection.active) {
-          event.preventDefault();
-          copySelection(cells);
+        // When "All Layers" is on, copy from composited view instead of active layer
+        {
+          const { selectionAffectsAllLayers } = useToolStore.getState();
+          let copySource = cells;
+          if (selectionAffectsAllLayers) {
+            // Get composited cells from all visible layers
+            const tl = useTimelineStore.getState();
+            if (tl.layers.length > 0) {
+              const canvasWidth = useCanvasStore.getState().width;
+              const canvasHeight = useCanvasStore.getState().height;
+              copySource = compositeLayersAtFrame(tl.layers, tl.view.currentFrame, canvasWidth, canvasHeight, undefined, false, tl.layerGroups);
+            }
+          }
+          if (magicWandSelection.active) {
+            event.preventDefault();
+            copyMagicWandSelection(copySource, selectionAffectsAllLayers);
+          } else if (lassoSelection.active) {
+            event.preventDefault();
+            copyLassoSelection(copySource, selectionAffectsAllLayers);
+          } else if (selection.active) {
+            event.preventDefault();
+            copySelection(copySource, selectionAffectsAllLayers);
+          }
         }
         break;
         

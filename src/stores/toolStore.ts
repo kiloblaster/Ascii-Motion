@@ -90,6 +90,10 @@ interface ToolStoreState extends ToolState {
   setPaintBucketContiguous: (contiguous: boolean) => void;
   setMagicWandContiguous: (contiguous: boolean) => void;
   
+  // Multi-layer selection operations
+  selectionAffectsAllLayers: boolean;
+  setSelectionAffectsAllLayers: (value: boolean) => void;
+  
   // Brush size preview overlay actions
   showBrushSizePreview: () => void;
   hideBrushSizePreview: () => void;
@@ -163,7 +167,7 @@ interface ToolStoreState extends ToolState {
   setMagicWandSelectionFromMask: (mask: Set<string>, targetCell?: Cell | null) => void;
   
   // Clipboard actions
-  copySelection: (canvasData: Map<string, Cell>) => void;
+  copySelection: (canvasData: Map<string, Cell>, screenSpace?: boolean) => void;
   pasteSelection: (x: number, y: number) => Map<string, Cell> | null;
   hasClipboard: () => boolean;
   getActiveClipboardType: () => 'rectangle' | 'lasso' | 'magicwand' | null;
@@ -171,13 +175,13 @@ interface ToolStoreState extends ToolState {
   getClipboardOriginalPosition: () => { x: number; y: number } | null;
   
   // Lasso clipboard actions
-  copyLassoSelection: (canvasData: Map<string, Cell>) => void;
+  copyLassoSelection: (canvasData: Map<string, Cell>, screenSpace?: boolean) => void;
   pasteLassoSelection: (offsetX: number, offsetY: number) => Map<string, Cell> | null;
   hasLassoClipboard: () => boolean;
   getLassoClipboardOriginalPosition: () => { x: number; y: number } | null;
   
   // Magic wand clipboard actions
-  copyMagicWandSelection: (canvasData: Map<string, Cell>) => void;
+  copyMagicWandSelection: (canvasData: Map<string, Cell>, screenSpace?: boolean) => void;
   pasteMagicWandSelection: (offsetX: number, offsetY: number) => Map<string, Cell> | null;
   hasMagicWandClipboard: () => boolean;
   getMagicWandClipboardOriginalPosition: () => { x: number; y: number } | null;
@@ -248,6 +252,7 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   rectangleFilled: false,
   paintBucketContiguous: true, // Default to contiguous fill
   magicWandContiguous: true, // Default to contiguous selection
+  selectionAffectsAllLayers: false, // Default to active layer only
   
   // Tool behavior toggles - all enabled by default
   toolAffectsChar: true,
@@ -481,6 +486,7 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   setRectangleFilled: (filled: boolean) => set({ rectangleFilled: filled }),
   setPaintBucketContiguous: (contiguous: boolean) => set({ paintBucketContiguous: contiguous }),
   setMagicWandContiguous: (contiguous: boolean) => set({ magicWandContiguous: contiguous }),
+  setSelectionAffectsAllLayers: (value: boolean) => set({ selectionAffectsAllLayers: value }),
 
   // Brush size preview overlay actions
   showBrushSizePreview: () => {
@@ -805,7 +811,7 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   },
 
   // Clipboard actions
-  copySelection: (canvasData: Map<string, Cell>) => {
+  copySelection: (canvasData: Map<string, Cell>, screenSpace?: boolean) => {
     const { selection } = get();
     if (!selection.active || selection.selectedCells.size === 0) {
       return;
@@ -819,8 +825,8 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   const copiedData = new Map<string, Cell>();
     selection.selectedCells.forEach((key) => {
       const [x, y] = key.split(',').map(Number);
-      const local = screenToLocal(x, y);
-      const cell = canvasData.get(`${local.x},${local.y}`);
+      const readKey = screenSpace ? `${x},${y}` : `${screenToLocal(x, y).x},${screenToLocal(x, y).y}`;
+      const cell = canvasData.get(readKey);
       if (!cell) {
         return;
       }
@@ -914,7 +920,7 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   },
 
   // Lasso clipboard actions
-  copyLassoSelection: (canvasData: Map<string, Cell>) => {
+  copyLassoSelection: (canvasData: Map<string, Cell>, screenSpace?: boolean) => {
     const { lassoSelection } = get();
     
     if (!lassoSelection.active || lassoSelection.selectedCells.size === 0) {
@@ -936,8 +942,8 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
     lassoSelection.selectedCells.forEach(key => {
       const [x, y] = key.split(',').map(Number);
       const relativeKey = `${x - minX},${y - minY}`;
-      const local = screenToLocal(x, y);
-      const cell = canvasData.get(`${local.x},${local.y}`);
+      const readKey = screenSpace ? `${x},${y}` : `${screenToLocal(x, y).x},${screenToLocal(x, y).y}`;
+      const cell = canvasData.get(readKey);
       if (cell) {
         copiedData.set(relativeKey, cell);
       }
@@ -982,7 +988,7 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
   },
 
   // Magic wand clipboard actions
-  copyMagicWandSelection: (canvasData: Map<string, Cell>) => {
+  copyMagicWandSelection: (canvasData: Map<string, Cell>, screenSpace?: boolean) => {
     const { magicWandSelection } = get();
     if (!magicWandSelection.active || magicWandSelection.selectedCells.size === 0) {
       return;
@@ -1004,8 +1010,8 @@ export const useToolStore = create<ToolStoreState>((set, get) => ({
     for (const cellKey of selectedArray) {
       const [x, y] = cellKey.split(',').map(Number);
       const relativeKey = `${x - minX},${y - minY}`;
-      const local = screenToLocal(x, y);
-      const cell = canvasData.get(`${local.x},${local.y}`);
+      const readKey = screenSpace ? `${x},${y}` : `${screenToLocal(x, y).x},${screenToLocal(x, y).y}`;
+      const cell = canvasData.get(readKey);
       if (cell) {
         copiedData.set(relativeKey, { ...cell });
       }

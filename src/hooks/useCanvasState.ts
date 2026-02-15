@@ -3,7 +3,9 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { screenToLocal } from '../utils/layerTransformUtils';
+import { getContentFrameAtTime, getTransformAtFrame, inverseTransformPoint } from '../utils/layerCompositing';
 
 /**
  * Custom hook that provides canvas state management functionality
@@ -109,6 +111,7 @@ export const useCanvasState = () => {
 
     // Create a new canvas data map with the moved cells
     const newCells = new Map(cells);
+    const { selectionAffectsAllLayers } = useToolStore.getState();
 
     // Clear original positions (inverse-transform to local space)
       const originalKeys = moveState.originalPositions ?? new Set(moveState.originalData.keys());
@@ -118,9 +121,29 @@ export const useCanvasState = () => {
         newCells.delete(`${local.x},${local.y}`);
     });
 
+    // Determine which cells to place on the active layer
+    // When "All Layers" is on, originalData contains composited cells from ALL layers.
+    // We should only place the active layer's own cells here — other layers are handled
+    // by the multi-layer commit below.
+    let activeLayerCells: Map<string, Cell>;
+    if (selectionAffectsAllLayers) {
+      // Filter to only cells that exist on the active layer (before the move)
+      activeLayerCells = new Map<string, Cell>();
+      originalKeys.forEach((key) => {
+        const [ox, oy] = key.split(',').map(Number);
+        const local = screenToLocal(ox, oy);
+        const activeCell = cells.get(`${local.x},${local.y}`);
+        if (activeCell && activeCell.char && activeCell.char !== ' ') {
+          activeLayerCells.set(key, activeCell);
+        }
+      });
+    } else {
+      activeLayerCells = moveState.originalData;
+    }
+
     // Place cells at new positions AND build updated selection mask
     const updatedSelectionMask = new Set<string>();
-    moveState.originalData.forEach((cell, key) => {
+    activeLayerCells.forEach((cell, key) => {
       const [origX, origY] = key.split(',').map(Number);
       const newX = origX + totalOffset.x;
       const newY = origY + totalOffset.y;
@@ -152,6 +175,81 @@ export const useCanvasState = () => {
 
     // Update canvas data
     setCanvasData(newCells);
+    
+    // If multi-layer mode is on, also move cells on other visible/unlocked layers
+    if (selectionAffectsAllLayers && (totalOffset.x !== 0 || totalOffset.y !== 0)) {
+      const tl = useTimelineStore.getState();
+      const currentFrame = tl.view.currentFrame;
+      const { pushToHistory } = useToolStore.getState();
+      // Use the selection mask as the set of positions to move (screen-space)
+      const selectionPositions = moveState.originalPositions ?? new Set(moveState.originalData.keys());
+      
+      for (const layer of tl.layers) {
+        if (layer.id === tl.view.activeLayerId) continue;
+        if (!layer.visible || layer.locked) continue;
+        const cf = getContentFrameAtTime(layer, currentFrame);
+        if (!cf) continue;
+        
+        const previousData = new Map(cf.data);
+        const layerNewCells = new Map(cf.data);
+        let changed = false;
+        
+        // Get this layer's transform to convert screen-space selection positions to local space
+        const layerTransform = getTransformAtFrame(layer, currentFrame);
+        
+        // Collect cells at original selection positions (converted to layer-local space)
+        const cellsToMove = new Map<string, { localKey: string; cell: Cell }>();
+        selectionPositions.forEach((screenKey: string) => {
+          const [sx, sy] = screenKey.split(',').map(Number);
+          // Convert screen-space selection position to this layer's local space
+          const local = inverseTransformPoint(sx, sy, layerTransform);
+          const localKey = `${local.x},${local.y}`;
+          const cell = layerNewCells.get(localKey);
+          if (cell) {
+            cellsToMove.set(screenKey, { localKey, cell });
+            layerNewCells.delete(localKey);
+            changed = true;
+          }
+        });
+        
+        // Place at new positions (convert offset screen positions to local space)
+        cellsToMove.forEach(({ cell }, screenKey) => {
+          const [origSX, origSY] = screenKey.split(',').map(Number);
+          const newSX = origSX + totalOffset.x;
+          const newSY = origSY + totalOffset.y;
+          // Convert new screen position to local space
+          const newLocal = inverseTransformPoint(newSX, newSY, layerTransform);
+          layerNewCells.set(`${newLocal.x},${newLocal.y}`, cell);
+        });
+        
+        if (changed) {
+          // Use setState to trigger proper re-render (not in-place mutation)
+          // so useCompositedCanvas picks up the changes immediately
+          useTimelineStore.setState((state) => ({
+            layers: state.layers.map(l => {
+              if (l.id !== layer.id) return l;
+              return {
+                ...l,
+                contentFrames: l.contentFrames.map(frame =>
+                  frame.id === cf.id ? { ...frame, data: layerNewCells } : frame
+                ),
+              };
+            }),
+          }));
+          pushToHistory({
+            type: 'content_frame_data',
+            timestamp: Date.now(),
+            description: `Move selection on ${layer.name}`,
+            data: {
+              layerId: layer.id as string,
+              frameId: cf.id as string,
+              previousData,
+              newData: new Map(layerNewCells),
+            },
+          } as import('../types').ContentFrameDataHistoryAction);
+        }
+      }
+    }
     
     // Update selection positions to reflect the move
     // IMPORTANT: Clear ALL tool selections first to avoid stale positions,

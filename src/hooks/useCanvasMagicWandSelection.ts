@@ -7,6 +7,7 @@ import { useSelectionStore } from '../stores/selectionStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
 import { screenToLocal } from '../utils/layerTransformUtils';
+import { compositeLayersAtFrame } from '../utils/layerCompositing';
 import type { Cell } from '../types';
 import { unionSelectionMasks, subtractSelectionMask } from '../utils/selectionUtils';
 
@@ -41,6 +42,7 @@ export const useCanvasMagicWandSelection = () => {
   const magicMatchChar = useToolStore((s) => s.magicMatchChar);
   const magicMatchColor = useToolStore((s) => s.magicMatchColor);
   const magicMatchBgColor = useToolStore((s) => s.magicMatchBgColor);
+  const selectionAffectsAllLayers = useToolStore((s) => s.selectionAffectsAllLayers);
   const setMagicWandSelectionFromMask = useToolStore((s) => s.setMagicWandSelectionFromMask);
 
   const selectionModifierRef = useRef<'replace' | 'add' | 'subtract'>('replace');
@@ -173,10 +175,29 @@ export const useCanvasMagicWandSelection = () => {
     }
 
     // Wrap getCell with inverse transform so screen-space coords map to local canvas data
-    const getCellLocal = (sx: number, sy: number) => {
-      const local = screenToLocal(sx, sy);
-      return getCell(local.x, local.y);
-    };
+    // When selectionAffectsAllLayers is on, use composited data instead (screen-space)
+    let getCellForWand: (sx: number, sy: number) => Cell | undefined;
+    if (selectionAffectsAllLayers) {
+      // Get composited cells from all visible layers
+      const tl = useTimelineStore.getState();
+      if (tl.layers.length > 0) {
+        const compositedCells = compositeLayersAtFrame(
+          tl.layers, tl.view.currentFrame,
+          width, height, undefined, false, tl.layerGroups,
+        );
+        getCellForWand = (sx, sy) => compositedCells.get(`${sx},${sy}`);
+      } else {
+        getCellForWand = (sx, sy) => {
+          const local = screenToLocal(sx, sy);
+          return getCell(local.x, local.y);
+        };
+      }
+    } else {
+      getCellForWand = (sx, sy) => {
+        const local = screenToLocal(sx, sy);
+        return getCell(local.x, local.y);
+      };
+    }
 
     const matchingCells = new Set<string>();
 
@@ -195,7 +216,7 @@ export const useCanvasMagicWandSelection = () => {
         }
 
         visited.add(cellKey);
-        const currentCell = getCellLocal(x, y);
+        const currentCell = getCellForWand(x, y);
 
         // If this cell matches the target, add it and check neighbors
         if (cellsMatch(currentCell, targetCell)) {
@@ -214,7 +235,7 @@ export const useCanvasMagicWandSelection = () => {
       // Non-contiguous selection - scan entire canvas
       for (let x = 0; x < width; x++) {
         for (let y = 0; y < height; y++) {
-          const currentCell = getCellLocal(x, y);
+          const currentCell = getCellForWand(x, y);
           if (cellsMatch(currentCell, targetCell)) {
             matchingCells.add(`${x},${y}`);
           }
@@ -223,7 +244,7 @@ export const useCanvasMagicWandSelection = () => {
     }
 
     return matchingCells;
-  }, [width, height, getCell, cellsMatch, isCellEmpty, magicWandContiguous, magicMatchChar, magicMatchColor, magicMatchBgColor]);
+  }, [width, height, getCell, cellsMatch, isCellEmpty, magicWandContiguous, magicMatchChar, magicMatchColor, magicMatchBgColor, selectionAffectsAllLayers]);
 
   // Check if a point is inside the current selection (uses global selection for cross-tool support)
   const isPointInMagicWandSelection = useCallback((x: number, y: number) => {
@@ -305,8 +326,9 @@ export const useCanvasMagicWandSelection = () => {
       return activeCells.has(`${px},${py}`);
     };
 
-    if (moveState && freshMagicWandSelection.active && !isPointInFreshSelection(x, y) && modifier === 'replace') {
+    if (!didCommitMove && moveState && freshMagicWandSelection.active && !isPointInFreshSelection(x, y) && modifier === 'replace') {
       commitMove();
+      didCommitMove = true;
       clearAllSelections();
       setJustCommittedMove(true);
       resetSelectionGesture();
@@ -339,13 +361,34 @@ export const useCanvasMagicWandSelection = () => {
           ? freshGlobalSelection.selectedCells 
           : freshMagicWandSelection.selectedCells;
         
+        // When "All Layers" is on, read from composited view for a correct move preview
+        const { selectionAffectsAllLayers: allLayers } = useToolStore.getState();
+        let compositedForMove: Map<string, Cell> | null = null;
+        if (allLayers) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            compositedForMove = compositeLayersAtFrame(
+              tl.layers, tl.view.currentFrame,
+              width, height, undefined, false, tl.layerGroups,
+            );
+          }
+        }
+        
         selectionCells.forEach((cellKey) => {
-          originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
-          const local = screenToLocal(cx, cy);
-          const cell = getCell(local.x, local.y);
+          let cell: Cell | undefined;
+          if (compositedForMove) {
+            cell = compositedForMove.get(cellKey);
+          } else {
+            const local = screenToLocal(cx, cy);
+            cell = getCell(local.x, local.y);
+          }
           if (cell && !isCellEmpty(cell)) {
             originalData.set(cellKey, cell);
+            originalPositions.add(cellKey);
+          } else if (compositedForMove) {
+            // All Layers mode: include position even if empty on active layer
+            originalPositions.add(cellKey);
           }
         });
 
@@ -365,7 +408,21 @@ export const useCanvasMagicWandSelection = () => {
     setJustCommittedMove(false);
 
     const localTarget = screenToLocal(x, y);
-    const targetCell = getCell(localTarget.x, localTarget.y);
+    let targetCell: Cell | undefined;
+    if (selectionAffectsAllLayers) {
+      const tl = useTimelineStore.getState();
+      if (tl.layers.length > 0) {
+        const compositedCells = compositeLayersAtFrame(
+          tl.layers, tl.view.currentFrame,
+          width, height, undefined, false, tl.layerGroups,
+        );
+        targetCell = compositedCells.get(`${x},${y}`);
+      } else {
+        targetCell = getCell(localTarget.x, localTarget.y);
+      }
+    } else {
+      targetCell = getCell(localTarget.x, localTarget.y);
+    }
     const matchingCells = findMatchingCells(x, y, targetCell);
 
     if (matchingCells.size === 0) {
