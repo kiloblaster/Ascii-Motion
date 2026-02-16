@@ -32,7 +32,6 @@ import { ReactExportDialog } from '../components/features/ReactExportDialog'
 import { InkExportDialog } from '../components/features/InkExportDialog'
 import { OpenTuiExportDialog } from '../components/features/OpenTuiExportDialog'
 import { BubbleteaExportDialog } from '../components/features/BubbleteaExportDialog'
-import { JsonImportDialog } from '../components/features/JsonImportDialog'
 import { SetFrameDurationDialog } from '../components/features/timeEffects/SetFrameDurationDialog'
 import { AddFramesDialog } from '../components/features/timeEffects/AddFramesDialog'
 import { WaveWarpDialog } from '../components/features/timeEffects/WaveWarpDialog'
@@ -208,7 +207,6 @@ export function EditorPage() {
       <InkExportDialog />
       <OpenTuiExportDialog />
       <BubbleteaExportDialog />
-      <JsonImportDialog />
       
       {/* Time Effects Dialogs */}
       <SetFrameDurationDialog />

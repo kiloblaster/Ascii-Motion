@@ -85,12 +85,6 @@ const IMPORT_OPTIONS = [
     icon: Upload,
   },
   {
-    id: 'json' as ExportFormatId,
-    name: 'JSON Data',
-    description: 'Load JSON project',
-    icon: FileText,
-  },
-  {
     id: 'session' as ExportFormatId,
     name: '.asciimtn',
     description: 'Load project file',
