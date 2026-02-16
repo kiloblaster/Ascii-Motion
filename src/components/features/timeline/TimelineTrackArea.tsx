@@ -366,6 +366,36 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                           }}
                         />
                       ))}
+                      {/* Ghost loop indicators */}
+                      {track.loopKeyframes && track.keyframes.length >= 2 && (() => {
+                        const sorted = [...track.keyframes].sort((a, b) => a.frame - b.frame);
+                        const loopStart = sorted[0].frame;
+                        const loopEnd = sorted[sorted.length - 1].frame;
+                        const loopLen = loopEnd - loopStart;
+                        if (loopLen <= 0) return null;
+                        const ghosts: React.ReactNode[] = [];
+                        let rep = 1;
+                        while (true) {
+                          const offset = rep * loopLen;
+                          for (const kf of sorted) {
+                            const ghostFrame = kf.frame + offset;
+                            if (ghostFrame > durationFrames) break;
+                            const left = ghostFrame * pxPerFrame - scrollX;
+                            ghosts.push(
+                              <div
+                                key={`ghost-${kf.id}-r${rep}`}
+                                className="absolute top-1/2 -translate-y-1/2 pointer-events-none"
+                                style={{ left: `${left}px` }}
+                              >
+                                <div className="w-2 h-2 rounded-full bg-muted-foreground/30 -translate-x-1/2" />
+                              </div>
+                            );
+                          }
+                          if (loopStart + offset > durationFrames) break;
+                          rep++;
+                        }
+                        return ghosts;
+                      })()}
                     </div>
                   );
                 }
@@ -554,6 +584,36 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                       }}
                     />
                   ))}
+                  {/* Ghost loop indicators */}
+                  {track.loopKeyframes && track.keyframes.length >= 2 && (() => {
+                    const sorted = [...track.keyframes].sort((a, b) => a.frame - b.frame);
+                    const loopStart = sorted[0].frame;
+                    const loopEnd = sorted[sorted.length - 1].frame;
+                    const loopLen = loopEnd - loopStart;
+                    if (loopLen <= 0) return null;
+                    const ghosts: React.ReactNode[] = [];
+                    let rep = 1;
+                    while (true) {
+                      const offset = rep * loopLen;
+                      for (const kf of sorted) {
+                        const ghostFrame = kf.frame + offset;
+                        if (ghostFrame > durationFrames) break;
+                        const left = ghostFrame * pxPerFrame - scrollX;
+                        ghosts.push(
+                          <div
+                            key={`ghost-${kf.id}-r${rep}`}
+                            className="absolute top-1/2 -translate-y-1/2 pointer-events-none"
+                            style={{ left: `${left}px` }}
+                          >
+                            <div className="w-2 h-2 rounded-full bg-muted-foreground/30 -translate-x-1/2" />
+                          </div>
+                        );
+                      }
+                      if (loopStart + offset > durationFrames) break;
+                      rep++;
+                    }
+                    return ghosts;
+                  })()}
                 </div>
               );
             })}

@@ -181,7 +181,7 @@ export const GroupPropertiesPanel: React.FC = () => {
   if (!group || !activeGroupId) return null;
 
   return (
-    <div className="w-48 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
+    <div className="w-56 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/50">
         <div className="min-w-0">
           <span className="text-xs font-medium truncate block">{group.name}</span>

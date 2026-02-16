@@ -1114,13 +1114,30 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     setKeyframeLooping: (layerId, trackId, looping) => {
+      // Try layers first
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer && layer.propertyTracks.some((pt) => pt.id === trackId)) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            propertyTracks: l.propertyTracks.map((pt) =>
+              pt.id === trackId ? { ...pt, loopKeyframes: looping } : pt,
+            ),
+          })),
+        }));
+        return;
+      }
+      // Fallback: check layer groups
       set((state) => ({
-        layers: updateLayer(state.layers, layerId, (l) => ({
-          ...l,
-          propertyTracks: l.propertyTracks.map((pt) =>
-            pt.id === trackId ? { ...pt, loopKeyframes: looping } : pt,
-          ),
-        })),
+        layerGroups: state.layerGroups.map((g) => {
+          if (!g.propertyTracks.some((pt) => pt.id === trackId)) return g;
+          return {
+            ...g,
+            propertyTracks: g.propertyTracks.map((pt) =>
+              pt.id === trackId ? { ...pt, loopKeyframes: looping } : pt,
+            ),
+          };
+        }),
       }));
     },
 
