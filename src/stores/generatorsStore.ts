@@ -724,11 +724,7 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
       
       useToolStore.getState().pushToHistory(historyAction);
       
-      // Sync canvas to the new layer's first content frame
-      const updatedLayer = useTimelineStore.getState().layers.find(l => l.id === newLayerId);
-      if (updatedLayer && updatedLayer.contentFrames.length > 0) {
-        useCanvasStore.getState().setCanvasData(updatedLayer.contentFrames[0].data);
-      }
+      // Navigate to frame 0 so the layer-switch sync loads the new layer's content
       tl.goToFrame(0);
       
       // Close panel on success
