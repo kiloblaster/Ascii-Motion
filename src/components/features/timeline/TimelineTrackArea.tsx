@@ -15,7 +15,7 @@ import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
-import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
+import { PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
 import { defaultEasing } from '../../../types/easing';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
 import { TimelineContextMenu, type TimelineContextMenuState } from './TimelineContextMenu';
@@ -503,8 +503,6 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
               })
               .map((track) => {
-              const definition = PROPERTY_DEFINITIONS[track.propertyPath];
-              const defaultValue = (definition?.defaultValue as number) ?? 0;
 
               const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
                 const rect = e.currentTarget.getBoundingClientRect();

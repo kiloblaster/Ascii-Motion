@@ -96,7 +96,7 @@ export const LayerContextMenu: React.FC<Props> = ({ menu, onClose, onStartRename
   const {
     removeLayer,
     duplicateLayer,
-    renameLayer,
+    renameLayer: _renameLayer,
     setLayerVisible,
     mergeDown,
     mergeVisible,

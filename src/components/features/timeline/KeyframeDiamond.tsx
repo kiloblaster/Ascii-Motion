@@ -47,7 +47,7 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
   trackId,
   keyframe,
   pxPerFrame,
-  scrollX,
+  scrollX: _scrollX,
   isSelected,
   onContextMenu,
 }) => {

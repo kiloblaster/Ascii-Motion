@@ -12,7 +12,7 @@
  * @premium This component requires authentication and uses premium cloud storage features
  */
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { CloudUpload } from 'lucide-react';
 import { useCloudDialogState } from '../../hooks/useCloudDialogState';

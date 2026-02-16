@@ -66,6 +66,7 @@ export function useTimelineHistory() {
       : layers.length;
 
     const layerId = addLayerStore(name);
+    if (!layerId) return layerId;
     const layer = useTimelineStore.getState().getLayer(layerId);
 
     if (layer) {
@@ -113,6 +114,7 @@ export function useTimelineHistory() {
     if (!source) return layerId;
 
     const newId = duplicateLayerStore(layerId);
+    if (!newId) return layerId;
     const duplicated = useTimelineStore.getState().getLayer(newId);
     const insertIndex = layers.findIndex((l) => l.id === layerId) + 1;
 

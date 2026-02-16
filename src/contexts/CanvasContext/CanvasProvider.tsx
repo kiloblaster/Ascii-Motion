@@ -87,7 +87,7 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     hoveredCellCallbacksRef.current.forEach(fn => fn());
   }, []);
 
-  const [hoverPreview, setHoverPreview] = useState<CanvasContextValue['hoverPreview']>({
+  const [hoverPreview, _setHoverPreview] = useState<CanvasContextValue['hoverPreview']>({
     active: false,
     mode: 'none',
     cells: [],

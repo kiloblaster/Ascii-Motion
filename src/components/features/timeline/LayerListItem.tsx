@@ -61,7 +61,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
   const setLayerSyncKeyframes = useTimelineStore((s) => s.setLayerSyncKeyframes);
   const renameLayer = useTimelineStore((s) => s.renameLayer);
 
-  const { removeLayer, duplicateLayer, addKeyframe, removeKeyframe } = useTimelineHistory();
+  const { removeLayer, duplicateLayer: _duplicateLayer, addKeyframe, removeKeyframe } = useTimelineHistory();
   const layers = useTimelineStore((s) => s.layers);
   const isExpanded = useTimelineStore((s) => s.view.expandedLayerIds.has(layer.id));
   const toggleLayerExpanded = useTimelineStore((s) => s.toggleLayerExpanded);
@@ -301,7 +301,6 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
             })
             .map((track) => {
             const def = PROPERTY_DEFINITIONS[track.propertyPath];
-            const defaultValue = (def?.defaultValue as number) ?? 0;
             const currentValue = getPropertyValueAtFrame(layer, track.propertyPath, currentFrame);
             const existingKf = track.keyframes.find((kf) => kf.frame === currentFrame);
             return (

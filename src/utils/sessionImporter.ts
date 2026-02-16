@@ -6,7 +6,7 @@ import { useCharacterPaletteStore } from '../stores/characterPaletteStore';
 import { useProjectMetadataStore } from '../stores/projectMetadataStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import type { Cell, Tool } from '../types';
-import type { Layer, LayerId, ContentFrame, ContentFrameId, PropertyTrack, PropertyTrackId, Keyframe, KeyframeId, LayerGroup, LayerGroupId, SessionDataV2 } from '../types/timeline';
+import type { Layer, LayerId, ContentFrameId, PropertyTrackId, KeyframeId, LayerGroup, LayerGroupId, SessionDataV2 } from '../types/timeline';
 import { DEFAULT_FRAME_DURATION } from '../constants';
 import type { TypographySettings } from './canvasSizeConversion';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from '../types/palette';
@@ -149,7 +149,9 @@ export class SessionImporter {
   /**
    * Validate session data structure
    */
-  private static validateSessionData(data: unknown): data is SessionImportData {
+  // @ts-ignore - Legacy v1 validator, preserved for reference. All imports now use v2 pipeline.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private static _validateSessionData(data: unknown): data is SessionImportData {
     try {
       if (typeof data !== 'object' || data === null) {
         return false;
@@ -241,7 +243,9 @@ export class SessionImporter {
   /**
    * Restore session data to application stores
    */
-  private static restoreSessionData(
+  // @ts-ignore - Legacy v1 restorer, preserved for reference. All imports now use restoreSessionDataV2.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private static _restoreSessionData(
     sessionData: SessionImportData, 
     typographyCallbacks?: {
       setFontSize: (size: number) => void;

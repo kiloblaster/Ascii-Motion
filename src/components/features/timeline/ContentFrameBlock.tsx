@@ -34,7 +34,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = React.memo(fu
   layerId,
   contentFrame,
   pxPerFrame,
-  scrollX,
+  scrollX: _scrollX,
   onContextMenu,
 }) {
   const updateContentFrameTiming = useTimelineStore((s) => s.updateContentFrameTiming);

@@ -686,7 +686,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
         
         if (layersToProcess.length === 0) {
           set({ lastError: state.targetScope === 'all-layers' ? 'No visible, unlocked layers' : 'No active layer' });
-          return;
+          return false;
         }
         
         // Process each target layer
@@ -748,7 +748,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
           const targetLayers = tl.layers.filter(l => l.visible && !l.locked);
           if (targetLayers.length === 0) {
             set({ lastError: 'No visible, unlocked layers' });
-            return;
+            return false;
           }
           
           for (const layer of targetLayers) {

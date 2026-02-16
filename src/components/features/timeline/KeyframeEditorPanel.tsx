@@ -188,7 +188,7 @@ export const KeyframeEditorPanel: React.FC = () => {
             </Label>
             <Input
               type="number"
-              value={keyframe.value}
+              value={keyframe.value as number}
               onChange={(e) => handleValueChange(e.target.value)}
               className="h-6 text-xs mt-0.5"
               min={definition?.min}

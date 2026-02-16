@@ -324,10 +324,10 @@ export interface TimelineState {
 
   // Clipboard (for right-click copy/paste of frames and keyframes)
   copiedFrames: Array<{ durationFrames: number; data: Map<string, import('../types').Cell>; hidden?: boolean }> | null;
-  copiedKeyframes: Array<{ value: number; easing: import('../types/timeline').Keyframe['easing']; frameOffset: number }> | null;
+  copiedKeyframes: Array<{ value: number; easing: import('../types/timeline').Keyframe['easing']; frameOffset: number; propertyPath?: string; trackIndex?: number; layerIndex?: number; sourceLayerId?: string }> | null;
   copyContentFrames: (layerId: LayerId, frameIds: ContentFrameId[]) => void;
   pasteContentFrames: (layerId: LayerId, atFrame: number) => void;
-  copyKeyframes: (layerId: LayerId, trackId: PropertyTrackId, keyframeIds: KeyframeId[]) => void;
+  copyKeyframes: (keyframeIds: KeyframeId[]) => void;
   pasteKeyframes: (layerId: LayerId, trackId: PropertyTrackId, atFrame: number) => void;
 
   // ============================================
@@ -1435,7 +1435,7 @@ export const useTimelineStore = create<TimelineState>()(
     // ============================================
 
     removeBlankSpace: (layerId, clickFrame) => {
-      const { layers, config } = get();
+      const { layers } = get();
       const layer = layers.find((l) => l.id === layerId);
       if (!layer) return;
 
@@ -1635,18 +1635,18 @@ export const useTimelineStore = create<TimelineState>()(
       if (!targetPath) return;
 
       // Determine how many source layers are in the clipboard
-      const maxLayerIndex = Math.max(...copiedKeyframes.map((kf) => kf.layerIndex));
+      const maxLayerIndex = Math.max(...copiedKeyframes.map((kf) => kf.layerIndex ?? 0));
       const isMultiLayer = maxLayerIndex > 0;
 
       // Check if target track matches any copied property path
-      const copiedPaths = [...new Set(copiedKeyframes.map((kf) => kf.propertyPath))];
+      const copiedPaths = [...new Set(copiedKeyframes.map((kf) => kf.propertyPath ?? ''))];
       const targetMatchesCopied = copiedPaths.includes(targetPath);
 
       if (isMultiLayer && targetMatchesCopied) {
         // Multi-layer paste: try to match original layer IDs first.
         // If original layers still exist, paste back to them.
         // Otherwise fall back to index offset from target layer.
-        const sourceLayerIds = [...new Set(copiedKeyframes.map((kf) => kf.sourceLayerId))];
+        const sourceLayerIds = [...new Set(copiedKeyframes.map((kf) => kf.sourceLayerId ?? ''))];
         const allSourceLayersExist = sourceLayerIds.every((id) => layers.some((l) => (l.id as string) === id));
 
         for (const entry of copiedKeyframes) {
@@ -1658,7 +1658,7 @@ export const useTimelineStore = create<TimelineState>()(
           } else {
             // Fallback: use index offset from target layer
             const targetLayerIdx = layers.findIndex((l) => l.id === layerId);
-            const destLayerIdx = targetLayerIdx + entry.layerIndex;
+            const destLayerIdx = targetLayerIdx + (entry.layerIndex ?? 0);
             if (destLayerIdx >= 0 && destLayerIdx < layers.length) {
               destLayer = layers[destLayerIdx];
             }
@@ -1697,7 +1697,7 @@ export const useTimelineStore = create<TimelineState>()(
           const targetFrame = atFrame + entry.frameOffset;
           get().addKeyframe(layerId, destTrackId, targetFrame, entry.value);
           // Apply easing
-          const { track: ut, kf: addedKf } = findTrackKeyframeByFrame(get(), destTrackId, targetFrame);
+          const { kf: addedKf } = findTrackKeyframeByFrame(get(), destTrackId, targetFrame);
           if (addedKf) {
             get().updateKeyframe(layerId, destTrackId, addedKf.id, { easing: entry.easing });
           }
@@ -1708,7 +1708,7 @@ export const useTimelineStore = create<TimelineState>()(
           if (entry.trackIndex !== 0 || entry.layerIndex !== 0) continue;
           const targetFrame = atFrame + entry.frameOffset;
           get().addKeyframe(layerId, trackId, targetFrame, entry.value);
-          const { track: ut, kf: addedKf } = findTrackKeyframeByFrame(get(), trackId, targetFrame);
+          const { kf: addedKf } = findTrackKeyframeByFrame(get(), trackId, targetFrame);
           if (addedKf) {
             get().updateKeyframe(layerId, trackId, addedKf.id, { easing: entry.easing });
           }
@@ -1904,7 +1904,7 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     flattenLayer: (layerId) => {
-      const { layers, config } = get();
+      const { layers } = get();
       const layer = layers.find((l) => l.id === layerId);
       if (!layer) return;
 
@@ -1958,7 +1958,7 @@ export const useTimelineStore = create<TimelineState>()(
     // ============================================
 
     createGroup: (name, layerIds) => {
-      const { layers, layerGroups, view } = get();
+      const { layers, layerGroups } = get();
       if (layerIds.length < 2) return null; // Need at least 2 layers
 
       // Verify all layers exist

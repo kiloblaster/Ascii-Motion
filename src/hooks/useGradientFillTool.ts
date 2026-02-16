@@ -6,7 +6,7 @@ import { useToolStore } from '../stores/toolStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { calculateGradientCells } from '../utils/gradientEngine';
 import { getGradientFillArea } from '../utils/fillArea';
-import { transformCellMapToLocal, screenToLocal } from '../utils/layerTransformUtils';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import type { CanvasHistoryAction } from '../types';
 
 /**

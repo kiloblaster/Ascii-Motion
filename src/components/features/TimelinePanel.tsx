@@ -10,18 +10,17 @@
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §3.2
  */
 
-import React, { useCallback, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useToolStore } from '../../stores/toolStore';
 import { LayerList } from './timeline/LayerList';
 import { TimelineTrackArea } from './timeline/TimelineTrackArea';
 import { TimelineRuler } from './timeline/TimelineRuler';
 import { TimelineToolbar } from './timeline/TimelineToolbar';
-import { TimecodeDisplay, TimelineDurationInput } from './timeline/TimecodeDisplay';
+import { TimelineDurationInput } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { GroupPropertiesPanel } from './timeline/GroupPropertiesPanel';
-import { OnionSkinControls } from './OnionSkinControls';
 import { FrameRateControl } from './timeline/FrameRateControl';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';

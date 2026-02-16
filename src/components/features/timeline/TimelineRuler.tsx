@@ -39,7 +39,6 @@ export const TimelineRuler: React.FC = () => {
 
   const rulerRef = useRef<HTMLDivElement>(null);
   const pxPerFrame = BASE_PX_PER_FRAME * zoom;
-  const totalWidth = durationFrames * pxPerFrame;
   const [isDragging, setIsDragging] = useState(false);
   const [isDraggingEnd, setIsDraggingEnd] = useState(false);
 

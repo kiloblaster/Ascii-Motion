@@ -1,7 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
-import { useShallow } from 'zustand/react/shallow';
 import type { Cell } from '../types';
 
 interface GridCell {

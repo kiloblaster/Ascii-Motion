@@ -29,7 +29,7 @@ import {
   DialogTitle,
 } from '../../ui/dialog';
 import { Diamond, X, RotateCcw, CheckCheck } from 'lucide-react';
-import type { PropertyPath, LayerId, ContentFrameId } from '../../../types/timeline';
+import type { PropertyPath, LayerId } from '../../../types/timeline';
 import type { Cell } from '../../../types';
 
 /** All transform properties to show in the panel */

@@ -10,7 +10,6 @@
  */
 
 import React from 'react';
-import { useToolStore } from '../../stores/toolStore';
 import { useTimelineStore } from '../../stores/timelineStore';
 
 /**

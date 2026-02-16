@@ -535,7 +535,7 @@ const processHistoryAction = (
                 const cellData = new Map<string, import('../types').Cell>();
                 if (cf.data) {
                   for (const [key, cell] of Object.entries(cf.data)) {
-                    cellData.set(key, cell as import('../types').Cell);
+                    cellData.set(key, cell as unknown as import('../types').Cell);
                   }
                 }
                 tl.addContentFrame(newLayerId, cf.startFrame, cf.durationFrames, cellData);
@@ -883,7 +883,7 @@ const processHistoryAction = (
       tl.updateContentFrameData(
         action.data.layerId as LayerId,
         action.data.frameId as ContentFrameId,
-        mapData,
+        mapData as Map<string, import('../types').Cell>,
       );
       break;
     }
@@ -1063,7 +1063,7 @@ const processHistoryAction = (
         // Re-add content frames from the snapshot
         for (const cf of layerSnap.contentFrames) {
           const data = cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data ?? {}));
-          tl.addContentFrame(lid, cf.startFrame, cf.durationFrames, data);
+          tl.addContentFrame(lid, cf.startFrame, cf.durationFrames, data as Map<string, import('../types').Cell>);
         }
       }
 
@@ -1150,8 +1150,8 @@ const processHistoryAction = (
         );
         if (cf) {
           const data = cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data ?? {}));
-          animationStore.setFrameData(animationStore.currentFrameIndex, data);
-          canvasStore.setCanvasData(data);
+          animationStore.setFrameData(animationStore.currentFrameIndex, data as Map<string, import('../types').Cell>);
+          canvasStore.setCanvasData(data as Map<string, import('../types').Cell>);
         }
       }
       break;
@@ -1167,7 +1167,7 @@ const processHistoryAction = (
         const withoutRemoved = tl.layers.filter(l => !idsToRemove.has(l.id));
         const mergedLayerRestored = {
           ...mergeAction.data.mergedLayer,
-          contentFrames: mergeAction.data.mergedLayer.contentFrames.map((cf: { data: unknown } & Record<string, unknown>) => ({
+          contentFrames: mergeAction.data.mergedLayer.contentFrames.map((cf) => ({
             ...cf,
             data: cf.data instanceof Map ? cf.data : new Map(Object.entries((cf.data ?? {}) as Record<string, unknown>)),
           })),
@@ -1196,7 +1196,7 @@ const processHistoryAction = (
         for (const entry of sortedEntries) {
           const restored = {
             ...entry.layer,
-            contentFrames: entry.layer.contentFrames.map((cf: { data: unknown } & Record<string, unknown>) => ({
+            contentFrames: entry.layer.contentFrames.map((cf) => ({
               ...cf,
               data: cf.data instanceof Map ? cf.data : new Map(Object.entries((cf.data ?? {}) as Record<string, unknown>)),
             })),

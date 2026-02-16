@@ -17,9 +17,7 @@
 import { create } from 'zustand';
 import { useTimelineStore } from './timelineStore';
 import type { Cell, Frame, FrameId } from '../types';
-import type { LayerId, ContentFrame, ContentFrameId } from '../types/timeline';
-import { generateContentFrameId } from '../types/timeline';
-import { DEFAULT_FRAME_DURATION } from '../constants';
+import type { ContentFrame } from '../types/timeline';
 
 // ─────────────────────────────────────────────
 // Internal helpers
@@ -51,13 +49,6 @@ function deriveLegacyFrames(): Frame[] {
   const layer = getActiveLayer();
   if (!layer) return [];
   return layer.contentFrames.map(contentFrameToLegacyFrame);
-}
-
-/** Map a legacy frame-array index to the content frame at that position. */
-function getContentFrameByIndex(index: number): ContentFrame | undefined {
-  const layer = getActiveLayer();
-  if (!layer) return undefined;
-  return layer.contentFrames[index];
 }
 
 // ─────────────────────────────────────────────
@@ -278,7 +269,7 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
     tl.updateContentFrameTiming(layer.id, cf.id, cf.startFrame, durationFrames);
   },
 
-  updateFrameName: (index: number, name: string) => {
+  updateFrameName: (index: number, _name: string) => {
     const layer = getActiveLayer();
     const tl = useTimelineStore.getState();
     if (!layer) return;
@@ -365,7 +356,6 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
   reorderFrameRange: (frameIndices: number[], targetIndex: number) => {
     // Complex multi-frame reorder. For now, do a sequential swap approach.
     const layer = getActiveLayer();
-    const tl = useTimelineStore.getState();
     if (!layer) return;
 
     // TODO: implement proper multi-frame reorder in timelineStore

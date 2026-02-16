@@ -129,8 +129,8 @@ export const AnchorPointOverlay: React.FC = () => {
     const forwardPt = (lx: number, ly: number) => {
       const relX = lx - transform.anchorPointX;
       const relY = ly - transform.anchorPointY;
-      const scaledX = relX * transform.scale;
-      const scaledY = relY * transform.scale;
+      const scaledX = relX * transform.scaleX;
+      const scaledY = relY * transform.scaleY;
       const { rotatedX, rotatedY } = applyRotation(scaledX, scaledY, transform.rotation, cellAspectRatio);
       return {
         x: rotatedX + transform.anchorPointX + transform.positionX,

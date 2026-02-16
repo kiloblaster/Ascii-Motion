@@ -98,7 +98,6 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const copiedFrames = useTimelineStore((s) => s.copiedFrames);
   const copiedKeyframes = useTimelineStore((s) => s.copiedKeyframes);
-  const selectedContentFrameIds = useTimelineStore((s) => s.view.selectedContentFrameIds);
   const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   const {
@@ -204,7 +203,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
 
     const copiedPaths = [...new Set(copiedKfs.map((kf) => kf.propertyPath))];
     const targetMatchesCopied = copiedPaths.includes(targetPropertyPath);
-    const maxLayerIndex = Math.max(...copiedKfs.map((kf) => kf.layerIndex));
+    const maxLayerIndex = Math.max(...copiedKfs.map((kf) => kf.layerIndex ?? 0));
     const isMultiLayer = maxLayerIndex > 0;
 
     for (const entry of copiedKfs) {
@@ -220,7 +219,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
           ? layers.find((l) => (l.id as string) === entry.sourceLayerId)
           : (() => {
               const targetLayerIdx = layers.findIndex((l) => l.id === layerId);
-              const idx = targetLayerIdx + entry.layerIndex;
+              const idx = targetLayerIdx + (entry.layerIndex ?? 0);
               return idx >= 0 && idx < layers.length ? layers[idx] : undefined;
             })();
         if (!destLayer) continue;
@@ -393,11 +392,9 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
               onClick={() => act(() => {
                 // Search layers first, then groups
                 const layer = layers.find((l) => l.id === ctx.layerId);
-                let trackPropertyPath: string | undefined;
                 if (layer) {
                   const track = layer.propertyTracks.find((t) => t.id === ctx.trackId);
                   if (track) {
-                    trackPropertyPath = track.propertyPath;
                     const currentValue = getPropertyValueAtFrame(layer, track.propertyPath, ctx.clickFrame);
                     addKeyframe(ctx.layerId, ctx.trackId, ctx.clickFrame, currentValue);
                     return;

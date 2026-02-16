@@ -37,7 +37,6 @@ import type {
 // Stable no-op functions for the inactive path — avoids creating new function
 // objects on every render when layerId is null
 const NOOP = () => {};
-const NOOP_RETURN_NULL = () => null;
 
 /**
  * PERF-CRITICAL: This hook is called 7× inside useLayerTransformTool, which runs

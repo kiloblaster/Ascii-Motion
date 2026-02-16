@@ -4,6 +4,7 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { useTimelineStore } from '../stores/timelineStore';
+import type { Cell } from '../types';
 import { screenToLocal, getComposedTransformForLayer } from '../utils/layerTransformUtils';
 import { getContentFrameAtTime, inverseTransformPoint } from '../utils/layerCompositing';
 

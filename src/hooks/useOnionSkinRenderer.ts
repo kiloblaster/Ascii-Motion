@@ -5,7 +5,6 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { useCanvasState } from './useCanvasState';
 import { compositeLayersAtFrame } from '../utils/layerCompositing';
-import { getContentFrameAtTime } from '../utils/layerCompositing';
 import { 
   calculateOnionSkinOpacity, 
   getOnionSkinColor 
@@ -33,7 +32,6 @@ export const useOnionSkinRenderer = () => {
   // Since onion skins only need the layers at paint time (not subscription time),
   // using refs is safe and eliminates the cascade entirely.
   const tlCurrentFrame = useTimelineStore((s) => s.view.currentFrame);
-  const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const canvasWidth = useCanvasStore((s) => s.width);
   const canvasHeight = useCanvasStore((s) => s.height);
   const isLayerMode = useTimelineStore.getState().layers.length > 0;

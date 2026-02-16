@@ -141,7 +141,7 @@ export function SaveToCloudDialog({ open, onOpenChange }: SaveToCloudDialogProps
       // For "Save As", we need to temporarily clear currentProjectId to force new project creation
       // We'll do this by passing a flag or by modifying the hook
       const project = await handleSaveToCloud(
-        exportData,
+        exportData!,
         sanitizedName,
         sanitizedDescription || undefined,
         saveAsMode // Pass saveAsMode to force new project creation

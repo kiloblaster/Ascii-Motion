@@ -18,7 +18,6 @@ import type {
   LayerGroup,
   ContentFrame,
   PropertyPath,
-  PropertyTrack,
 } from '../types/timeline';
 import { PROPERTY_DEFINITIONS } from '../types/timeline';
 import { interpolateKeyframes } from '../types/easing';

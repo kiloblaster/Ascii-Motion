@@ -43,7 +43,8 @@ interface TransformDragState {
   startValues: {
     positionX: number;
     positionY: number;
-    scale: number;
+    scaleX: number;
+    scaleY: number;
     rotation: number;
     anchorPointX: number;
     anchorPointY: number;
@@ -57,6 +58,8 @@ export interface TransformBoundingBox {
   corners: { x: number; y: number }[];
   /** Local-space extent of content */
   localBounds: { minX: number; minY: number; maxX: number; maxY: number };
+  /** Optional: the transform used to compute this bounding box */
+  transform?: { positionX: number; positionY: number; scaleX: number; scaleY: number; rotation: number; anchorPointX: number; anchorPointY: number };
 }
 
 // ============================================
@@ -65,8 +68,8 @@ export interface TransformBoundingBox {
 
 const ANCHOR_HIT_RADIUS = 1.5; // cells
 const HANDLE_HIT_RADIUS = 2.0; // cells — larger than the visual handle for easier clicking
-const SCALE_MIN = PROPERTY_DEFINITIONS['transform.scale.x'].min ?? 0.1;
-const SCALE_MAX = PROPERTY_DEFINITIONS['transform.scale.x'].max ?? 10;
+const SCALE_MIN = PROPERTY_DEFINITIONS['transform.scale.x']?.min ?? 0.1;
+const SCALE_MAX = PROPERTY_DEFINITIONS['transform.scale.x']?.max ?? 10;
 
 // ============================================
 // Geometry Helpers
@@ -76,7 +79,7 @@ const SCALE_MAX = PROPERTY_DEFINITIONS['transform.scale.x'].max ?? 10;
 function forwardTransformPoint(
   localX: number,
   localY: number,
-  transform: { positionX: number; positionY: number; scale: number; rotation: number; anchorPointX: number; anchorPointY: number },
+  transform: { positionX: number; positionY: number; scaleX: number; scaleY: number; rotation: number; anchorPointX: number; anchorPointY: number },
   cellAspectRatio: number,
 ): { x: number; y: number } {
   // 1. Subtract anchor
@@ -600,7 +603,7 @@ export function useLayerTransformTool() {
       // We use the history-wrapped setters which will push to the undo stack,
       // but first revert to the start values via direct store write, then
       // re-apply via the history path so the action captures old→new correctly.
-      const propertyMap: Array<{ path: PropertyPath; startVal: number; currentGetter: { value: number } }> = [
+      const propertyMap: Array<{ path: PropertyPath; startVal: number; currentGetter: { value: number; setValue: (v: number) => void } }> = [
         { path: 'transform.position.x', startVal: startVals.positionX, currentGetter: posX },
         { path: 'transform.position.y', startVal: startVals.positionY, currentGetter: posY },
         { path: 'transform.scale.x', startVal: startVals.scaleX, currentGetter: scaleX },

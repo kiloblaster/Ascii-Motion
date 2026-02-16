@@ -27,7 +27,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
 import { defaultEasing } from '../../../types/easing';
-import type { LayerGroup, LayerGroupId } from '../../../types/timeline';
+import type { LayerGroup } from '../../../types/timeline';
 
 interface GroupHeaderProps {
   group: LayerGroup;

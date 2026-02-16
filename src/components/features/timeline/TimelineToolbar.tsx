@@ -44,14 +44,12 @@ import {
 export const TimelineToolbar: React.FC = () => {
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
-  const frameRate = useTimelineStore((s) => s.config.frameRate);
   const looping = useTimelineStore((s) => s.view.looping);
   const setLooping = useTimelineStore((s) => s.setLooping);
-  const goToFrame = useTimelineStore((s) => s.goToFrame);
   const {
     addContentFrame,
     removeContentFrame,
-    duplicateContentFrame,
+    duplicateContentFrame: _duplicateContentFrame,
     splitContentFrame,
     updateContentFrameTiming,
     updateContentFrameData,
@@ -83,10 +81,6 @@ export const TimelineToolbar: React.FC = () => {
   const canSplit = contentFrameAtPlayhead
     ? currentFrame > contentFrameAtPlayhead.startFrame
     : false;
-
-  const handleAddLayer = () => {
-    // Moved to LayerList footer
-  };
 
   /** Add a new empty 1-frame content frame at the playhead.
    *  - Gap: insert directly.
