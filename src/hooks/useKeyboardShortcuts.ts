@@ -468,7 +468,53 @@ const processHistoryAction = (
     case 'import_media': {
       const importAction = action as import('../types').ImportMediaHistoryAction;
       
-      if (importAction.data.mode === 'single') {
+      if (importAction.data.mode === 'new_layer') {
+        // New layer import — undo removes the layer, redo re-creates from snapshot
+        const tl = useTimelineStore.getState();
+        
+        if (isRedo) {
+          const snapshot = importAction.data.layerSnapshot;
+          if (snapshot) {
+            const newLayerId = tl.addLayer(importAction.data.layerName);
+            if (newLayerId) {
+              // Remove the default empty content frame
+              const newLayer = tl.layers.find(l => l.id === newLayerId);
+              if (newLayer) {
+                for (const cf of [...newLayer.contentFrames]) {
+                  tl.removeContentFrame(newLayerId, cf.id);
+                }
+              }
+              // Restore content frames from snapshot
+              const snapshotFrames = (snapshot as { contentFrames?: Array<{ startFrame: number; durationFrames: number; data: Record<string, { char: string; textColor: string; bgColor: string }> }> }).contentFrames;
+              if (snapshotFrames) {
+                for (const cf of snapshotFrames) {
+                  const cellData = new Map<string, import('../types').Cell>();
+                  if (cf.data) {
+                    for (const [key, cell] of Object.entries(cf.data)) {
+                      cellData.set(key, cell as unknown as import('../types').Cell);
+                    }
+                  }
+                  tl.addContentFrame(newLayerId, cf.startFrame, cf.durationFrames, cellData);
+                }
+              }
+              // Update the history action's layerId to the new one (for subsequent undo)
+              importAction.data.layerId = newLayerId as string;
+              console.log(`✅ Redo: Re-created imported media layer "${importAction.data.layerName}" (${importAction.data.importedFrameCount} frames)`);
+            }
+          }
+        } else {
+          // Undo: Remove the imported layer
+          const layerId = importAction.data.layerId;
+          if (layerId) {
+            tl.removeLayer(layerId as import('../types/timeline').LayerId);
+            // Restore previous active layer
+            if (importAction.data.previousActiveLayerId) {
+              tl.setActiveLayer(importAction.data.previousActiveLayerId as import('../types/timeline').LayerId);
+            }
+            console.log(`✅ Undo: Removed imported media layer "${importAction.data.layerName}"`);
+          }
+        }
+      } else if (importAction.data.mode === 'single') {
         // Single image import - restore canvas data
         if (isRedo) {
           if (importAction.data.newCanvasData) {
@@ -505,6 +551,18 @@ const processHistoryAction = (
             );
             console.log(`✅ Undo: Restored ${importAction.data.previousFrames.length} frame(s) before import`);
           }
+        }
+      }
+      
+      // Restore/reapply frame rate change if applicable
+      if (importAction.data.previousProjectFps !== undefined && importAction.data.newProjectFps !== undefined) {
+        const tl = useTimelineStore.getState();
+        if (isRedo) {
+          tl.setFrameRate(importAction.data.newProjectFps, false);
+          console.log(`✅ Redo: Restored project frame rate to ${importAction.data.newProjectFps} fps`);
+        } else {
+          tl.setFrameRate(importAction.data.previousProjectFps, false);
+          console.log(`✅ Undo: Restored project frame rate to ${importAction.data.previousProjectFps} fps`);
         }
       }
       break;

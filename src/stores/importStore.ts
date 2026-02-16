@@ -14,7 +14,7 @@ import { usePaletteStore } from './paletteStore';
 
 export interface ImportUIState {
   // UI preferences that should persist across sessions
-  importMode: 'overwrite' | 'append';
+  importMode: 'overwrite' | 'append' | 'new_layer';
   livePreviewEnabled: boolean;
   previewSectionOpen: boolean;
   positionSectionOpen: boolean;
@@ -120,7 +120,7 @@ export interface ImportSettings {
 
 // Default UI state
 const DEFAULT_UI_STATE: ImportUIState = {
-  importMode: 'overwrite',
+  importMode: 'new_layer',
   livePreviewEnabled: true,
   previewSectionOpen: true,
   positionSectionOpen: false

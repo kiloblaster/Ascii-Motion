@@ -485,17 +485,25 @@ export interface SetFrameDurationsHistoryAction extends HistoryAction {
 export interface ImportMediaHistoryAction extends HistoryAction {
   type: 'import_media';
   data: {
-    mode: 'single' | 'overwrite' | 'append';
+    mode: 'single' | 'overwrite' | 'append' | 'new_layer';
     // For single image import
     previousCanvasData?: Map<string, Cell>;
     previousFrameIndex?: number;
     newCanvasData?: Map<string, Cell>;
-    // For multi-frame import
+    // For multi-frame import (overwrite/append)
     previousFrames?: Frame[];
     previousCurrentFrame?: number;
     newFrames?: Frame[];
     newCurrentFrame?: number;
     importedFrameCount: number;
+    // For new_layer mode (undo = remove layer, redo = re-create from snapshot)
+    layerId?: string;
+    layerName?: string;
+    layerSnapshot?: Record<string, unknown>;
+    previousActiveLayerId?: string;
+    // For frame rate matching (undo restores previous fps)
+    previousProjectFps?: number;
+    newProjectFps?: number;
   };
 }
 
