@@ -3,14 +3,13 @@ import { createPortal } from 'react-dom';
 import { ColorPickerOverlay } from './ColorPickerOverlay';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Grid3X3, Palette, Type, AlertTriangle, CheckCircle2, Loader2, Maximize2 } from 'lucide-react';
+import { Grid3X3, Palette, Type, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { CanvasResizeDialog } from './CanvasResizeDialog';
+import { ToolOptionsPanel } from './ToolPalette';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useCanvasContext } from '@/contexts/CanvasContext';
-import { ZoomControls } from './ZoomControls';
 import { useToolStore } from '@/stores/toolStore';
 import { useTimelineStore } from '@/stores/timelineStore';
 import { useProjectDialogState } from '@/hooks/useProjectDialogState';
@@ -49,6 +48,9 @@ export const CanvasSettings: React.FC = () => {
   } = useCanvasContext();
 
   const { pushCanvasResizeHistory } = useToolStore();
+  const activeTool = useToolStore((s) => s.activeTool);
+  const toolsWithOptions = ['rectangle', 'ellipse', 'paintbucket', 'gradientfill', 'magicwand', 'pencil', 'eraser', 'eyedropper', 'beziershape', 'select', 'lasso', 'layertransform'];
+  const hasToolOptions = toolsWithOptions.includes(activeTool);
   // PERF FIX: currentFrameIndex only used in callbacks — read from getState()
 
   // Global dialog state for canvas resize (allows keyboard shortcut to trigger)
@@ -346,12 +348,81 @@ export const CanvasSettings: React.FC = () => {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between w-full gap-3">
-        {/* Left Section - Canvas Size Controls */}
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-muted-foreground">Canvas size:</span>
+      <div className="flex items-center w-full gap-3">
+        {/* Left: Tool options (when active tool has options) */}
+        {hasToolOptions && (
+          <div className="flex-1 min-w-0 overflow-x-auto">
+            <ToolOptionsPanel activeTool={activeTool} />
+          </div>
+        )}
+        {!hasToolOptions && <div className="flex-1" />}
+
+        {/* Right-aligned: Canvas size + divider + Display controls */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Canvas Size Controls */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCanvasResizeDialog(true)}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Canvas size:
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">Resize canvas with anchor positioning (⌘⇧C)</p>
+            </TooltipContent>
+          </Tooltip>
           
-          {/* Mode Toggle Button with Tooltip */}
+          {/* Width controls */}
+          <div className="flex items-center gap-1">
+            <div className="flex flex-col">
+              <Button size="sm" variant="ghost" onClick={() => adjustWidth(1)}
+                disabled={sizeMode === 'characters' ? width >= 200 : false}
+                className="h-3 w-6 p-0 text-xs leading-none">+</Button>
+              <Button size="sm" variant="ghost" onClick={() => adjustWidth(-1)}
+                disabled={sizeMode === 'characters' ? width <= 4 : false}
+                className="h-3 w-6 p-0 text-xs leading-none">-</Button>
+            </div>
+            <input
+              type="number"
+              value={widthInput}
+              onChange={(e) => sizeMode === 'characters' ? handleCharacterWidthChange(e.target.value) : handlePixelWidthChange(e.target.value)}
+              onBlur={sizeMode === 'characters' ? handleCharacterWidthBlur : handlePixelWidthBlur}
+              onKeyDown={handleKeyDown}
+              className="w-12 h-7 text-xs text-center border border-border rounded bg-background text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              min={sizeMode === 'characters' ? "4" : "1"}
+              max={sizeMode === 'characters' ? "200" : undefined}
+            />
+          </div>
+
+          <span className="text-xs text-muted-foreground">×</span>
+
+          {/* Height controls */}
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              value={heightInput}
+              onChange={(e) => sizeMode === 'characters' ? handleCharacterHeightChange(e.target.value) : handlePixelHeightChange(e.target.value)}
+              onBlur={sizeMode === 'characters' ? handleCharacterHeightBlur : handlePixelHeightBlur}
+              onKeyDown={handleKeyDown}
+              className="w-12 h-7 text-xs text-center border border-border rounded bg-background text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              min={sizeMode === 'characters' ? "4" : "1"}
+              max={sizeMode === 'characters' ? "100" : undefined}
+            />
+            <div className="flex flex-col">
+              <Button size="sm" variant="ghost" onClick={() => adjustHeight(1)}
+                disabled={sizeMode === 'characters' ? height >= 100 : false}
+                className="h-3 w-6 p-0 text-xs leading-none">+</Button>
+              <Button size="sm" variant="ghost" onClick={() => adjustHeight(-1)}
+                disabled={sizeMode === 'characters' ? height <= 4 : false}
+                className="h-3 w-6 p-0 text-xs leading-none">-</Button>
+            </div>
+          </div>
+
+          {/* Mode Toggle Button (char/px) */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -370,210 +441,115 @@ export const CanvasSettings: React.FC = () => {
               }
             </TooltipContent>
           </Tooltip>
-          
-          {/* Width controls with controls to the left */}
-          <div className="flex items-center gap-1">
-            <div className="flex flex-col">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => adjustWidth(1)}
-                disabled={sizeMode === 'characters' ? width >= 200 : false}
-                className="h-3 w-6 p-0 text-xs leading-none"
-              >
-                +
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => adjustWidth(-1)}
-                disabled={sizeMode === 'characters' ? width <= 4 : false}
-                className="h-3 w-6 p-0 text-xs leading-none"
-              >
-                -
-              </Button>
-            </div>
-            <input
-              type="number"
-              value={widthInput}
-              onChange={(e) => sizeMode === 'characters' ? handleCharacterWidthChange(e.target.value) : handlePixelWidthChange(e.target.value)}
-              onBlur={sizeMode === 'characters' ? handleCharacterWidthBlur : handlePixelWidthBlur}
-              onKeyDown={handleKeyDown}
-              className="w-12 h-7 text-xs text-center border border-border rounded bg-background text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              min={sizeMode === 'characters' ? "4" : "1"}
-              max={sizeMode === 'characters' ? "200" : undefined}
-            />
-          </div>
 
-          <span className="text-xs text-muted-foreground">×</span>
+          {/* Divider */}
+          <div className="w-px h-6 bg-border mx-1" />
 
-          {/* Height controls with input and controls to the right */}
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              value={heightInput}
-              onChange={(e) => sizeMode === 'characters' ? handleCharacterHeightChange(e.target.value) : handlePixelHeightChange(e.target.value)}
-              onBlur={sizeMode === 'characters' ? handleCharacterHeightBlur : handlePixelHeightBlur}
-              onKeyDown={handleKeyDown}
-              className="w-12 h-7 text-xs text-center border border-border rounded bg-background text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              min={sizeMode === 'characters' ? "4" : "1"}
-              max={sizeMode === 'characters' ? "100" : undefined}
-            />
-            <div className="flex flex-col">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => adjustHeight(1)}
-                disabled={sizeMode === 'characters' ? height >= 100 : false}
-                className="h-3 w-6 p-0 text-xs leading-none"
-              >
-                +
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => adjustHeight(-1)}
-                disabled={sizeMode === 'characters' ? height <= 4 : false}
-                className="h-3 w-6 p-0 text-xs leading-none"
-              >
-                -
-              </Button>
-            </div>
-          </div>
-
-          {/* Resize Button */}
+          {/* Display Controls */}
+          <span className="text-sm font-medium text-muted-foreground">Display:</span>
+            
+          {/* Grid Toggle */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="outline"
+                variant={showGrid ? "default" : "outline"}
                 size="sm"
-                onClick={() => setShowCanvasResizeDialog(true)}
-                className="h-7 px-2 text-xs gap-1"
+                onClick={toggleGrid}
+                className="h-6 w-6 p-0 leading-none flex items-center justify-center [&_svg]:w-3 [&_svg]:h-3"
               >
-                <Maximize2 className="w-3 h-3" />
-                Resize
+                <Grid3X3 className="w-3 h-3" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p className="text-xs">Resize canvas with anchor positioning (⌘⇧C)</p>
+              <p className="text-xs">{showGrid ? "Hide grid" : "Show grid"}</p>
             </TooltipContent>
           </Tooltip>
-        </div>
 
-        {/* Right Section - Display, Text, and Zoom Controls */}
-        <div className="flex items-center gap-3">
-          {/* Display Controls */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">Display:</span>
-            
-            {/* Grid Toggle */}
+          {/* Background Color Picker */}
+          <div className="relative" ref={colorPickerRef}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={showGrid ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
-                  onClick={toggleGrid}
-                  className="h-6 w-6 p-0 leading-none flex items-center justify-center [&_svg]:w-3 [&_svg]:h-3"
+                  onClick={() => {
+                    setOriginalCanvasBackgroundColor(canvasBackgroundColor);
+                    closeTypographyPicker();
+                    showColorPickerAnimated();
+                  }}
+                  className={`h-6 w-6 p-0 leading-none flex items-center justify-center relative overflow-hidden ${canvasBackgroundColor === 'transparent' ? 'border-2' : ''}`}
+                  aria-label="Canvas background color"
+                  aria-expanded={showColorPicker}
+                  aria-controls="color-dropdown"
                 >
-                  <Grid3X3 className="w-3 h-3" />
+                  {canvasBackgroundColor === 'transparent' ? (
+                    <span className="flex items-center justify-center w-full h-full">
+                      <span className="relative block w-full h-full rounded overflow-hidden">
+                        <span
+                          className="absolute inset-0 rounded"
+                          style={{
+                            backgroundColor: '#ffffff',
+                            backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
+                            backgroundSize: '8px 8px',
+                            backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px'
+                          }}
+                        />
+                        <svg
+                          className="absolute inset-0 w-full h-full pointer-events-none"
+                          viewBox="0 0 32 32"
+                          preserveAspectRatio="xMidYMid meet"
+                        >
+                          <line x1="2" y1="30" x2="30" y2="2" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                    </span>
+                  ) : (
+                    <div className="flex items-center justify-center w-full h-full" style={{ backgroundColor: canvasBackgroundColor }}>
+                      <Palette className="w-3 h-3" style={{ color: canvasBackgroundColor === '#FFFFFF' ? '#000000' : '#FFFFFF' }} />
+                    </div>
+                  )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="text-xs">{showGrid ? "Hide grid" : "Show grid"}</p>
+                <p className="text-xs">Canvas background color</p>
               </TooltipContent>
             </Tooltip>
-
-            {/* Background Color Picker */}
-            <div className="relative" ref={colorPickerRef}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      // Store original color before opening picker
-                      setOriginalCanvasBackgroundColor(canvasBackgroundColor);
-                      closeTypographyPicker();
-                      showColorPickerAnimated();
-                    }}
-                    className={`h-6 w-6 p-0 leading-none flex items-center justify-center relative overflow-hidden ${canvasBackgroundColor === 'transparent' ? 'border-2' : ''}`}
-                    aria-label="Canvas background color"
-                    aria-expanded={showColorPicker}
-                    aria-controls="color-dropdown"
-                  >
-                    {canvasBackgroundColor === 'transparent' ? (
-                      // Match structure/metrics of other buttons: use an inner span with inset background & diagonal
-                      <span className="flex items-center justify-center w-full h-full">
-                        <span className="relative block w-full h-full rounded overflow-hidden">
-                          <span
-                            className="absolute inset-0 rounded"
-                            style={{
-                              backgroundColor: '#ffffff',
-                              backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
-                              backgroundSize: '8px 8px',
-                              backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0px'
-                            }}
-                          />
-                          <svg
-                            className="absolute inset-0 w-full h-full pointer-events-none"
-                            viewBox="0 0 32 32"
-                            preserveAspectRatio="xMidYMid meet"
-                          >
-                            {/* Slash to match palette panel (bottom-left to top-right) */}
-                            <line x1="2" y1="30" x2="30" y2="2" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" />
-                          </svg>
-                        </span>
-                      </span>
-                    ) : (
-                      <div className="flex items-center justify-center w-full h-full" style={{ backgroundColor: canvasBackgroundColor }}>
-                        <Palette className="w-3 h-3" style={{ color: canvasBackgroundColor === '#FFFFFF' ? '#000000' : '#FFFFFF' }} />
-                      </div>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs">Canvas background color</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-
-            {/* Typography Controls */}
-            <div className="relative" ref={typographyPickerRef}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (showTypographyPicker) {
-                        closeTypographyPicker();
-                      } else {
-                        const position = calculatePosition(typographyPickerRef.current);
-                        setDropdownPosition(position);
-                        closeColorPicker(); // Close other dropdown first
-                        showTypographyPickerAnimated();
-                      }
-                    }}
-                    className="h-6 w-6 p-0 leading-none flex items-center justify-center [&_svg]:w-3 [&_svg]:h-3"
-                    aria-label="Typography settings"
-                    aria-expanded={showTypographyPicker}
-                    aria-controls="typography-dropdown"
-                  >
-                    <Type className="w-3 h-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs">Typography settings</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
           </div>
 
-          <Separator orientation="vertical" className="h-6" />
+          {/* Typography Controls */}
+          <div className="relative" ref={typographyPickerRef}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (showTypographyPicker) {
+                      closeTypographyPicker();
+                    } else {
+                      const position = calculatePosition(typographyPickerRef.current);
+                      setDropdownPosition(position);
+                      closeColorPicker();
+                      showTypographyPickerAnimated();
+                    }
+                  }}
+                  className="h-6 w-6 p-0 leading-none flex items-center justify-center [&_svg]:w-3 [&_svg]:h-3"
+                  aria-label="Typography settings"
+                  aria-expanded={showTypographyPicker}
+                  aria-controls="typography-dropdown"
+                >
+                  <Type className="w-3 h-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">Typography settings</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+      </div>
 
-          {/* Zoom Controls - kept exactly as is */}
-          <ZoomControls />
-  </div>        {/* Typography Picker Dropdown - Portal rendered for proper layering */}
+      {/* Typography Picker Dropdown - Portal rendered for proper layering */}
         {showTypographyPicker && dropdownPosition.top > 0 && createPortal(
           <div 
             id="typography-dropdown"
@@ -788,7 +764,6 @@ export const CanvasSettings: React.FC = () => {
           isOpen={showCanvasResizeDialog}
           onOpenChange={setShowCanvasResizeDialog}
         />
-      </div>
     </TooltipProvider>
   );
 };

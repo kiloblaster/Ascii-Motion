@@ -11,7 +11,7 @@ import { useBezierStore } from '../../stores/bezierStore';
 import { useHoverPreview } from '../../hooks/useHoverPreview';
 import { ToolManager } from './ToolManager';
 import { ToolStatusManager } from './ToolStatusManager';
-import { CanvasActionButtons } from './CanvasActionButtons';
+import { ZoomControls } from './ZoomControls';
 import { CanvasOverlay } from './CanvasOverlay';
 import { PlaybackStatusBar } from './PlaybackStatusBar';
 import type { Tool } from '../../types';
@@ -445,9 +445,9 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
         <CanvasOverlay />
       </div>
       
-      {/* Action buttons and status info positioned outside canvas */}
+      {/* Zoom controls and status info positioned outside canvas */}
       <div className="mt-2 mb-2 flex justify-between items-center gap-4">
-        <CanvasActionButtons />
+        <ZoomControls />
         {isPlaying ? <PlaybackStatusBar /> : <ToolStatusManager />}
       </div>
     </div>

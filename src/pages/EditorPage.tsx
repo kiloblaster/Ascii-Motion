@@ -68,7 +68,7 @@ export function EditorPage() {
           <CollapsiblePanel
             isOpen={layout.leftPanelOpen}
             side="left"
-            minWidth="w-44"
+            minWidth="w-[84px]"
           >
             <div className="h-full flex flex-col">
               {/* Tools at the top */}
@@ -81,7 +81,7 @@ export function EditorPage() {
           {/* Left Panel Toggle Button - centered on canvas area */}
           <div className={cn(
             "absolute top-1/2 -translate-y-1/2 z-20 transition-all duration-300 ease-out pointer-events-auto",
-            layout.leftPanelOpen ? "left-44" : "left-0"
+            layout.leftPanelOpen ? "left-[84px]" : "left-0"
           )}>
             <PanelToggleButton
               isOpen={layout.leftPanelOpen}
@@ -158,14 +158,14 @@ export function EditorPage() {
         <div 
           className={cn(
             "absolute inset-0 flex flex-col transition-all duration-300 ease-out",
-            layout.leftPanelOpen && "left-44",
+            layout.leftPanelOpen && "left-[84px]",
             layout.rightPanelOpen && "right-56", 
             layout.bottomPanelOpen ? "bottom-[var(--bottom-panel-height,20rem)]" : "bottom-4"
           )}
         >
           {/* Canvas Settings Header */}
           <div className="flex-shrink-0 border-b border-border/50 bg-background/95 backdrop-blur" style={{ overflow: 'visible', position: 'relative', zIndex: 10 }}>
-            <div className="px-3 py-2 flex justify-center items-center">
+            <div className="p-2 flex justify-center items-center">
               <CanvasSettings />
             </div>
           </div>

@@ -391,7 +391,7 @@ const INITIAL_VIEW: TimelineViewState = {
   selectedContentFrameIds: new Set(),
   zoom: 8,
   scrollX: 0,
-  panelHeight: 364,
+  panelHeight: 328,
   editingKeyframeId: null,
   expandedLayerIds: new Set(),
   showLayerProperties: true,

@@ -1,21 +1,17 @@
 import React from 'react';
 import { useToolStore } from '../../stores/toolStore';
+import { useCanvasStore } from '../../stores/canvasStore';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useGradientStore } from '../../stores/gradientStore';
 import { useBezierStore } from '../../stores/bezierStore';
 import { useCropToSelection } from '../../hooks/useCropToSelection';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import { CollapsibleHeader } from '../common/CollapsibleHeader';
-import { PanelSeparator } from '../common/PanelSeparator';
 import { GradientIcon } from '../icons';
-import { BrushControls } from './BrushControls';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AUTOFILL_PALETTES } from '../../constants/bezierAutofill';
 import type { BezierCloseShapeHistoryAction } from '../../types';
-import { 
+import {
   PenTool,
   Eraser, 
   PaintBucket, 
@@ -26,7 +22,6 @@ import {
   Type,
   Wand2,
   Palette,
-  Wrench,
   Move,
   MoveHorizontal,
   MoveVertical,
@@ -34,6 +29,13 @@ import {
   Grid2x2,
   Brush,
   Crop,
+  Copy,
+  Clipboard,
+  Undo2,
+  Redo2,
+  Trash2,
+  Minus,
+  MoreVertical,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -87,8 +89,8 @@ const SELECTION_TOOLS: Array<{ id: Tool; name: string; icon: React.ReactNode; de
 
 const UTILITY_TOOLS: Array<{ id: Tool; name: string; icon: React.ReactNode; description: string }> = [
   { id: 'eyedropper', name: 'Eyedropper', icon: <Pipette className="w-3 h-3" />, description: 'Pick character/color' },
-  { id: 'fliphorizontal', name: 'Flip H', icon: <MoveHorizontal className="w-3 h-3" />, description: 'Flip horizontally (Shift+H)' },
-  { id: 'flipvertical', name: 'Flip V', icon: <MoveVertical className="w-3 h-3" />, description: 'Flip vertically (Shift+V)' },
+  { id: 'fliphorizontal', name: 'Flip H (Shift+H)', icon: <MoveHorizontal className="w-3 h-3" />, description: 'Flip horizontally (Shift+H)' },
+  { id: 'flipvertical', name: 'Flip V (Shift+V)', icon: <MoveVertical className="w-3 h-3" />, description: 'Flip vertically (Shift+V)' },
   { id: 'layertransform', name: 'Layer Transform', icon: <Move className="w-3 h-3" />, description: 'Layer Transform tool' },
 ];
 
@@ -99,16 +101,12 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
   // unrelated toolStore mutation (isProcessingHistory, brush settings, etc.)
   const activeTool = useToolStore((s) => s.activeTool);
   const setActiveTool = useToolStore((s) => s.setActiveTool);
-  const [showTools, setShowTools] = React.useState(true);
 
   // Calculate effective tool
   // PERF FIX: Removed altKeyDown/ctrlKeyDown from context — they caused this
   // 828-line component to re-render on every Alt/Ctrl keypress. The visual
   // tool override indicator is not worth the cost.
   const effectiveTool = activeTool;
-
-  // Tools that actually have configurable options. (Removed 'eraser' and 'text' per layout bug fix.)
-  const hasOptions = ['rectangle', 'ellipse', 'paintbucket', 'gradientfill', 'magicwand', 'pencil', 'eraser', 'eyedropper', 'beziershape', 'select', 'lasso', 'layertransform'].includes(effectiveTool);
 
   const handleToolClick = (tool: { id: Tool; name: string; icon: React.ReactNode; description: string }) => {
     // Handle flip utilities via keyboard shortcut dispatch
@@ -153,59 +151,92 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
 
   return (
     <TooltipProvider>
-      <div className={`space-y-3 ${className}`}>
-        <Collapsible open={showTools} onOpenChange={setShowTools}>
-          <CollapsibleHeader isOpen={showTools}>
-            <div className="flex items-center gap-2">
-              <Wrench className="w-4 h-4" />
-              Tools
+      <div className={`${className}`}>
+        <div className="px-2 pt-0.5 pb-1 space-y-2">
+          {/* Drawing Tools Section */}
+          <div className="space-y-1.5">
+            <h4 className="text-xs font-medium text-muted-foreground">Drawing</h4>
+            <div className="grid grid-cols-2 gap-1" role="toolbar" aria-label="Drawing tools">
+              {DRAWING_TOOLS.map((tool) => (
+                <ToolButton key={tool.id} tool={tool} />
+              ))}
             </div>
-          </CollapsibleHeader>
-          <CollapsibleContent className="collapsible-content">
-            <Card className="border-border/50 mt-2">
-              <CardContent className="p-3">
-                {/* Drawing Tools Section */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-medium text-muted-foreground">Drawing</h4>
-                  <div className="grid grid-cols-3 gap-1" role="toolbar" aria-label="Drawing tools">
-                    {DRAWING_TOOLS.map((tool) => (
-                      <ToolButton key={tool.id} tool={tool} />
-                    ))}
-                  </div>
-                </div>
+          </div>
 
-                {/* Selection Tools Section */}
-                <div className="space-y-2 mt-3">
-                  <h4 className="text-xs font-medium text-muted-foreground">Selection</h4>
-                  <div className="grid grid-cols-3 gap-1" role="toolbar" aria-label="Selection tools">
-                    {SELECTION_TOOLS.map((tool) => (
-                      <ToolButton key={tool.id} tool={tool} />
-                    ))}
-                  </div>
-                </div>
+          {/* Selection Tools Section */}
+          <div className="space-y-1.5">
+            <h4 className="text-xs font-medium text-muted-foreground">Selection</h4>
+            <div className="grid grid-cols-2 gap-1" role="toolbar" aria-label="Selection tools">
+              {SELECTION_TOOLS.map((tool) => (
+                <ToolButton key={tool.id} tool={tool} />
+              ))}
+            </div>
+          </div>
 
-                {/* Utility Tools Section */}
-                <div className="space-y-2 mt-3">
-                  <h4 className="text-xs font-medium text-muted-foreground">Utility</h4>
-                  <div className="grid grid-cols-3 gap-1" role="toolbar" aria-label="Utility tools">
-                    {UTILITY_TOOLS.map((tool) => (
-                      <ToolButton key={tool.id} tool={tool} />
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </CollapsibleContent>
-        </Collapsible>
+          {/* Utility Tools Section */}
+          <div className="space-y-1.5">
+            <h4 className="text-xs font-medium text-muted-foreground">Utility</h4>
+            <div className="grid grid-cols-2 gap-1" role="toolbar" aria-label="Utility tools">
+              {UTILITY_TOOLS.map((tool) => (
+                <ToolButton key={tool.id} tool={tool} />
+              ))}
+            </div>
+          </div>
 
-        {/* Separator between Tools and Tool Options */}
-        {hasOptions && <PanelSeparator side="left" />}
+          {/* Actions Section */}
+          <div className="space-y-1.5">
+            <h4 className="text-xs font-medium text-muted-foreground">Actions</h4>
+            <div className="grid grid-cols-2 gap-1" role="toolbar" aria-label="Action buttons">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))}>
+                          <Undo2 className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right"><p className="text-xs">Undo (⌘Z)</p></TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true }))}>
+                          <Redo2 className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right"><p className="text-xs">Redo (⌘⇧Z)</p></TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))}>
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right"><p className="text-xs">Copy (⌘C)</p></TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true }))}>
+                          <Clipboard className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right"><p className="text-xs">Paste (⌘V)</p></TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation text-destructive hover:text-destructive"
+                          onClick={() => { useToolStore.getState().pushCanvasHistory(new Map(useCanvasStore.getState().cells), useTimelineStore.getState().view.currentFrame, 'Clear canvas'); useCanvasStore.getState().clearCanvas(); }}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right"><p className="text-xs">Clear canvas</p></TooltipContent>
+                    </Tooltip>
+            </div>
+          </div>
+        </div>
 
-        {/* Tool Options — memoized to avoid re-rendering when parent re-renders */}
-        {hasOptions && <ToolOptionsPanel activeTool={effectiveTool} />}
-
-        {/* Separator after Tool Options */}
-        {hasOptions && <PanelSeparator side="left" />}
+        {/* Separator between Tools and Tool Options - removed, options now in canvas header */}
       </div>
     </TooltipProvider>
   );
@@ -215,13 +246,14 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
  * PERF FIX: Memoized tool options panel.
  * Subscribes to its own store slices independently from the parent ToolPalette.
  * Only re-renders when activeTool changes or when the specific tool's settings change.
+ * 
+ * Now exported for use in the canvas header horizontal bar.
  */
-const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
+export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
   const { rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection: _selection, lassoSelection: _lassoSelection, magicWandSelection: _magicWandSelection, selectionAffectsAllLayers, setSelectionAffectsAllLayers } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
   const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
   const { canCrop, cropToSelection } = useCropToSelection();
-  const [showOptions, setShowOptions] = React.useState(true);
 
   const effectiveTool = activeTool;
 
@@ -244,600 +276,240 @@ const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
   };
 
   return (
-    <div>
-      <Collapsible open={showOptions} onOpenChange={setShowOptions}>
-        <CollapsibleHeader isOpen={showOptions}>
-          <div className="flex items-center gap-2">
-            {getCurrentToolIcon()}
-            <span>Tool Options</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {/* Tool name indicator */}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {getCurrentToolIcon()}
+        <span className="font-medium">{
+          effectiveTool === 'pencil' ? 'Pencil' :
+          effectiveTool === 'eraser' ? 'Eraser' :
+          effectiveTool === 'paintbucket' ? 'Fill' :
+          effectiveTool === 'gradientfill' ? 'Gradient' :
+          effectiveTool === 'rectangle' ? 'Rectangle' :
+          effectiveTool === 'ellipse' ? 'Ellipse' :
+          effectiveTool === 'magicwand' ? 'Magic Wand' :
+          effectiveTool === 'select' ? 'Selection' :
+          effectiveTool === 'lasso' ? 'Lasso' :
+          effectiveTool === 'eyedropper' ? 'Eyedropper' :
+          effectiveTool === 'beziershape' ? 'Bezier Pen' :
+          effectiveTool === 'layertransform' ? 'Layer Transform' :
+          'Tool'
+        }</span>
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-border/50" />
+
+      {/* Rectangle/Ellipse: Filled toggle */}
+      {(effectiveTool === 'rectangle' || effectiveTool === 'ellipse') && (
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="filled-toggle" className="text-xs cursor-pointer text-muted-foreground">Filled</Label>
+          <Switch id="filled-toggle" checked={rectangleFilled} onCheckedChange={setRectangleFilled} className="scale-75" />
+        </div>
+      )}
+
+      {/* Paint bucket: Contiguous + Match criteria */}
+      {effectiveTool === 'paintbucket' && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground">Contiguous</Label>
+            <Switch checked={paintBucketContiguous} onCheckedChange={setPaintBucketContiguous} className="scale-75" />
           </div>
-        </CollapsibleHeader>
-        <CollapsibleContent className="collapsible-content">
-          <div className="mt-2 space-y-2">
-                {effectiveTool === 'rectangle' && (
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="filled-rectangle" className="text-xs cursor-pointer">
-                        Filled
-                      </Label>
-                      <Switch
-                        id="filled-rectangle"
-                        checked={rectangleFilled}
-                        onCheckedChange={setRectangleFilled}
-                      />
-                    </div>
-                  )}
-                  
-                  {effectiveTool === 'ellipse' && (
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="filled-ellipse" className="text-xs cursor-pointer">
-                        Filled
-                      </Label>
-                      <Switch
-                        id="filled-ellipse"
-                        checked={rectangleFilled}
-                        onCheckedChange={setRectangleFilled}
-                      />
-                    </div>
-                  )}
-                  
-                  {effectiveTool === 'paintbucket' && (
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="contiguous-fill" className="text-xs cursor-pointer">
-                        Contiguous
-                      </Label>
-                      <Switch
-                        id="contiguous-fill"
-                        checked={paintBucketContiguous}
-                        onCheckedChange={setPaintBucketContiguous}
-                      />
-                    </div>
-                  )}
-                  
-                  {effectiveTool === 'gradientfill' && (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="gradient-contiguous" className="text-xs cursor-pointer">
-                          Contiguous
-                        </Label>
-                        <Switch
-                          id="gradient-contiguous"
-                          checked={contiguous}
-                          onCheckedChange={setContiguous}
-                        />
-                      </div>
-                      <div className="space-y-2 mt-2">
-                        <div className="text-xs text-muted-foreground">Selects same:</div>
-                        <div className="flex gap-1">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant={matchChar ? "default" : "outline"}
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => setMatchCriteria({ char: !matchChar, color: matchColor, bgColor: matchBgColor })}
-                              >
-                                <Type className="h-3 w-3" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Match character</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant={matchColor ? "default" : "outline"}
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => setMatchCriteria({ char: matchChar, color: !matchColor, bgColor: matchBgColor })}
-                              >
-                                <Palette className="h-3 w-3" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Match text color</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant={matchBgColor ? "default" : "outline"}
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => setMatchCriteria({ char: matchChar, color: matchColor, bgColor: !matchBgColor })}
-                              >
-                                <Square className="h-3 w-3 fill-current" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Match background color</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  
-                  {effectiveTool === 'magicwand' && (
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="contiguous-selection" className="text-xs cursor-pointer">
-                        Contiguous
-                      </Label>
-                      <Switch
-                        id="contiguous-selection"
-                        checked={magicWandContiguous}
-                        onCheckedChange={setMagicWandContiguous}
-                      />
-                    </div>
-                  )}
-                  {effectiveTool === 'magicwand' && (
-                    <div className="space-y-2 mt-2">
-                      <div className="text-xs text-muted-foreground">Selects same:</div>
-                      <div className="flex gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={magicMatchChar ? "default" : "outline"}
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => setMagicMatchChar(!magicMatchChar)}
-                            >
-                              <Type className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Match character</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={magicMatchColor ? "default" : "outline"}
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => setMagicMatchColor(!magicMatchColor)}
-                            >
-                              <Palette className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Match text color</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={magicMatchBgColor ? "default" : "outline"}
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => setMagicMatchBgColor(!magicMatchBgColor)}
-                            >
-                              <Square className="h-3 w-3 fill-current" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Match background color</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Multi-layer selection toggle - Available for all selection tools */}
-                  {(effectiveTool === 'select' || effectiveTool === 'lasso' || effectiveTool === 'magicwand') && (
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="selection-all-layers" className="text-xs cursor-pointer">
-                        All Layers
-                      </Label>
-                      <Switch
-                        id="selection-all-layers"
-                        checked={selectionAffectsAllLayers}
-                        onCheckedChange={setSelectionAffectsAllLayers}
-                      />
-                    </div>
-                  )}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">Match:</span>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={fillMatchChar ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setFillMatchChar(!fillMatchChar)}><Type className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match character</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={fillMatchColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setFillMatchColor(!fillMatchColor)}><Palette className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match text color</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={fillMatchBgColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setFillMatchBgColor(!fillMatchBgColor)}><Square className="h-3 w-3 fill-current" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match background color</p></TooltipContent></Tooltip>
+          </div>
+        </>
+      )}
 
-                  {/* Crop to Selection - Available for all selection tools */}
-                  {(effectiveTool === 'select' || effectiveTool === 'lasso' || effectiveTool === 'magicwand') && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="w-full"
-                          onClick={cropToSelection}
-                          disabled={!canCrop()}
-                        >
-                          <Crop className="w-3 h-3 mr-2" />
-                          Crop
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Crop canvas to selection (Cmd+Shift+C)</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  
-                  {/* Bezier Shape Tool Options */}
-                  {effectiveTool === 'beziershape' && (
-                    <div className="space-y-3">
-                      {/* Character Mode Selector */}
-                      <div className="space-y-2">
-                        <Label htmlFor="fill-mode" className="text-xs text-muted-foreground">
-                          Character Mode:
-                        </Label>
-                        <Select value={fillMode} onValueChange={(value) => setFillMode(value as 'constant' | 'palette' | 'autofill')}>
-                          <SelectTrigger id="fill-mode" className="w-full h-8 text-xs [&>span]:text-left">
-                            <SelectValue placeholder="Select character mode...">
-                              {fillMode === 'constant' && 'Selection'}
-                              {fillMode === 'palette' && 'Palette'}
-                              {fillMode === 'autofill' && 'Autofill'}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent align="start">
-                            <SelectItem value="constant" className="text-xs">
-                              <div className="flex flex-col">
-                                <span className="font-medium">Selection</span>
-                                <span className="text-muted-foreground text-[10px]">Fill with current selected color</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="palette" className="text-xs">
-                              <div className="flex flex-col">
-                                <span className="font-medium">Palette</span>
-                                <span className="text-muted-foreground text-[10px]">Map current character palette to shape</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="autofill" className="text-xs">
-                              <div className="flex flex-col">
-                                <span className="font-medium">Autofill</span>
-                                <span className="text-muted-foreground text-[10px]">Smart character selection from preset</span>
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      {/* Autofill Palette Selector - Only shown when autofill mode is active */}
-                      {fillMode === 'autofill' && (
-                        <div className="space-y-2">
-                          <Label htmlFor="autofill-palette" className="text-xs text-muted-foreground">
-                            Autofill Palette:
-                          </Label>
-                          <Select value={autofillPaletteId} onValueChange={setAutofillPaletteId}>
-                            <SelectTrigger id="autofill-palette" className="w-full h-8 text-xs [&>span]:text-left">
-                              <SelectValue>
-                                {AUTOFILL_PALETTES.find(p => p.id === autofillPaletteId)?.name || 'Select palette...'}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent align="start">
-                              {AUTOFILL_PALETTES.map((palette) => (
-                                <SelectItem key={palette.id} value={palette.id} className="text-xs">
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{palette.name}</span>
-                                    <span className="text-muted-foreground text-[10px]">{palette.description}</span>
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                      
-                      {/* Color Mode Selector */}
-                      <div className="space-y-2">
-                        <Label htmlFor="fill-color-mode" className="text-xs text-muted-foreground">
-                          Color Mode:
-                        </Label>
-                        <Select value={fillColorMode} onValueChange={(value) => setFillColorMode(value as 'current' | 'palette')}>
-                          <SelectTrigger id="fill-color-mode" className="w-full h-8 text-xs [&>span]:text-left">
-                            <SelectValue placeholder="Select color mode...">
-                              {fillColorMode === 'current' && 'Current Color'}
-                              {fillColorMode === 'palette' && 'Palette'}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent align="start">
-                            <SelectItem value="current" className="text-xs">
-                              <div className="flex flex-col">
-                                <span className="font-medium">Current Color</span>
-                                <span className="text-muted-foreground text-[10px]">Applies the current color to all cells</span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="palette" className="text-xs">
-                              <div className="flex flex-col">
-                                <span className="font-medium">Palette</span>
-                                <span className="text-muted-foreground text-[10px]">Maps palette colors by overlap amount</span>
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      {/* Close Shape Toggle */}
-                      <div className="space-y-2 pt-2 border-t border-border/50">
-                        <div className="flex items-center justify-between">
-                          <Label htmlFor="close-shape" className="text-xs text-muted-foreground">
-                            Close Shape:
-                          </Label>
-                          <Switch
-                            id="close-shape"
-                            checked={isClosed}
-                            onCheckedChange={handleCloseShapeToggle}
-                            tabIndex={-1}
-                            onKeyDown={(e) => {
-                              // Prevent all keyboard events on this switch
-                              // (Enter should commit the bezier shape, not toggle this)
-                              e.preventDefault();
-                              e.stopPropagation();
-                            }}
-                          />
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">
-                          {isClosed ? 'Shape is closed' : 'Shape is open'}
-                        </p>
-                      </div>
-                      
-                      {/* Stroke Controls - Only shown for open paths */}
-                      {!isClosed && (
-                        <>
-                          {/* Stroke Width Slider */}
-                          <div className="space-y-2 pt-2 border-t border-border/50">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="stroke-width" className="text-xs text-muted-foreground">
-                                Stroke Width:
-                              </Label>
-                              <span className="text-xs text-muted-foreground tabular-nums">
-                                {strokeWidth.toFixed(1)}
-                              </span>
-                            </div>
-                            <Slider
-                              id="stroke-width"
-                              min={0.1}
-                              max={10}
-                              step={0.1}
-                              value={strokeWidth}
-                              onValueChange={setStrokeWidth}
-                              className="w-full"
-                            />
-                          </div>
-                          
-                          {/* Taper Start Slider */}
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="stroke-taper-start" className="text-xs text-muted-foreground">
-                                Taper Start:
-                              </Label>
-                              <span className="text-xs text-muted-foreground tabular-nums">
-                                {(strokeTaperStart * 100).toFixed(0)}%
-                              </span>
-                            </div>
-                            <Slider
-                              id="stroke-taper-start"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={strokeTaperStart}
-                              onValueChange={setStrokeTaperStart}
-                              className="w-full"
-                            />
-                          </div>
-                          
-                          {/* Taper End Slider */}
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <Label htmlFor="stroke-taper-end" className="text-xs text-muted-foreground">
-                                Taper End:
-                              </Label>
-                              <span className="text-xs text-muted-foreground tabular-nums">
-                                {(strokeTaperEnd * 100).toFixed(0)}%
-                              </span>
-                            </div>
-                            <Slider
-                              id="stroke-taper-end"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={strokeTaperEnd}
-                              onValueChange={setStrokeTaperEnd}
-                              className="w-full"
-                            />
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* Tool behavior toggles for drawing tools */}
-                  {(['pencil', 'paintbucket'] as Tool[]).includes(effectiveTool) && (
-                    <>
-                      {/* Paint bucket specific: Selects same criteria */}
-                      {effectiveTool === 'paintbucket' && (
-                        <div className="space-y-2 mt-2">
-                          <div className="text-xs text-muted-foreground">Selects same:</div>
-                          <div className="flex gap-1">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant={fillMatchChar ? "default" : "outline"}
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={() => setFillMatchChar(!fillMatchChar)}
-                                >
-                                  <Type className="h-3 w-3" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Match character</p>
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant={fillMatchColor ? "default" : "outline"}
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={() => setFillMatchColor(!fillMatchColor)}
-                                >
-                                  <Palette className="h-3 w-3" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Match text color</p>
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant={fillMatchBgColor ? "default" : "outline"}
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={() => setFillMatchBgColor(!fillMatchBgColor)}
-                                >
-                                  <Square className="h-3 w-3 fill-current" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Match background color</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+      {/* Gradient fill: Contiguous + Match criteria */}
+      {effectiveTool === 'gradientfill' && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground">Contiguous</Label>
+            <Switch checked={contiguous} onCheckedChange={setContiguous} className="scale-75" />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">Match:</span>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={matchChar ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setMatchCriteria({ char: !matchChar, color: matchColor, bgColor: matchBgColor })}><Type className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match character</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={matchColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setMatchCriteria({ char: matchChar, color: !matchColor, bgColor: matchBgColor })}><Palette className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match text color</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={matchBgColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setMatchCriteria({ char: matchChar, color: matchColor, bgColor: !matchBgColor })}><Square className="h-3 w-3 fill-current" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match background color</p></TooltipContent></Tooltip>
+          </div>
+        </>
+      )}
 
-                  {/* Tool Affects Section */}
-                  {(effectiveTool === 'pencil' || effectiveTool === 'eraser' || effectiveTool === 'paintbucket') && (
-                    <div className="space-y-2 mt-2">
-                      <div className="text-xs text-muted-foreground">Affects:</div>
-                      <div className="flex gap-1">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={toolAffectsChar ? "default" : "outline"}
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => setToolAffectsChar(!toolAffectsChar)}
-                            >
-                              <Type className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Affect character</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={toolAffectsColor ? "default" : "outline"}
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => setToolAffectsColor(!toolAffectsColor)}
-                            >
-                              <Palette className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Affect text color</p>
-                          </TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant={toolAffectsBgColor ? "default" : "outline"}
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => setToolAffectsBgColor(!toolAffectsBgColor)}
-                            >
-                              <Square className="h-3 w-3 fill-current" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Affect background color</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Brush controls - Separate container */}
-                  {(effectiveTool === 'pencil' || effectiveTool === 'eraser') && (
-                    <div className="mt-2">
-                      <BrushControls tool={effectiveTool === 'eraser' ? 'eraser' : 'pencil'} />
-                    </div>
-                  )}
-                  
-                  {/* Eyedropper behavior toggles */}
-                  {effectiveTool === 'eyedropper' && (
-                    <>
-                      <div className="space-y-2">
-                        <div className="text-xs text-muted-foreground">Picks:</div>
-                        <div className="flex gap-1">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant={eyedropperPicksChar ? "default" : "outline"}
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => setEyedropperPicksChar(!eyedropperPicksChar)}
-                              >
-                                <Type className="h-3 w-3" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Pick character</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant={eyedropperPicksColor ? "default" : "outline"}
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => setEyedropperPicksColor(!eyedropperPicksColor)}
-                              >
-                                <Palette className="h-3 w-3" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Pick text color</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant={eyedropperPicksBgColor ? "default" : "outline"}
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => setEyedropperPicksBgColor(!eyedropperPicksBgColor)}
-                              >
-                                <Square className="h-3 w-3 fill-current" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Pick background color</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </>
-                  )}
+      {/* Magic wand: Contiguous + Match criteria */}
+      {effectiveTool === 'magicwand' && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground">Contiguous</Label>
+            <Switch checked={magicWandContiguous} onCheckedChange={setMagicWandContiguous} className="scale-75" />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">Match:</span>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={magicMatchChar ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setMagicMatchChar(!magicMatchChar)}><Type className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match character</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={magicMatchColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setMagicMatchColor(!magicMatchColor)}><Palette className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match text color</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={magicMatchBgColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setMagicMatchBgColor(!magicMatchBgColor)}><Square className="h-3 w-3 fill-current" /></Button>
+            </TooltipTrigger><TooltipContent><p>Match background color</p></TooltipContent></Tooltip>
+          </div>
+        </>
+      )}
 
-                  {/* Layer Transform Tool Options */}
-                  {effectiveTool === 'layertransform' && (
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="auto-keyframe" className="text-xs cursor-pointer">
-                        Auto Keyframe
-                      </Label>
-                      <Switch
-                        id="auto-keyframe"
-                        checked={layerTransformAutoKeyframe}
-                        onCheckedChange={(checked) => useToolStore.setState({ layerTransformAutoKeyframe: checked })}
-                      />
-                    </div>
-                  )}
+      {/* Selection tools: All Layers + Crop */}
+      {(effectiveTool === 'select' || effectiveTool === 'lasso' || effectiveTool === 'magicwand') && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground">All Layers</Label>
+            <Switch checked={selectionAffectsAllLayers} onCheckedChange={setSelectionAffectsAllLayers} className="scale-75" />
+          </div>
+          <Tooltip><TooltipTrigger asChild>
+            <Button variant="outline" size="sm" className="h-6 px-2 text-xs gap-1" onClick={cropToSelection} disabled={!canCrop()}>
+              <Crop className="w-3 h-3" /> Crop
+            </Button>
+          </TooltipTrigger><TooltipContent><p>Crop canvas to selection (⌘⇧X)</p></TooltipContent></Tooltip>
+        </>
+      )}
+
+      {/* Pencil/Eraser: Affects + Brush inline */}
+      {(effectiveTool === 'pencil' || effectiveTool === 'eraser') && (
+        <>
+          {/* Inline brush size + shape */}
+          {(() => {
+            const brushTool = effectiveTool === 'eraser' ? 'eraser' : 'pencil' as const;
+            const bs = useToolStore.getState().brushSettings[brushTool];
+            return (
+              <>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">{brushTool === 'eraser' ? 'Eraser' : 'Brush'} Size:</span>
+                  <Slider min={1} max={20} step={1} value={bs.size} onValueChange={(v) => { useToolStore.getState().setBrushSize(v, brushTool); useToolStore.getState().showBrushSizePreview(); }} className="w-16" />
+                  <span className="text-[10px] text-muted-foreground tabular-nums w-4">{bs.size}</span>
+                </div>
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">Shape:</span>
+                  <Tooltip><TooltipTrigger asChild>
+                    <Button variant={bs.shape === 'circle' ? 'default' : 'outline'} size="sm" className="h-6 w-6 p-0" onClick={() => useToolStore.getState().setBrushShape('circle', brushTool)}><Circle className="h-3 w-3" /></Button>
+                  </TooltipTrigger><TooltipContent><p>Circle brush</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild>
+                    <Button variant={bs.shape === 'square' ? 'default' : 'outline'} size="sm" className="h-6 w-6 p-0" onClick={() => useToolStore.getState().setBrushShape('square', brushTool)}><Square className="h-3 w-3" /></Button>
+                  </TooltipTrigger><TooltipContent><p>Square brush</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild>
+                    <Button variant={bs.shape === 'horizontal' ? 'default' : 'outline'} size="sm" className="h-6 w-6 p-0" onClick={() => useToolStore.getState().setBrushShape('horizontal', brushTool)}><Minus className="h-3 w-3" /></Button>
+                  </TooltipTrigger><TooltipContent><p>Horizontal line brush</p></TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger asChild>
+                    <Button variant={bs.shape === 'vertical' ? 'default' : 'outline'} size="sm" className="h-6 w-6 p-0" onClick={() => useToolStore.getState().setBrushShape('vertical', brushTool)}><MoreVertical className="h-3 w-3" /></Button>
+                  </TooltipTrigger><TooltipContent><p>Vertical line brush</p></TooltipContent></Tooltip>
+                </div>
+              </>
+            );
+          })()}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">Affects:</span>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={toolAffectsChar ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setToolAffectsChar(!toolAffectsChar)}><Type className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Affect character</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={toolAffectsColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setToolAffectsColor(!toolAffectsColor)}><Palette className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Affect text color</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={toolAffectsBgColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setToolAffectsBgColor(!toolAffectsBgColor)}><Square className="h-3 w-3 fill-current" /></Button>
+            </TooltipTrigger><TooltipContent><p>Affect background color</p></TooltipContent></Tooltip>
+          </div>
+        </>
+      )}
+
+      {/* Eyedropper: Picks */}
+      {effectiveTool === 'eyedropper' && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground">Picks:</span>
+          <Tooltip><TooltipTrigger asChild>
+            <Button variant={eyedropperPicksChar ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setEyedropperPicksChar(!eyedropperPicksChar)}><Type className="h-3 w-3" /></Button>
+          </TooltipTrigger><TooltipContent><p>Pick character</p></TooltipContent></Tooltip>
+          <Tooltip><TooltipTrigger asChild>
+            <Button variant={eyedropperPicksColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setEyedropperPicksColor(!eyedropperPicksColor)}><Palette className="h-3 w-3" /></Button>
+          </TooltipTrigger><TooltipContent><p>Pick text color</p></TooltipContent></Tooltip>
+          <Tooltip><TooltipTrigger asChild>
+            <Button variant={eyedropperPicksBgColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setEyedropperPicksBgColor(!eyedropperPicksBgColor)}><Square className="h-3 w-3 fill-current" /></Button>
+          </TooltipTrigger><TooltipContent><p>Pick background color</p></TooltipContent></Tooltip>
+        </div>
+      )}
+
+      {/* Bezier shape options */}
+      {effectiveTool === 'beziershape' && (
+        <>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-muted-foreground">Char:</Label>
+            <Select value={fillMode} onValueChange={(v) => setFillMode(v as 'constant' | 'palette' | 'autofill')}>
+              <SelectTrigger className="h-6 w-20 text-[10px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="constant" className="text-xs">Selection</SelectItem>
+                <SelectItem value="palette" className="text-xs">Palette</SelectItem>
+                <SelectItem value="autofill" className="text-xs">Autofill</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {fillMode === 'autofill' && (
+            <Select value={autofillPaletteId} onValueChange={setAutofillPaletteId}>
+              <SelectTrigger className="h-6 w-24 text-[10px]"><SelectValue>{AUTOFILL_PALETTES.find(p => p.id === autofillPaletteId)?.name ?? 'Palette'}</SelectValue></SelectTrigger>
+              <SelectContent>{AUTOFILL_PALETTES.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>)}</SelectContent>
+            </Select>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-muted-foreground">Color:</Label>
+            <Select value={fillColorMode} onValueChange={(v) => setFillColorMode(v as 'current' | 'palette')}>
+              <SelectTrigger className="h-6 w-20 text-[10px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="current" className="text-xs">Current</SelectItem>
+                <SelectItem value="palette" className="text-xs">Palette</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-muted-foreground">Closed</Label>
+            <Switch checked={isClosed} onCheckedChange={handleCloseShapeToggle} className="scale-75" tabIndex={-1} onKeyDown={(e) => { e.preventDefault(); e.stopPropagation(); }} />
+          </div>
+          {!isClosed && (
+            <>
+              <div className="flex items-center gap-1">
+                <Label className="text-[10px] text-muted-foreground">Width:</Label>
+                <Slider min={0.1} max={10} step={0.1} value={strokeWidth} onValueChange={setStrokeWidth} className="w-16" />
+                <span className="text-[10px] text-muted-foreground tabular-nums w-6">{strokeWidth.toFixed(1)}</span>
               </div>
-            </CollapsibleContent>
-          </Collapsible>
+              <div className="flex items-center gap-1">
+                <Label className="text-[10px] text-muted-foreground">Taper:</Label>
+                <Slider min={0} max={1} step={0.01} value={strokeTaperStart} onValueChange={setStrokeTaperStart} className="w-12" />
+                <Slider min={0} max={1} step={0.01} value={strokeTaperEnd} onValueChange={setStrokeTaperEnd} className="w-12" />
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Layer Transform: Auto Keyframe */}
+      {effectiveTool === 'layertransform' && (
+        <div className="flex items-center gap-1.5">
+          <Label className="text-xs text-muted-foreground">Auto Keyframe</Label>
+          <Switch checked={layerTransformAutoKeyframe} onCheckedChange={(checked) => useToolStore.setState({ layerTransformAutoKeyframe: checked })} className="scale-75" />
+        </div>
+      )}
     </div>
   );
 });

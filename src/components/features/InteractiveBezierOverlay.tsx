@@ -114,14 +114,15 @@ export const InteractiveBezierOverlay: React.FC = () => {
   const currentFrameIndex = useAnimationStore((state) => state.currentFrameIndex);
   
   const getActivePalette = usePaletteStore((state) => state.getActivePalette);
+  const activePaletteId = usePaletteStore((state) => state.activePaletteId);
 
   const effectiveCellWidth = cellWidth * zoom;
   const effectiveCellHeight = cellHeight * zoom;
 
-  // Get the active color palette (uses currently selected palette from right toolbar)
+  // Get the active color palette — recompute when activePaletteId changes
   const colorPalette = useMemo(() => {
     return getActivePalette();
-  }, [getActivePalette]);
+  }, [getActivePalette, activePaletteId]);
 
   /**
    * Force complete reset by incrementing remountKey to trigger unmount/remount
