@@ -23,9 +23,6 @@ import {
   Copy,
   Pencil,
   Eye,
-  EyeOff,
-  Lock,
-  Unlock,
   Merge,
   Group,
   Ungroup,
@@ -96,15 +93,11 @@ export const LayerContextMenu: React.FC<Props> = ({ menu, onClose, onStartRename
   const {
     removeLayer,
     duplicateLayer,
-    renameLayer: _renameLayer,
-    setLayerVisible,
     mergeDown,
     mergeVisible,
     createGroup,
     ungroupLayers,
   } = useTimelineHistory();
-  const setLayerSolo = useTimelineStore((s) => s.setLayerSolo);
-  const setLayerLocked = useTimelineStore((s) => s.setLayerLocked);
 
   const layer = layers.find((l) => l.id === menu.layerId);
   const layerIndex = layer ? layers.indexOf(layer) : -1;
@@ -184,31 +177,6 @@ export const LayerContextMenu: React.FC<Props> = ({ menu, onClose, onStartRename
         onClick={() => handleAction(() => removeLayer(menu.layerId))}
         disabled={!canDelete}
         destructive
-      />
-
-      <MenuSeparator />
-
-      {/* Visibility toggles */}
-      <MenuItem
-        icon={layer.visible
-          ? <EyeOff className="w-3.5 h-3.5" />
-          : <Eye className="w-3.5 h-3.5" />
-        }
-        label={layer.visible ? 'Hide Layer' : 'Show Layer'}
-        onClick={() => handleAction(() => setLayerVisible(menu.layerId, !layer.visible))}
-      />
-      <MenuItem
-        icon={<Eye className="w-3.5 h-3.5 text-yellow-400" />}
-        label={layer.solo ? 'Unsolo' : 'Solo'}
-        onClick={() => handleAction(() => setLayerSolo(menu.layerId, !layer.solo))}
-      />
-      <MenuItem
-        icon={layer.locked
-          ? <Unlock className="w-3.5 h-3.5" />
-          : <Lock className="w-3.5 h-3.5" />
-        }
-        label={layer.locked ? 'Unlock Layer' : 'Lock Layer'}
-        onClick={() => handleAction(() => setLayerLocked(menu.layerId, !layer.locked))}
       />
 
       <MenuSeparator />

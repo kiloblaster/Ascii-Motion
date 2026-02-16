@@ -20,7 +20,6 @@ import { useCanvasStore } from '../../../stores/canvasStore';
 import { getContentFrameAtTime } from '../../../utils/layerCompositing';
 import { TimecodeDisplay } from './TimecodeDisplay';
 import { OnionSkinControls } from '../OnionSkinControls';
-import { LayerMenu } from './LayerMenu';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import {
@@ -301,9 +300,6 @@ export const TimelineToolbar: React.FC = () => {
   return (
     <TooltipProvider>
     <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-muted/30">
-      {/* Layer operations menu */}
-      <LayerMenu />
-      <div className="w-px h-4 bg-border/50 mx-0.5" />
 
       {/* Left group: frame block operations */}
       <div className="flex items-center gap-0.5">

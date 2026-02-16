@@ -28,6 +28,8 @@ import {
   Eye,
   Group,
   Ungroup,
+  Copy,
+  Trash2,
 } from 'lucide-react';
 import type { LayerId } from '../../../types/timeline';
 
@@ -36,13 +38,14 @@ export const LayerMenu: React.FC = () => {
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const selectedLayerIds = useTimelineStore((s) => s.view.selectedLayerIds);
   const layerGroups = useTimelineStore((s) => s.layerGroups);
-  const { mergeDown, mergeVisible, createGroup, ungroupLayers } = useTimelineHistory();
+  const { mergeDown, mergeVisible, createGroup, ungroupLayers, duplicateLayer, removeLayer } = useTimelineHistory();
 
   const activeLayer = layers.find((l) => l.id === activeLayerId);
   const activeIndex = activeLayer ? layers.indexOf(activeLayer) : -1;
   const canMergeDown = activeIndex > 0;
   const visibleCount = layers.filter((l) => l.visible).length;
   const canMergeVisible = visibleCount >= 2;
+  const canDelete = layers.length > 1 && !!activeLayerId;
 
   // Layers available for grouping: selected layers, or active + below
   const groupCandidateIds = selectedLayerIds.size >= 2
@@ -98,6 +101,25 @@ export const LayerMenu: React.FC = () => {
       </Tooltip>
 
       <DropdownMenuContent align="start" className="min-w-[180px]">
+        <DropdownMenuItem
+          onClick={() => activeLayerId && duplicateLayer(activeLayerId)}
+          disabled={!activeLayerId}
+        >
+          <Copy className="w-4 h-4 mr-2" />
+          Duplicate Layer
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onClick={() => activeLayerId && canDelete && removeLayer(activeLayerId)}
+          disabled={!canDelete}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="w-4 h-4 mr-2" />
+          Delete Layer
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
         <DropdownMenuItem
           onClick={handleMergeDown}
           disabled={!canMergeDown}

@@ -15,6 +15,7 @@ import { useLayerLimit } from '../../../hooks/useLayerLimit';
 import { LayerListItem } from './LayerListItem';
 import { GroupHeader } from './GroupHeader';
 import { LayerContextMenu, type LayerContextMenuState } from './LayerContextMenu';
+import { LayerMenu } from './LayerMenu';
 import { cn } from '@/lib/utils';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
@@ -322,15 +323,16 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
         </div>
       )}
       </div>
-      {/* Pinned footer: Add Layer */}
+      {/* Pinned footer: Layer Menu + Add Layer */}
       <TooltipProvider>
-      <div className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 h-[34px] flex items-center">
+      <div className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 h-[34px] flex items-center gap-1">
+        <LayerMenu />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="sm"
-              className="w-full h-6 gap-1 text-xs"
+              className="flex-1 h-6 gap-1 text-xs"
               onClick={() => canAddLayer && addLayer()}
               disabled={!canAddLayer}
             >
