@@ -159,7 +159,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
 
   return (
     <TooltipProvider>
-      <div className={`${className}`}>
+      <div className={`${className}`} style={{ direction: 'ltr' }}>
         <div className="px-2 pt-0.5 pb-1 space-y-2">
           {/* Drawing Tools Section */}
           <div className="space-y-1.5">

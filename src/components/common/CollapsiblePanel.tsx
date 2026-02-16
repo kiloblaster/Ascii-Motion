@@ -74,6 +74,7 @@ export const CollapsiblePanel: React.FC<CollapsiblePanelProps> = ({
           'h-full',
           side === 'bottom' ? 'pt-4 pb-0 px-0 overflow-y-auto' : side === 'left' ? 'p-0 overflow-y-auto overflow-x-hidden' : 'p-4 overflow-y-auto overflow-x-hidden scrollbar-gutter-stable',
         )}
+        style={side === 'left' ? { direction: 'rtl' } : undefined}
         role="region"
         aria-label={`${side} panel content`}
       >
