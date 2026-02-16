@@ -303,6 +303,8 @@ export interface TimelineState {
   toggleContentFrameSelected: (frameId: ContentFrameId) => void;
   clearContentFrameSelection: () => void;
   toggleContentFrameHidden: (layerId: LayerId, frameIds: ContentFrameId[], hidden: boolean) => void;
+  renameContentFrame: (layerId: LayerId, frameId: ContentFrameId, name: string) => void;
+  setContentFrameLabel: (layerId: LayerId, frameIds: ContentFrameId[], labelColor: string | undefined) => void;
   setContentFrameDragPreview: (preview: TimelineViewState['contentFrameDragPreview']) => void;
   setEditingKeyframe: (keyframeId: KeyframeId | null) => void;
   setKeyframeDuplicateGhosts: (ghosts: Map<KeyframeId, number>) => void;
@@ -1367,6 +1369,28 @@ export const useTimelineStore = create<TimelineState>()(
       }));
     },
 
+    renameContentFrame: (layerId, frameId, name) => {
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          contentFrames: l.contentFrames.map((cf) =>
+            cf.id === frameId ? { ...cf, name } : cf,
+          ),
+        })),
+      }));
+    },
+
+    setContentFrameLabel: (layerId, frameIds, labelColor) => {
+      set((state) => ({
+        layers: updateLayer(state.layers, layerId, (l) => ({
+          ...l,
+          contentFrames: l.contentFrames.map((cf) =>
+            frameIds.includes(cf.id) ? { ...cf, labelColor } : cf,
+          ),
+        })),
+      }));
+    },
+
     setContentFrameDragPreview: (preview) => {
       set((state) => ({
         view: { ...state.view, contentFrameDragPreview: preview },
@@ -2108,6 +2132,7 @@ export const useTimelineStore = create<TimelineState>()(
             durationFrames: cf.durationFrames,
             data: Object.fromEntries(cf.data),
             hidden: cf.hidden || undefined,
+            labelColor: cf.labelColor || undefined,
           })),
           propertyTracks: layer.propertyTracks.map((track) => ({
             id: track.id as string,

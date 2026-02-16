@@ -1,12 +1,16 @@
 /**
- * Timeline Toolbar — playback controls and actions for the timeline view.
+ * Timeline Toolbar — playback controls, frame operations, and timeline info.
  * 
- * Uses the same playback system as the Frames view (useOptimizedPlayback)
- * so that play/pause actually drives frame advancement and canvas rendering.
- * Button styling and tooltips match PlaybackControls.
+ * Layout (left → right):
+ *  1. Onion skin controls
+ *  2. Divider
+ *  3. Frame editing buttons (add, duplicate, split, delete, set start/end, hide)
+ *  4. Center: playback controls (first/prev/play/next/last/loop) + timecode
+ *  5. Right: frame counter + fps control
+ * 
+ * Button sizing matches the canvas settings header (h-7, text-xs).
  * 
  * Part of the Layer Timeline Refactor (Phase 3)
- * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §3.2
  */
 
 import React, { useCallback } from 'react';
@@ -19,7 +23,8 @@ import { useAnimationStore } from '../../../stores/animationStore';
 import { useCanvasStore } from '../../../stores/canvasStore';
 import { getContentFrameAtTime } from '../../../utils/layerCompositing';
 import { TimecodeDisplay } from './TimecodeDisplay';
-import { OnionSkinControls } from '../OnionSkinControls';
+import { TimelineDurationInput } from './TimecodeDisplay';
+import { FrameRateControl } from './FrameRateControl';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import {
@@ -40,6 +45,10 @@ import {
   EyeOff,
 } from 'lucide-react';
 
+// Button class matching canvas header height
+const BTN = "h-7 px-1.5";
+const BTN_ICON = "w-3.5 h-3.5";
+
 export const TimelineToolbar: React.FC = () => {
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
@@ -51,10 +60,8 @@ export const TimelineToolbar: React.FC = () => {
     duplicateContentFrame: _duplicateContentFrame,
     splitContentFrame,
     updateContentFrameTiming,
-    updateContentFrameData,
   } = useTimelineHistory();
 
-  // Use the real playback system (same as Frames view)
   const layers = useTimelineStore((s) => s.layers);
   const frames = useAnimationStore((s) => s.frames);
   const canPlay = layers.length > 0 || frames.length > 0;
@@ -62,236 +69,133 @@ export const TimelineToolbar: React.FC = () => {
   const playbackSnapshot = usePlaybackOnlySnapshot();
   const isPlaybackActive = playbackSnapshot.isActive;
 
-  // Use shared frame navigation (guards against playback mode, text tool, etc.)
   const { navigateNext, navigatePrevious, navigateFirst, navigateLast } = useFrameNavigation();
 
-  // Active layer + content frame at playhead (for frame block operations)
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const activeLayer = layers.find((l) => l.id === activeLayerId) ?? layers[0] ?? null;
   const contentFrameAtPlayhead = activeLayer
     ? getContentFrameAtTime(activeLayer, currentFrame)
     : null;
 
-  // Selected content frames
   const selectedContentFrameIds = useTimelineStore((s) => s.view.selectedContentFrameIds);
   const hasSelection = selectedContentFrameIds.size > 0;
 
-  // Can we split? Only if playhead is strictly inside (not at first frame of) a content frame
   const canSplit = contentFrameAtPlayhead
     ? currentFrame > contentFrameAtPlayhead.startFrame
     : false;
 
-  /** Add a new empty 1-frame content frame at the playhead.
-   *  - Gap: insert directly.
-   *  - On existing frame: carve out the single frame at the playhead, replacing
-   *    it with a blank, keeping left/right remnants of the original. */
+  // ── Frame operations ──
+
   const handleAddFrame = useCallback(() => {
     if (!activeLayer || isPlaybackActive) return;
-
     const cf = contentFrameAtPlayhead;
     if (!cf) {
-      // Gap — just insert
       addContentFrame(activeLayer.id, currentFrame, 1);
       return;
     }
-
-    // Existing frame at playhead — carve it out
     const leftDuration = currentFrame - cf.startFrame;
     const rightStart = currentFrame + 1;
     const rightDuration = (cf.startFrame + cf.durationFrames) - rightStart;
-
-    if (cf.durationFrames === 1) {
-      // Frame is already 1 frame long — add a new blank frame after it
-      // (ensureTimelineContains inside addContentFrame will extend the timeline if needed)
-      const afterEnd = cf.startFrame + 1;
-      addContentFrame(activeLayer.id, afterEnd, 1);
-      useTimelineStore.getState().goToFrame(afterEnd);
-      return;
-    }
-
-    // If playhead is on the last frame of the block, add after instead of carving
-    const isLastFrame = currentFrame === cf.startFrame + cf.durationFrames - 1;
-    if (isLastFrame) {
-      const afterEnd = cf.startFrame + cf.durationFrames;
-      addContentFrame(activeLayer.id, afterEnd, 1);
-      useTimelineStore.getState().goToFrame(afterEnd);
-      return;
-    }
-
-    // Shrink original to the left remnant (or remove if no left portion)
     if (leftDuration > 0) {
       updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, leftDuration);
     } else {
-      // No left portion — shift original to become the right remnant
-      if (rightDuration > 0) {
-        updateContentFrameTiming(activeLayer.id, cf.id, rightStart, rightDuration);
-      } else {
-        // Shouldn't happen (handled by durationFrames === 1 above)
-        removeContentFrame(activeLayer.id, cf.id);
-      }
+      removeContentFrame(activeLayer.id, cf.id);
     }
-
-    // Add the right remnant as a new frame (only if left portion consumed the original)
-    if (leftDuration > 0 && rightDuration > 0) {
-      addContentFrame(activeLayer.id, rightStart, rightDuration, new Map(cf.data));
-    }
-
-    // Insert the new blank frame at the playhead
     addContentFrame(activeLayer.id, currentFrame, 1);
-  }, [activeLayer, isPlaybackActive, currentFrame, contentFrameAtPlayhead,
-      addContentFrame, updateContentFrameTiming, updateContentFrameData, removeContentFrame]);
+    if (rightDuration > 0) {
+      const rightData = new Map(cf.data);
+      addContentFrame(activeLayer.id, rightStart, rightDuration, rightData);
+    }
+  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, currentFrame, addContentFrame, updateContentFrameTiming, removeContentFrame]);
 
-  /** Duplicate selected content frame blocks (or the one at playhead).
-   *  Places duplicates after the last selected frame.
-   *  Pushes any later frames to make room. */
   const handleDuplicateFrame = useCallback(() => {
     if (!activeLayer || isPlaybackActive) return;
-
-    // Gather the frames to duplicate: either selected ones or the one at playhead
-    const framesToDup = hasSelection
-      ? activeLayer.contentFrames
-          .filter((cf) => selectedContentFrameIds.has(cf.id))
-          .sort((a, b) => a.startFrame - b.startFrame)
-      : contentFrameAtPlayhead
-        ? [contentFrameAtPlayhead]
-        : [];
-
-    if (framesToDup.length === 0) return;
-
-    // Total duration of the block to duplicate
-    const totalDupDuration = framesToDup.reduce((sum, cf) => sum + cf.durationFrames, 0);
-    const lastEnd = Math.max(...framesToDup.map((cf) => cf.startFrame + cf.durationFrames));
-    const insertAt = lastEnd;
-
-    // Push all content frames on this layer that start at or after insertAt
-    // by totalDupDuration frames to make room
-    const framesToPush = activeLayer.contentFrames
-      .filter((cf) => cf.startFrame >= insertAt && !selectedContentFrameIds.has(cf.id))
-      .sort((a, b) => b.startFrame - a.startFrame); // push from right to left to avoid overlaps
-
-    for (const cf of framesToPush) {
-      updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame + totalDupDuration, cf.durationFrames);
+    const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+    if (selectedIds.size > 0) {
+      const selectedFrames = activeLayer.contentFrames
+        .filter((cf) => selectedIds.has(cf.id))
+        .sort((a, b) => a.startFrame - b.startFrame);
+      if (selectedFrames.length === 0) return;
+      const firstStart = selectedFrames[0].startFrame;
+      const lastEnd = selectedFrames[selectedFrames.length - 1].startFrame + selectedFrames[selectedFrames.length - 1].durationFrames;
+      let insertAt = lastEnd;
+      for (const cf of selectedFrames) {
+        const offset = cf.startFrame - firstStart;
+        addContentFrame(activeLayer.id, insertAt + offset, cf.durationFrames, new Map(cf.data));
+      }
+      return;
     }
+    const cf = contentFrameAtPlayhead;
+    if (!cf) return;
+    const insertAt = cf.startFrame + cf.durationFrames;
+    addContentFrame(activeLayer.id, insertAt, cf.durationFrames, new Map(cf.data));
+  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, addContentFrame]);
 
-    // Insert duplicates sequentially after the selection
-    let offset = 0;
-    for (const cf of framesToDup) {
-      addContentFrame(activeLayer.id, insertAt + offset, cf.durationFrames, new Map(cf.data));
-      offset += cf.durationFrames;
-    }
-  }, [activeLayer, isPlaybackActive, hasSelection, selectedContentFrameIds, contentFrameAtPlayhead,
-      addContentFrame, updateContentFrameTiming]);
-
-  /** Split the content frame block at the playhead into two. */
   const handleSplitFrame = useCallback(() => {
-    if (!activeLayer || !contentFrameAtPlayhead || !canSplit || isPlaybackActive) return;
+    if (!activeLayer || isPlaybackActive || !contentFrameAtPlayhead || !canSplit) return;
     splitContentFrame(activeLayer.id, contentFrameAtPlayhead.id, currentFrame);
-  }, [activeLayer, contentFrameAtPlayhead, canSplit, isPlaybackActive, currentFrame, splitContentFrame]);
+  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, canSplit, currentFrame, splitContentFrame]);
 
-  /** Delete selected content frame blocks (or the one at playhead). */
+  const syncCanvasAfterTimingChange = useCallback(() => {
+    if (!activeLayer) return;
+    const newCf = getContentFrameAtTime(activeLayer, currentFrame);
+    if (newCf) {
+      useCanvasStore.getState().setCanvasData(new Map(newCf.data));
+    } else {
+      useCanvasStore.getState().setCanvasData(new Map());
+    }
+  }, [activeLayer, currentFrame]);
+
   const handleDeleteFrame = useCallback(() => {
     if (!activeLayer || isPlaybackActive) return;
-
-    if (hasSelection) {
-      // Delete all selected frames
-      const selectedOnLayer = activeLayer.contentFrames.filter((cf) =>
-        selectedContentFrameIds.has(cf.id),
-      );
-      for (const cf of selectedOnLayer) {
-        removeContentFrame(activeLayer.id, cf.id);
+    const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+    if (selectedIds.size > 0) {
+      const selectedArr = [...selectedIds];
+      for (const cfId of selectedArr) {
+        removeContentFrame(activeLayer.id, cfId);
       }
-      useTimelineStore.getState().clearContentFrameSelection();
-    } else if (contentFrameAtPlayhead) {
-      removeContentFrame(activeLayer.id, contentFrameAtPlayhead.id);
+      useTimelineStore.getState().selectContentFrames([]);
+      syncCanvasAfterTimingChange();
+      return;
     }
-  }, [activeLayer, isPlaybackActive, hasSelection, selectedContentFrameIds, contentFrameAtPlayhead, removeContentFrame]);
+    const cf = contentFrameAtPlayhead;
+    if (cf) {
+      removeContentFrame(activeLayer.id, cf.id);
+      syncCanvasAfterTimingChange();
+    }
+  }, [activeLayer, isPlaybackActive, contentFrameAtPlayhead, removeContentFrame, syncCanvasAfterTimingChange]);
 
   const handleTogglePlayback = useCallback(() => {
     if (isPlaybackActive) {
-      stopOptimizedPlayback({ preserveFrameIndex: true });
+      stopOptimizedPlayback();
     } else {
       startOptimizedPlayback();
     }
   }, [isPlaybackActive, startOptimizedPlayback, stopOptimizedPlayback]);
 
-  // The "selected" content frame for set-start/set-end operations.
-  // This is the explicitly clicked frame (from selectedContentFrameIds), NOT the frame under playhead.
-  // Only enabled when exactly 1 frame is selected.
-  const singleSelectedFrame = (() => {
-    if (selectedContentFrameIds.size !== 1 || !activeLayer) return null;
-    const selectedId = [...selectedContentFrameIds][0];
-    return activeLayer.contentFrames.find((cf) => cf.id === selectedId) ?? null;
-  })();
-  const hasSingleSelection = singleSelectedFrame !== null;
+  const hasSingleSelection = selectedContentFrameIds.size === 1;
+  const singleSelectedFrame = hasSingleSelection
+    ? activeLayer?.contentFrames.find((cf) => selectedContentFrameIds.has(cf.id)) ?? null
+    : null;
 
-  /** After changing content frame timing, reload canvas if the frame now covers the playhead */
-  const syncCanvasAfterTimingChange = useCallback(() => {
-    if (!activeLayer) return;
-    const updatedLayer = useTimelineStore.getState().layers.find((l) => l.id === activeLayer.id);
-    if (!updatedLayer) return;
-    const cf = getContentFrameAtTime(updatedLayer, currentFrame);
-    if (cf) {
-      useCanvasStore.getState().setCanvasData(new Map(cf.data));
-    }
-  }, [activeLayer, currentFrame]);
-
-  // Set SELECTED content frame's start/end to playhead (can extend beyond current bounds)
   const handleSetFrameStart = useCallback(() => {
     if (!activeLayer || isPlaybackActive || !singleSelectedFrame) return;
     const cf = singleSelectedFrame;
     const cfEnd = cf.startFrame + cf.durationFrames;
-    if (currentFrame >= cfEnd) {
-      // Start past end → 1 frame at end
-      updateContentFrameTiming(activeLayer.id, cf.id, cfEnd - 1, 1);
-    } else {
-      // Move start to playhead — trim any overlapping frames in the way
-      const newStart = currentFrame;
-      const newDuration = cfEnd - newStart;
-
-      // Remove or trim any content frames that would overlap [newStart, cfEnd)
-      for (const other of activeLayer.contentFrames) {
-        if (other.id === cf.id) continue;
-        const otherEnd = other.startFrame + other.durationFrames;
-        if (other.startFrame >= newStart && otherEnd <= cfEnd) {
-          // Fully enveloped — remove
-          removeContentFrame(activeLayer.id, other.id);
-        } else if (other.startFrame < newStart && otherEnd > newStart && otherEnd <= cfEnd) {
-          // Overlaps from the left — trim its end
-          updateContentFrameTiming(activeLayer.id, other.id, other.startFrame, newStart - other.startFrame);
-        }
-      }
-
-      updateContentFrameTiming(activeLayer.id, cf.id, newStart, newDuration);
-    }
+    if (currentFrame >= cfEnd) return;
+    const newDuration = cfEnd - currentFrame;
+    updateContentFrameTiming(activeLayer.id, cf.id, currentFrame, newDuration);
     syncCanvasAfterTimingChange();
-  }, [activeLayer, isPlaybackActive, singleSelectedFrame, currentFrame, updateContentFrameTiming, removeContentFrame, syncCanvasAfterTimingChange]);
+  }, [activeLayer, isPlaybackActive, singleSelectedFrame, currentFrame, updateContentFrameTiming, syncCanvasAfterTimingChange]);
 
   const handleSetFrameEnd = useCallback(() => {
     if (!activeLayer || isPlaybackActive || !singleSelectedFrame) return;
     const cf = singleSelectedFrame;
-    if (currentFrame < cf.startFrame) {
-      // End before start → 1 frame at start
-      updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, 1);
+    if (currentFrame <= cf.startFrame) return;
+    const newDuration = currentFrame - cf.startFrame;
+    if (newDuration <= 0) {
+      removeContentFrame(activeLayer.id, cf.id);
     } else {
-      // Set end to playhead (inclusive) — trim any overlapping frames in the way
-      const newEnd = currentFrame + 1;
-      const newDuration = newEnd - cf.startFrame;
-
-      // Remove or trim any content frames that would overlap [cf.startFrame, newEnd)
-      for (const other of activeLayer.contentFrames) {
-        if (other.id === cf.id) continue;
-        const otherEnd = other.startFrame + other.durationFrames;
-        if (other.startFrame >= cf.startFrame && otherEnd <= newEnd) {
-          // Fully enveloped — remove
-          removeContentFrame(activeLayer.id, other.id);
-        } else if (other.startFrame >= cf.startFrame && other.startFrame < newEnd && otherEnd > newEnd) {
-          // Overlaps from the right — push its start past the new end
-          const trimmedStart = newEnd;
-          const trimmedDuration = otherEnd - trimmedStart;
-          updateContentFrameTiming(activeLayer.id, other.id, trimmedStart, trimmedDuration);
-        }
-      }
-
       updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, newDuration);
     }
     syncCanvasAfterTimingChange();
@@ -299,258 +203,177 @@ export const TimelineToolbar: React.FC = () => {
 
   return (
     <TooltipProvider>
-    <div className="flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-border/50 bg-muted/30">
+    <div className="flex-shrink-0 flex items-center gap-1 px-2 py-0.5 border-b border-border/50 bg-muted/30">
 
-      {/* Left group: frame block operations */}
+      {/* Left: Frame editing buttons */}
       <div className="flex items-center gap-0.5">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={handleAddFrame}
-            disabled={isPlaybackActive || !activeLayer}
-          >
-            <FilePlus2 className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Add frame block at playhead (⌘N)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={handleAddFrame} disabled={isPlaybackActive || !activeLayer}>
+              <FilePlus2 className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Add frame block at playhead (⌘N)</TooltipContent>
+        </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={handleDuplicateFrame}
-            disabled={isPlaybackActive || (!hasSelection && !contentFrameAtPlayhead)}
-          >
-            <Copy className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Duplicate frame block (⌘D)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={handleDuplicateFrame} disabled={isPlaybackActive || (!hasSelection && !contentFrameAtPlayhead)}>
+              <Copy className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Duplicate frame block (⌘D)</TooltipContent>
+        </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={handleSplitFrame}
-            disabled={isPlaybackActive || !canSplit}
-          >
-            <Scissors className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Split frame block at playhead (⌘X)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={handleSplitFrame} disabled={isPlaybackActive || !canSplit}>
+              <Scissors className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Split frame block at playhead (⌘X)</TooltipContent>
+        </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1 text-destructive hover:text-destructive"
-            onClick={handleDeleteFrame}
-            disabled={isPlaybackActive || (!hasSelection && !contentFrameAtPlayhead)}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Delete frame block (⌘⌫)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={`${BTN} text-destructive hover:text-destructive`}
+              onClick={handleDeleteFrame} disabled={isPlaybackActive || (!hasSelection && !contentFrameAtPlayhead)}>
+              <Trash2 className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Delete frame block (⌘⌫)</TooltipContent>
+        </Tooltip>
 
-      <div className="w-px h-4 bg-border/50 mx-0.5" />
+        <div className="w-px h-5 bg-border/50 mx-0.5" />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={handleSetFrameStart}
-            disabled={isPlaybackActive || !hasSingleSelection}
-          >
-            <ArrowLeftToLine className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Set selected frame start to playhead (⌘,)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={handleSetFrameStart} disabled={isPlaybackActive || !hasSingleSelection}>
+              <ArrowLeftToLine className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Set selected frame start to playhead (⌘,)</TooltipContent>
+        </Tooltip>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={handleSetFrameEnd}
-            disabled={isPlaybackActive || !hasSingleSelection}
-          >
-            <ArrowRightToLine className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Set selected frame end to playhead (⌘.)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={handleSetFrameEnd} disabled={isPlaybackActive || !hasSingleSelection}>
+              <ArrowRightToLine className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Set selected frame end to playhead (⌘.)</TooltipContent>
+        </Tooltip>
 
-      <div className="w-px h-4 bg-border/50 mx-0.5" />
+        <div className="w-px h-5 bg-border/50 mx-0.5" />
 
-      {/* Hide/Show selected frame(s) */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={() => {
-              if (!activeLayer || isPlaybackActive) return;
-              const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
-              if (selectedIds.size === 0) return;
-              // Use the last-added frame's state to determine toggle direction
-              const selectedArr = [...selectedIds];
-              const lastId = selectedArr[selectedArr.length - 1];
-              const lastCf = activeLayer.contentFrames.find((cf) => cf.id === lastId);
-              const newHidden = !(lastCf?.hidden ?? false);
-              useTimelineStore.getState().toggleContentFrameHidden(
-                activeLayer.id,
-                selectedArr,
-                newHidden,
-              );
-            }}
-            disabled={isPlaybackActive || !hasSelection}
-          >
-            {(() => {
-              if (!activeLayer || !hasSelection) return <Eye className="w-3.5 h-3.5" />;
-              const selectedArr = [...selectedContentFrameIds];
-              const lastId = selectedArr[selectedArr.length - 1];
-              const lastCf = activeLayer.contentFrames.find((cf) => cf.id === lastId);
-              return lastCf?.hidden
-                ? <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
-                : <Eye className="w-3.5 h-3.5" />;
-            })()}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Hide/show selected frame(s)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={() => {
+                if (!activeLayer || isPlaybackActive) return;
+                const selectedIds = useTimelineStore.getState().view.selectedContentFrameIds;
+                if (selectedIds.size === 0) return;
+                const selectedArr = [...selectedIds];
+                const lastId = selectedArr[selectedArr.length - 1];
+                const lastCf = activeLayer.contentFrames.find((cf) => cf.id === lastId);
+                const newHidden = !(lastCf?.hidden ?? false);
+                useTimelineStore.getState().toggleContentFrameHidden(activeLayer.id, selectedArr, newHidden);
+              }}
+              disabled={isPlaybackActive || !hasSelection}>
+              {(() => {
+                if (!activeLayer || !hasSelection) return <Eye className={BTN_ICON} />;
+                const selectedArr = [...selectedContentFrameIds];
+                const lastId = selectedArr[selectedArr.length - 1];
+                const lastCf = activeLayer.contentFrames.find((cf) => cf.id === lastId);
+                return lastCf?.hidden
+                  ? <EyeOff className={`${BTN_ICON} text-muted-foreground`} />
+                  : <Eye className={BTN_ICON} />;
+              })()}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Hide/show selected frame(s)</TooltipContent>
+        </Tooltip>
       </div>
 
-      {/* Center group: playback controls (truly centered) + timecode (grows right) */}
-      <div className="flex-1 grid grid-cols-[1fr_auto_1fr] items-center">
-      {/* Left spacer column */}
-      <div />
-      {/* Center column: playback buttons — always centered regardless of timecode width */}
-      <div className="flex items-center gap-0.5 justify-self-center">
+      {/* Center: playback controls */}
+      <div className="flex-1 flex items-center justify-center gap-0.5">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={navigateFirst} disabled={isPlaybackActive || currentFrame === 0}>
+              <SkipBack className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">First frame (Shift+&lt;)</TooltipContent>
+        </Tooltip>
 
-      {/* First frame */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={navigateFirst}
-            disabled={isPlaybackActive || currentFrame === 0}
-          >
-            <SkipBack className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">First frame (Shift+&lt;)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={navigatePrevious} disabled={isPlaybackActive || currentFrame === 0}>
+              <StepBack className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Previous frame (,)</TooltipContent>
+        </Tooltip>
 
-      {/* Previous frame */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={navigatePrevious}
-            disabled={isPlaybackActive || currentFrame === 0}
-          >
-            <StepBack className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Previous frame (,)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant={isPlaybackActive ? 'default' : 'ghost'} size="sm" className={BTN}
+              onClick={handleTogglePlayback} disabled={!canPlay}>
+              {isPlaybackActive ? <Pause className={BTN_ICON} /> : <Play className={BTN_ICON} />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{isPlaybackActive ? 'Pause (Space)' : 'Play (Space)'}</TooltipContent>
+        </Tooltip>
 
-      {/* Play / Pause */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={isPlaybackActive ? 'default' : 'ghost'}
-            size="sm"
-            className="h-6 px-1.5"
-            onClick={handleTogglePlayback}
-            disabled={!canPlay}
-          >
-            {isPlaybackActive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          {isPlaybackActive ? 'Pause (Space)' : 'Play (Space)'}
-        </TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={navigateNext} disabled={isPlaybackActive || currentFrame === durationFrames - 1}>
+              <StepForward className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Next frame (.)</TooltipContent>
+        </Tooltip>
 
-      {/* Next frame */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={navigateNext}
-            disabled={isPlaybackActive || currentFrame === durationFrames - 1}
-          >
-            <StepForward className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Next frame (.)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className={BTN}
+              onClick={navigateLast} disabled={isPlaybackActive || currentFrame === durationFrames - 1}>
+              <SkipForward className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Last frame (Shift+&gt;)</TooltipContent>
+        </Tooltip>
 
-      {/* Last frame */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-1"
-            onClick={navigateLast}
-            disabled={isPlaybackActive || currentFrame === durationFrames - 1}
-          >
-            <SkipForward className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">Last frame (Shift+&gt;)</TooltipContent>
-      </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm"
+              className={looping ? `${BTN} text-purple-500 hover:text-purple-400` : BTN}
+              onClick={() => setLooping(!looping)}>
+              <RotateCcw className={BTN_ICON} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{looping ? 'Disable loop' : 'Enable loop'}</TooltipContent>
+        </Tooltip>
 
-      {/* Loop toggle */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={looping ? 'h-6 px-1 text-purple-500 hover:text-purple-400' : 'h-6 px-1'}
-            onClick={() => setLooping(!looping)}
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          {looping ? 'Disable loop' : 'Enable loop'}
-        </TooltipContent>
-      </Tooltip>
+        <div className="ml-1">
+          <TimecodeDisplay />
+        </div>
       </div>
 
-      {/* Right column: timecode — left-aligned, grows right without shifting buttons */}
-      <div className="justify-self-start pl-1">
-        <TimecodeDisplay />
+      {/* Right: Length + fps */}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <TimelineDurationInput />
+        <div className="w-px h-5 bg-border/50" />
+        <FrameRateControl />
       </div>
-      </div>
-
-      {/* Right group: onion skin */}
-      <OnionSkinControls />
     </div>
     </TooltipProvider>
   );

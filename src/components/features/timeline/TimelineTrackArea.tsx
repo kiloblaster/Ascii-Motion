@@ -18,6 +18,8 @@ import { KeyframeDiamond } from './KeyframeDiamond';
 import { PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
 import { defaultEasing } from '../../../types/easing';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
+import { Plus } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { TimelineContextMenu, type TimelineContextMenuState } from './TimelineContextMenu';
 import type { KeyframeId, ContentFrameId, LayerId } from '../../../types/timeline';
 import { cn } from '@/lib/utils';
@@ -46,7 +48,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const clearKeyframeSelection = useTimelineStore((s) => s.clearKeyframeSelection);
   const contentFrameDragPreview = useTimelineStore((s) => s.view.contentFrameDragPreview);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
-  const { addKeyframe } = useTimelineHistory();
+  const { addKeyframe, addContentFrame } = useTimelineHistory();
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<TimelineContextMenuState | null>(null);
@@ -459,6 +461,36 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                     }}
                   />
                 ));
+              })()}
+
+              {/* + button after last content frame */}
+              {layer.contentFrames.length > 0 && !isPlaybackActive && (() => {
+                const sorted = [...layer.contentFrames].sort((a, b) => a.startFrame - b.startFrame);
+                const lastCf = sorted[sorted.length - 1];
+                const afterLastFrame = lastCf.startFrame + lastCf.durationFrames;
+                const leftPx = afterLastFrame * pxPerFrame + 4;
+                if (leftPx < visibleLeft || leftPx > visibleRight + 50) return null;
+                return (
+                  <TooltipProvider key="add-frame-btn">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className="absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:bg-muted transition-colors z-10"
+                          style={{ left: leftPx }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addContentFrame(layer.id, afterLastFrame, 1);
+                          }}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <p>Add new frame</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
               })()}
 
               {/* Ghost + drop indicator — only on the target layer */}

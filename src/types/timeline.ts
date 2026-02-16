@@ -139,6 +139,9 @@ export interface ContentFrame {
   // Visibility — hidden frames are skipped during playback/export
   hidden?: boolean;
 
+  // UI label color for visual organization (e.g., 'red', 'blue', 'green', etc.)
+  labelColor?: string;
+
   // Optional thumbnail for timeline display
   thumbnail?: string;      // Base64 data URL
 }
@@ -522,6 +525,7 @@ export interface SessionContentFrameV2 {
   durationFrames: number;
   data: Record<string, Cell>;  // Object form for JSON serialization
   hidden?: boolean;            // Hidden frames are skipped during playback/export
+  labelColor?: string;         // UI label color for visual organization
 }
 
 /**

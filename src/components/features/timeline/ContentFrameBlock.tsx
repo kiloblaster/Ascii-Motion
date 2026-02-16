@@ -593,7 +593,14 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = React.memo(fu
               ? 'bg-primary/30 border-primary/60'
               : 'bg-muted-foreground/15 border-muted-foreground/30',
       )}
-      style={{ left, width }}
+      style={{
+        left,
+        width,
+        ...(contentFrame.labelColor && !contentFrame.hidden ? {
+          backgroundColor: `${contentFrame.labelColor}25`,
+          borderColor: `${contentFrame.labelColor}${isSelected ? 'B0' : '60'}`,
+        } : {}),
+      }}
       onMouseDown={handleMouseDown}
       onContextMenu={onContextMenu ? (e: React.MouseEvent) => onContextMenu(e, contentFrame.id, layerId) : undefined}
       data-content-frame="true"

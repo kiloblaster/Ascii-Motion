@@ -463,6 +463,7 @@ export class SessionImporter {
         durationFrames: cf.durationFrames,
         data: new Map(Object.entries(cf.data)) as Map<string, Cell>,
         hidden: cf.hidden,
+        labelColor: cf.labelColor,
       })),
       propertyTracks: sessionLayer.propertyTracks.map((track) => ({
         id: track.id as PropertyTrackId,

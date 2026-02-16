@@ -22,8 +22,8 @@ export const ONION_SKIN_COLORS = {
  * Onion skin opacity configuration
  */
 export const ONION_SKIN_OPACITY = {
-  BASE: 0.6,    // 60% - closest frames
-  MIN: 0.2,     // 20% - furthest frames
+  BASE: 1.0,    // 100% - closest frames (doubled from 60%)
+  MIN: 0.4,     // 40% - furthest frames (doubled from 20%)
   MAX_DISTANCE: 10, // Maximum frames in each direction
 } as const;
 

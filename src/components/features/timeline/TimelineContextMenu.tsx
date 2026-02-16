@@ -11,12 +11,21 @@
  * Uses the same Shadcn dropdown-menu styling for visual consistency.
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '../../ui/dialog';
+import { Input } from '../../ui/input';
+import { Button } from '../../ui/button';
 import {
   Trash2,
   Scissors,
@@ -28,6 +37,10 @@ import {
   Plus,
   Diamond,
   ArrowLeftToLine,
+  Pencil,
+  Tag,
+  ChevronRight,
+  XCircle,
 } from 'lucide-react';
 import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../../../types/timeline';
 import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/layerCompositing';
@@ -87,6 +100,76 @@ const MenuItem: React.FC<{
 
 const MenuSeparator: React.FC = () => <div className="h-px bg-border my-1" />;
 
+// Label color options for frame blocks
+const LABEL_COLORS = [
+  { name: 'Red', color: '#EF4444', bg: 'rgba(239,68,68,0.25)' },
+  { name: 'Orange', color: '#F97316', bg: 'rgba(249,115,22,0.25)' },
+  { name: 'Yellow', color: '#EAB308', bg: 'rgba(234,179,8,0.25)' },
+  { name: 'Green', color: '#22C55E', bg: 'rgba(34,197,94,0.25)' },
+  { name: 'Blue', color: '#3B82F6', bg: 'rgba(59,130,246,0.25)' },
+  { name: 'Purple', color: '#A855F7', bg: 'rgba(168,85,247,0.25)' },
+  { name: 'Pink', color: '#EC4899', bg: 'rgba(236,72,153,0.25)' },
+  { name: 'Cyan', color: '#06B6D4', bg: 'rgba(6,182,212,0.25)' },
+] as const;
+
+/** Submenu that opens to the right with label color swatches — click to toggle */
+const LabelSubMenu: React.FC<{
+  layerId: LayerId;
+  frameIds: ContentFrameId[];
+  onClose: () => void;
+}> = ({ layerId, frameIds, onClose }) => {
+  const [open, setOpen] = useState(false);
+  const setLabel = useTimelineStore((s) => s.setContentFrameLabel);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent focus:bg-accent"
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+      >
+        <Tag className="w-4 h-4" />
+        <span className="flex-1 text-left">Label</span>
+        <ChevronRight className={cn('w-3 h-3 text-muted-foreground transition-transform', open && 'rotate-90')} />
+      </button>
+      {open && (
+        <>
+          {/* Invisible bridge to prevent hover deadzone between menu and submenu */}
+          <div className="absolute left-full top-0 w-3 h-full" />
+          <div className="absolute left-full top-0 ml-2 min-w-[140px] rounded-md border border-border bg-popover p-1 shadow-lg z-10">
+            {LABEL_COLORS.map((lc) => (
+              <button
+                key={lc.name}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLabel(layerId, frameIds, lc.color);
+                  onClose();
+                }}
+              >
+                <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: lc.color }} />
+                {lc.name}
+              </button>
+            ))}
+            <div className="h-px bg-border my-1" />
+            <button
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors text-muted-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLabel(layerId, frameIds, undefined);
+                onClose();
+              }}
+            >
+              <XCircle className="w-3 h-3" />
+              Clear label
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 // ============================================
 // MAIN COMPONENT
 // ============================================
@@ -99,6 +182,25 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
   const copiedFrames = useTimelineStore((s) => s.copiedFrames);
   const copiedKeyframes = useTimelineStore((s) => s.copiedKeyframes);
   const pushToHistory = useToolStore((s) => s.pushToHistory);
+
+  // Rename dialog state
+  const [renameState, setRenameState] = useState<{ layerId: LayerId; frameId: ContentFrameId; currentName: string } | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRenameOpen = useCallback((layerId: LayerId, frameId: ContentFrameId, currentName: string) => {
+    setRenameState({ layerId, frameId, currentName });
+    setRenameValue(currentName);
+    // Don't close the context menu yet — dialog will handle that
+  }, []);
+
+  const handleRenameSubmit = useCallback(() => {
+    if (renameState && renameValue.trim()) {
+      useTimelineStore.getState().renameContentFrame(renameState.layerId, renameState.frameId, renameValue.trim());
+    }
+    setRenameState(null);
+    onClose();
+  }, [renameState, renameValue, onClose]);
 
   const {
     removeContentFrame,
@@ -337,6 +439,17 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
                 useTimelineStore.getState().toggleContentFrameHidden(ctx.layerId, frameIds, !allHidden);
               })}
             />
+            {!isMulti && (
+              <MenuItem
+                icon={<Pencil className="w-4 h-4" />}
+                label="Rename"
+                onClick={() => {
+                  const cf = layer.contentFrames.find((c) => c.id === frameIds[0]);
+                  handleRenameOpen(ctx.layerId, frameIds[0], cf?.name ?? '');
+                }}
+              />
+            )}
+            <LabelSubMenu layerId={ctx.layerId} frameIds={frameIds} onClose={onClose} />
             <MenuSeparator />
             <MenuItem
               icon={<Trash2 className="w-4 h-4" />}
@@ -455,15 +568,48 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     }
   };
 
-  return createPortal(
-    <div
-      ref={menuRef}
-      className="fixed z-[99999] min-w-[180px] rounded-md border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
-      style={{ left: menu.x, top: menu.y }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      {renderItems()}
-    </div>,
-    document.body,
+  return (
+    <>
+      {createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[99999] min-w-[180px] rounded-md border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
+          style={{ left: menu.x, top: menu.y }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          {renderItems()}
+        </div>,
+        document.body,
+      )}
+
+      {/* Rename Dialog */}
+      <Dialog
+        open={renameState !== null}
+        onOpenChange={(open) => { if (!open) { setRenameState(null); onClose(); } }}
+      >
+        <DialogContent className="sm:max-w-[320px]">
+          <DialogHeader>
+            <DialogTitle>Rename Frame</DialogTitle>
+          </DialogHeader>
+          <Input
+            ref={renameInputRef}
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSubmit(); }}
+            placeholder="Frame name"
+            autoFocus
+            className="mt-2"
+          />
+          <DialogFooter className="mt-4">
+            <Button variant="outline" size="sm" onClick={() => { setRenameState(null); onClose(); }}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleRenameSubmit} disabled={!renameValue.trim()}>
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };

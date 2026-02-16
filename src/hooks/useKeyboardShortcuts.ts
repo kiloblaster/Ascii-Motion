@@ -1845,6 +1845,13 @@ export const useKeyboardShortcuts = () => {
         return;
       }
 
+      // Shift+N — Add new layer
+      if (event.key === 'N' || event.key === 'n') {
+        event.preventDefault();
+        useTimelineStore.getState().addLayer();
+        return;
+      }
+
       if (event.key === 'H' || event.key === 'h') {
         event.preventDefault();
         flipHorizontal();

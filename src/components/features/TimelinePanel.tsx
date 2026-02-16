@@ -17,11 +17,10 @@ import { LayerList } from './timeline/LayerList';
 import { TimelineTrackArea } from './timeline/TimelineTrackArea';
 import { TimelineRuler } from './timeline/TimelineRuler';
 import { TimelineToolbar } from './timeline/TimelineToolbar';
-import { TimelineDurationInput } from './timeline/TimecodeDisplay';
 import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
+import { OnionSkinControls } from './OnionSkinControls';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { GroupPropertiesPanel } from './timeline/GroupPropertiesPanel';
-import { FrameRateControl } from './timeline/FrameRateControl';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Slider } from '../ui/slider';
@@ -48,7 +47,6 @@ const TimelineFooter = React.memo(function TimelineFooter({
   clearWorkArea: () => void;
 }) {
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
-  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
   const setWorkAreaStart = useTimelineStore((s) => s.setWorkAreaStart);
   const setWorkAreaEnd = useTimelineStore((s) => s.setWorkAreaEnd);
 
@@ -58,10 +56,6 @@ const TimelineFooter = React.memo(function TimelineFooter({
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
-      <span className="text-[10px] text-muted-foreground tabular-nums">
-        {currentFrame + 1} / {durationFrames} ·{' '}
-      </span>
-      <FrameRateControl />
       <TooltipProvider>
         <div className="flex items-center gap-0.5 ml-1">
           <Tooltip>
@@ -120,20 +114,27 @@ const TimelineFooter = React.memo(function TimelineFooter({
           </Tooltip>
         </div>
       </TooltipProvider>
-      <div className="flex-1" />
-      <ZoomIn className="w-3 h-3 text-muted-foreground" />
-      <Slider
-        value={zoom}
-        onValueChange={(v) => setZoom(v)}
-        min={0.5}
-        max={8}
-        step={0.25}
-        className="w-28"
-      />
-      <span className="text-[10px] text-muted-foreground tabular-nums w-8 text-right">
-        {zoom.toFixed(1)}x
-      </span>
-      <TimelineDurationInput />
+
+      {/* Center: Onion skin controls */}
+      <div className="flex-1 flex items-center justify-center">
+        <OnionSkinControls />
+      </div>
+
+      {/* Right: Zoom */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <ZoomIn className="w-3 h-3 text-muted-foreground" />
+        <Slider
+          value={zoom}
+          onValueChange={(v) => setZoom(v)}
+          min={0.5}
+          max={8}
+          step={0.25}
+          className="w-28"
+        />
+        <span className="text-[10px] text-muted-foreground tabular-nums w-8 text-right">
+          {zoom.toFixed(1)}x
+        </span>
+      </div>
     </div>
   );
 });

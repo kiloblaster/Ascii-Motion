@@ -57,6 +57,7 @@ const KEYBOARD_SHORTCUTS: ShortcutSection[] = [
       { keys: ['Delete'], description: 'Delete selected cells' },
       { keys: ['Backspace'], description: 'Delete selected cells' },
       { keys: ['Esc'], description: 'Clear selection' },
+      { keys: ['Shift', 'N'], description: 'Add new layer' },
       { keys: ['Shift', 'H'], description: 'Flip selection horizontally' },
       { keys: ['Shift', 'V'], description: 'Flip selection vertically' },
       { keys: ['Cmd', 'Shift', 'C'], description: 'Resize canvas' },

@@ -341,7 +341,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">
-            {canAddLayer ? 'Add a new layer' : 'Layer limit reached — upgrade for more'}
+            {canAddLayer ? 'Add a new layer (Shift+N)' : 'Layer limit reached — upgrade for more'}
           </TooltipContent>
         </Tooltip>
       </div>
