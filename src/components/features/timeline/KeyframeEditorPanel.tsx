@@ -141,7 +141,7 @@ export const KeyframeEditorPanel: React.FC = () => {
   };
 
   return (
-    <div className="w-56 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
+    <div className="w-52 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
       {/* Header with diamond icon */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50">
         <div className="flex items-center gap-1.5 min-w-0">

@@ -118,6 +118,7 @@ const PropertyRow: React.FC<PropertyRowProps> = ({ layerId, propertyPath }) => {
             <button
               className="flex-shrink-0 p-0.5 hover:bg-muted rounded"
               onClick={handleKeyframeToggle}
+              tabIndex={100}
             >
               <Diamond
                 className={`w-3 h-3 ${
@@ -181,7 +182,7 @@ export const LayerPropertiesPanel: React.FC = () => {
   }
 
   return (
-    <div className="w-56 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
+    <div className="w-52 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto" data-property-panel>
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/50">
         <div className="min-w-0">

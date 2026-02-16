@@ -128,7 +128,7 @@ const GroupPropertyRow: React.FC<GroupPropertyRowProps> = ({ groupId, propertyPa
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button className="flex-shrink-0 p-0.5 hover:bg-muted rounded" onClick={handleKeyframeToggle}>
+            <button className="flex-shrink-0 p-0.5 hover:bg-muted rounded" onClick={handleKeyframeToggle} tabIndex={100}>
               <Diamond className={`w-3 h-3 ${hasKeyframeAtCurrentFrame ? 'text-yellow-400 fill-yellow-400' : isTracked ? 'text-yellow-500' : 'text-muted-foreground/40'}`} />
             </button>
           </TooltipTrigger>
@@ -181,7 +181,7 @@ export const GroupPropertiesPanel: React.FC = () => {
   if (!group || !activeGroupId) return null;
 
   return (
-    <div className="w-56 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto">
+    <div className="w-52 flex-shrink-0 border-l border-border/50 bg-muted/20 overflow-y-auto" data-property-panel>
       <div className="flex items-center justify-between px-2 py-1.5 border-b border-border/50">
         <div className="min-w-0">
           <span className="text-xs font-medium truncate block">{group.name}</span>

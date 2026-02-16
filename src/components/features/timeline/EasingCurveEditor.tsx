@@ -8,7 +8,7 @@
  * 
  * Phase 3, §3.11 — Updated Phase 7 with always-visible graph + editable fields.
  */
-import React, { useCallback, useRef, useState, useMemo } from 'react';
+import React, { useCallback, useRef, useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -163,10 +163,30 @@ export const EasingCurveEditor: React.FC<EasingCurveEditorProps> = ({
     onChange({ type: preset });
   }, [onChange]);
 
-  // ─── Editable P1/P2 fields — switching to custom ───
-  const handleP1Change = useCallback((field: 'x1' | 'y1', val: string) => {
+  // ─── Editable P1/P2 fields with local state ───
+  // Local state lets users type freely without aggressive clamping on every keystroke.
+  // Values are committed on blur or Enter.
+  const [localP1x, setLocalP1x] = useState(controlPoints[0].toFixed(2));
+  const [localP1y, setLocalP1y] = useState(controlPoints[1].toFixed(2));
+  const [localP2x, setLocalP2x] = useState(controlPoints[2].toFixed(2));
+  const [localP2y, setLocalP2y] = useState(controlPoints[3].toFixed(2));
+
+  // Sync local state when controlPoints change externally (preset click, drag, etc.)
+  useEffect(() => {
+    setLocalP1x(controlPoints[0].toFixed(2));
+    setLocalP1y(controlPoints[1].toFixed(2));
+    setLocalP2x(controlPoints[2].toFixed(2));
+    setLocalP2y(controlPoints[3].toFixed(2));
+  }, [controlPoints]);
+
+  const commitP1 = useCallback((field: 'x1' | 'y1', val: string) => {
     const num = parseFloat(val);
-    if (isNaN(num)) return;
+    if (isNaN(num)) {
+      // Reset to current value
+      if (field === 'x1') setLocalP1x(controlPoints[0].toFixed(2));
+      else setLocalP1y(controlPoints[1].toFixed(2));
+      return;
+    }
     const clamped = field === 'x1' ? Math.max(0, Math.min(1, num)) : Math.max(-0.5, Math.min(1.5, num));
     onChange({
       type: 'custom',
@@ -177,9 +197,13 @@ export const EasingCurveEditor: React.FC<EasingCurveEditorProps> = ({
     });
   }, [controlPoints, onChange]);
 
-  const handleP2Change = useCallback((field: 'x2' | 'y2', val: string) => {
+  const commitP2 = useCallback((field: 'x2' | 'y2', val: string) => {
     const num = parseFloat(val);
-    if (isNaN(num)) return;
+    if (isNaN(num)) {
+      if (field === 'x2') setLocalP2x(controlPoints[2].toFixed(2));
+      else setLocalP2y(controlPoints[3].toFixed(2));
+      return;
+    }
     const clamped = field === 'x2' ? Math.max(0, Math.min(1, num)) : Math.max(-0.5, Math.min(1.5, num));
     onChange({
       type: 'custom',
@@ -255,24 +279,28 @@ export const EasingCurveEditor: React.FC<EasingCurveEditorProps> = ({
         </svg>
       </div>
 
-      {/* Editable P1/P2 fields */}
+      {/* Editable P1/P2 fields — commit on blur or Enter */}
       <div className="grid grid-cols-2 gap-1 px-0.5">
         <div className="space-y-0.5">
           <span className="text-[9px] text-muted-foreground font-medium">P1</span>
           <div className="flex gap-0.5">
             <Input
-              type="number"
-              value={controlPoints[0].toFixed(2)}
-              onChange={(e) => handleP1Change('x1', e.target.value)}
+              type="text"
+              inputMode="decimal"
+              value={localP1x}
+              onChange={(e) => setLocalP1x(e.target.value)}
+              onBlur={() => commitP1('x1', localP1x)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { commitP1('x1', localP1x); (e.target as HTMLInputElement).blur(); } }}
               className="h-5 text-[10px] px-1 font-mono"
-              step={0.01} min={0} max={1}
             />
             <Input
-              type="number"
-              value={controlPoints[1].toFixed(2)}
-              onChange={(e) => handleP1Change('y1', e.target.value)}
+              type="text"
+              inputMode="decimal"
+              value={localP1y}
+              onChange={(e) => setLocalP1y(e.target.value)}
+              onBlur={() => commitP1('y1', localP1y)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { commitP1('y1', localP1y); (e.target as HTMLInputElement).blur(); } }}
               className="h-5 text-[10px] px-1 font-mono"
-              step={0.01} min={-0.5} max={1.5}
             />
           </div>
         </div>
@@ -280,18 +308,22 @@ export const EasingCurveEditor: React.FC<EasingCurveEditorProps> = ({
           <span className="text-[9px] text-muted-foreground font-medium">P2</span>
           <div className="flex gap-0.5">
             <Input
-              type="number"
-              value={controlPoints[2].toFixed(2)}
-              onChange={(e) => handleP2Change('x2', e.target.value)}
+              type="text"
+              inputMode="decimal"
+              value={localP2x}
+              onChange={(e) => setLocalP2x(e.target.value)}
+              onBlur={() => commitP2('x2', localP2x)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { commitP2('x2', localP2x); (e.target as HTMLInputElement).blur(); } }}
               className="h-5 text-[10px] px-1 font-mono"
-              step={0.01} min={0} max={1}
             />
             <Input
-              type="number"
-              value={controlPoints[3].toFixed(2)}
-              onChange={(e) => handleP2Change('y2', e.target.value)}
+              type="text"
+              inputMode="decimal"
+              value={localP2y}
+              onChange={(e) => setLocalP2y(e.target.value)}
+              onBlur={() => commitP2('y2', localP2y)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { commitP2('y2', localP2y); (e.target as HTMLInputElement).blur(); } }}
               className="h-5 text-[10px] px-1 font-mono"
-              step={0.01} min={-0.5} max={1.5}
             />
           </div>
         </div>

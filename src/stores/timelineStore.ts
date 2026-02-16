@@ -392,7 +392,7 @@ const INITIAL_VIEW: TimelineViewState = {
   panelHeight: 364,
   editingKeyframeId: null,
   expandedLayerIds: new Set(),
-  showLayerProperties: false,
+  showLayerProperties: true,
   keyframeDuplicateGhosts: new Map(),
   contentFrameDragPreview: null,
   workAreaStart: 0,

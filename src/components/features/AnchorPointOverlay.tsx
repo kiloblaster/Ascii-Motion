@@ -13,7 +13,7 @@
  * See: docs/LAYER_TIMELINE_REFACTOR_PLAN.md §4.4
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useToolStore } from '../../stores/toolStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
@@ -26,15 +26,38 @@ const EMPTY_LAYERS: Layer[] = [];
 
 export const AnchorPointOverlay: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
-  const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
   const activeTool = useToolStore((s) => s.activeTool);
 
+  // Track whether a property panel input is focused
+  const [panelInputFocused, setPanelInputFocused] = useState(false);
+  useEffect(() => {
+    const handleFocusIn = () => {
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement && el.closest('[data-property-panel]')) {
+        setPanelInputFocused(true);
+      }
+    };
+    const handleFocusOut = () => {
+      // Small delay to handle focus moving between inputs within the panel
+      setTimeout(() => {
+        const el = document.activeElement;
+        if (!(el instanceof HTMLInputElement && el.closest('[data-property-panel]'))) {
+          setPanelInputFocused(false);
+        }
+      }, 50);
+    };
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
+    };
+  }, []);
+
   // Early bail — don't subscribe to expensive state when we won't render.
-  // This overlay is only shown when editing transform keyframes or the layer
-  // properties panel is open, AND the layer transform tool isn't active
-  // (it has its own overlay). Without this gate, the s.layers subscription
-  // causes re-renders on every timeline store change.
-  const mightShow = (editingKeyframeId !== null || showLayerProperties) && activeTool !== 'layertransform';
+  // Show when: editing transform keyframes, OR a property panel input is focused.
+  // Hide when: layer transform tool is active (it has its own overlay).
+  const mightShow = (editingKeyframeId !== null || panelInputFocused) && activeTool !== 'layertransform';
 
   // Only subscribe to layers/frame data when we're actually going to show
   const activeLayerId = useTimelineStore((s) => mightShow ? s.view.activeLayerId : null);
@@ -61,8 +84,8 @@ export const AnchorPointOverlay: React.FC = () => {
     return false;
   }, [editingKeyframeId, activeLayer]);
 
-  // Final show decision
-  const shouldShow = isEditingTransform || showLayerProperties;
+  // Final show decision: editing a transform keyframe OR a property panel input is focused
+  const shouldShow = isEditingTransform || panelInputFocused;
 
   // Calculate motion path points
   const motionPath = useMemo(() => {
