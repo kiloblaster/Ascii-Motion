@@ -296,6 +296,7 @@ export interface TimelineState {
 
   selectKeyframes: (keyframeIds: KeyframeId[]) => void;
   addKeyframesToSelection: (keyframeIds: KeyframeId[]) => void;
+  removeKeyframesFromSelection: (keyframeIds: KeyframeId[]) => void;
   toggleKeyframeSelected: (keyframeId: KeyframeId) => void;
   clearKeyframeSelection: () => void;
   selectContentFrames: (frameIds: ContentFrameId[]) => void;
@@ -1300,6 +1301,14 @@ export const useTimelineStore = create<TimelineState>()(
       set((state) => {
         const next = new Set(state.view.selectedKeyframeIds);
         for (const id of keyframeIds) next.add(id);
+        return { view: { ...state.view, selectedKeyframeIds: next } };
+      });
+    },
+
+    removeKeyframesFromSelection: (keyframeIds) => {
+      set((state) => {
+        const next = new Set(state.view.selectedKeyframeIds);
+        for (const id of keyframeIds) next.delete(id);
         return { view: { ...state.view, selectedKeyframeIds: next } };
       });
     },

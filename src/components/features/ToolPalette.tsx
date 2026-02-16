@@ -325,7 +325,7 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
         </div>
       )}
 
-      {/* Paint bucket: Contiguous + Match criteria */}
+      {/* Paint bucket: Contiguous + Match criteria + Affects */}
       {effectiveTool === 'paintbucket' && (
         <>
           <div className="flex items-center gap-1.5">
@@ -343,6 +343,18 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
             <Tooltip><TooltipTrigger asChild>
               <Button variant={fillMatchBgColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setFillMatchBgColor(!fillMatchBgColor)}><Square className="h-3 w-3 fill-current" /></Button>
             </TooltipTrigger><TooltipContent><p>Match background color</p></TooltipContent></Tooltip>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground">Affects:</span>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={toolAffectsChar ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setToolAffectsChar(!toolAffectsChar)}><Type className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Affect character</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={toolAffectsColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setToolAffectsColor(!toolAffectsColor)}><Palette className="h-3 w-3" /></Button>
+            </TooltipTrigger><TooltipContent><p>Affect text color</p></TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild>
+              <Button variant={toolAffectsBgColor ? "default" : "outline"} size="sm" className="h-6 w-6 p-0" onClick={() => setToolAffectsBgColor(!toolAffectsBgColor)}><Square className="h-3 w-3 fill-current" /></Button>
+            </TooltipTrigger><TooltipContent><p>Affect background color</p></TooltipContent></Tooltip>
           </div>
         </>
       )}

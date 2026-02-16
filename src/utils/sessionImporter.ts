@@ -428,6 +428,7 @@ export class SessionImporter {
     const characterPaletteStore = useCharacterPaletteStore.getState();
     const projectMetadataStore = useProjectMetadataStore.getState();
     const timelineStore = useTimelineStore.getState();
+    const animationStore = useAnimationStore.getState();
 
     // Restore project metadata
     if (sessionData.name) {
@@ -445,6 +446,11 @@ export class SessionImporter {
         canvasStore.toggleGrid();
       }
     }
+
+    // Guard: block auto-save during session import to prevent race conditions.
+    // Must be set BEFORE clearCanvas() to prevent the auto-save subscription from
+    // scheduling saves during the import window.
+    animationStore.setImportingSession(true);
     canvasStore.clearCanvas();
 
     // Deserialize layers: convert Record<string, Cell> back to Map<string, Cell>
@@ -503,7 +509,7 @@ export class SessionImporter {
       staticProperties: sessionGroup.staticProperties ?? {},
     }));
 
-    // Load layers and groups into timeline store
+    // Load layers and groups into timeline store.
     timelineStore.loadFromSessionData(
       layers,
       {
@@ -516,18 +522,19 @@ export class SessionImporter {
       layerGroups,
     );
 
-    // Load first layer's first content frame into canvas for immediate display
-    if (layers.length > 0) {
-      const activeLayer = layers[0];
-      const firstFrame = activeLayer.contentFrames[0];
-      if (firstFrame && firstFrame.data.size > 0) {
-        canvasStore.clearCanvas();
-        firstFrame.data.forEach((cell, key) => {
-          const [x, y] = key.split(',').map(Number);
-          canvasStore.setCell(x, y, cell);
-        });
+    // Force activeLayerId change: null → layers[0].id
+    // This guarantees the layer-switch useEffect in useFrameSynchronization
+    // fires on EVERY load (first or repeat) because the layer ID always changes.
+    // The effect will load the active layer's content frame into canvasStore.
+    const activeId = layers.length > 0 ? layers[0].id : null;
+    timelineStore.setActiveLayer(null as unknown as LayerId);
+    // Defer the real activation so React sees the null → id transition
+    setTimeout(() => {
+      if (activeId) {
+        timelineStore.setActiveLayer(activeId);
       }
-    }
+      animationStore.setImportingSession(false);
+    }, 0);
 
     // Restore tool state
     const tools = sessionData.tools as Record<string, unknown> | undefined;

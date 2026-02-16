@@ -3,8 +3,11 @@ import { toast } from 'sonner';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { cropCanvasToSelection, cropAllFramesToSelection } from '../utils/cropUtils';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import type { CanvasResizeHistoryAction } from '../types';
+import type { LayerId } from '../types/timeline';
 
 /**
  * Hook for cropping canvas to selection across all frames
@@ -67,7 +70,7 @@ export function useCropToSelection() {
     }
 
     // Crop current frame to get new dimensions
-    const cropResult = cropCanvasToSelection(cells, selectedCells);
+    const cropResult = cropCanvasToSelection(cells, selectedCells, screenToLocal);
     
     if (!cropResult) {
       console.warn('Failed to calculate crop dimensions');
@@ -89,7 +92,7 @@ export function useCropToSelection() {
     const previousAllFramesData = frames.map(frame => new Map(frame.data));
 
     // Crop all frames
-    const croppedFrames = cropAllFramesToSelection(frames, selectedCells);
+    const croppedFrames = cropAllFramesToSelection(frames, selectedCells, screenToLocal);
     
     if (!croppedFrames) {
       console.warn('Failed to crop frames');
@@ -104,6 +107,36 @@ export function useCropToSelection() {
     // Apply crop to current canvas
     setCanvasSize(newWidth, newHeight);
     setCanvasData(croppedCells);
+
+    // Reset the active layer's position transform so cropped content renders at origin
+    const tl = useTimelineStore.getState();
+    const activeLayerId = tl.view.activeLayerId;
+    if (activeLayerId) {
+      // Reset position to (0,0) — content is now positioned relative to new canvas origin
+      tl.setStaticProperty(activeLayerId, 'transform.position.x', 0);
+      tl.setStaticProperty(activeLayerId, 'transform.position.y', 0);
+      // Reset anchor point to center of new canvas
+      tl.setStaticProperty(activeLayerId, 'transform.anchorPoint.x', Math.floor(newWidth / 2));
+      tl.setStaticProperty(activeLayerId, 'transform.anchorPoint.y', Math.floor(newHeight / 2));
+      // Remove any keyframed position/anchor tracks (they'd be wrong after crop)
+      const layer = tl.layers.find(l => l.id === activeLayerId);
+      if (layer) {
+        for (const track of [...layer.propertyTracks]) {
+          if (track.propertyPath === 'transform.position.x' || 
+              track.propertyPath === 'transform.position.y' ||
+              track.propertyPath === 'transform.anchorPoint.x' ||
+              track.propertyPath === 'transform.anchorPoint.y') {
+            tl.removePropertyTrack(activeLayerId, track.id);
+          }
+        }
+      }
+      // If in a group, reset group position too
+      const group = tl.layerGroups.find(g => g.childLayerIds.includes(activeLayerId));
+      if (group) {
+        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.position.x', 0);
+        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.position.y', 0);
+      }
+    }
 
     // Add to history - we'll use a custom approach to store all frames
     // We'll create a canvas_resize action but extend it with all frames data

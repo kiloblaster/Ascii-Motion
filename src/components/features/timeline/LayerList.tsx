@@ -310,7 +310,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
       {layers.length > 0 && (
         <div
           className={cn(
-            'min-h-[16px] flex-1',
+            'min-h-[60px] flex-1',
             dragOverIndex === displayLayers.length && 'border-t-2 border-t-primary',
           )}
           onDragOver={(e) => { e.preventDefault(); setDragOverIndex(displayLayers.length); }}

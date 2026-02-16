@@ -232,6 +232,14 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
       const startX = e.clientX - rect.left + el.scrollLeft;
       const startY = e.clientY - rect.top + el.scrollTop;
 
+      // Capture modifier keys at mousedown time
+      const isShiftDrag = e.shiftKey;
+      const isAltDrag = e.altKey;
+      // Snapshot the current selection for additive/subtractive modes
+      const baseSelection = isShiftDrag || isAltDrag
+        ? new Set(useTimelineStore.getState().view.selectedKeyframeIds)
+        : null;
+
       let didDrag = false;
       const DRAG_THRESHOLD = 4;
 
@@ -250,7 +258,23 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
         // Live-update selection as marquee changes
         const kfIds = getKeyframesInRect(startX, startY, currentX, currentY);
-        useTimelineStore.getState().selectKeyframes(kfIds);
+        const marqueeSet = new Set(kfIds);
+
+        if (isAltDrag && baseSelection) {
+          // Alt+drag: remove marquee keyframes from the base selection
+          const result = new Set(baseSelection);
+          for (const id of marqueeSet) result.delete(id);
+          useTimelineStore.getState().selectKeyframes([...result]);
+        } else if (isShiftDrag && baseSelection) {
+          // Shift+drag: add marquee keyframes to the base selection
+          const result = new Set(baseSelection);
+          for (const id of marqueeSet) result.add(id);
+          useTimelineStore.getState().selectKeyframes([...result]);
+        } else {
+          // Normal drag: replace selection
+          useTimelineStore.getState().selectKeyframes(kfIds);
+        }
+
         if (kfIds.length > 0) {
           useTimelineStore.getState().setEditingKeyframe(kfIds[kfIds.length - 1]);
         }

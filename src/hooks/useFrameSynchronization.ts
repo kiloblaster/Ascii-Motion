@@ -114,7 +114,10 @@ export const useFrameSynchronization = (
     const frame = tl.view.currentFrame;
 
     // Flush current canvas to the OLD layer's content frame
-    if (prevLayerId && !isPlaying && !isLoadingFrameRef.current) {
+    // CRITICAL: Skip flush during session import! The old layer ID might collide
+    // with a loaded layer's ID (e.g., default "layer-1" matches a saved layer's
+    // "layer-1"), and flushing empty canvas data would destroy loaded content.
+    if (prevLayerId && !isPlaying && !isLoadingFrameRef.current && !isImportingSession) {
       const oldLayer = tl.layers.find((l) => l.id === prevLayerId);
       if (oldLayer) {
         const oldCf = getContentFrameAtTime(oldLayer, frame);
@@ -143,7 +146,7 @@ export const useFrameSynchronization = (
     setTimeout(() => { isLoadingFrameRef.current = false; }, 0);
 
     lastActiveLayerIdRef.current = activeLayerId;
-  }, [activeLayerId, isLayerMode, isPlaying, setCanvasData]);
+  }, [activeLayerId, isLayerMode, isPlaying, isImportingSession, setCanvasData]);
 
   // Auto-save current canvas to current frame whenever canvas changes
   const saveCurrentCanvasToFrame = useCallback(() => {
