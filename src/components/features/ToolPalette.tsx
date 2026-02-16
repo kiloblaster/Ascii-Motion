@@ -70,15 +70,15 @@ const DashedRectangleIcon: React.FC<{ className?: string }> = ({ className }) =>
 // Organized tools by category
 const DRAWING_TOOLS: Array<{ id: Tool; name: string; icon: React.ReactNode; description: string }> = [
   { id: 'pencil', name: 'Brush', icon: <Brush className="w-3 h-3" />, description: 'Draw characters' },
-  { id: 'beziershape', name: 'Bezier Pen Tool', icon: <PenTool className="w-3 h-3" />, description: 'Draw bezier vector shapes' },
   { id: 'eraser', name: 'Eraser', icon: <Eraser className="w-3 h-3" />, description: 'Remove characters' },
+  { id: 'beziershape', name: 'Bezier Pen Tool', icon: <PenTool className="w-3 h-3" />, description: 'Draw bezier vector shapes' },
+  { id: 'text', name: 'Text', icon: <Type className="w-3 h-3" />, description: 'Type text directly' },
   { id: 'paintbucket', name: 'Fill', icon: <PaintBucket className="w-3 h-3" />, description: 'Fill connected areas' },
   { id: 'gradientfill', name: 'Gradient', icon: <GradientIcon className="w-3 h-3" />, description: 'Apply gradient fills' },
   { id: 'rectangle', name: 'Rectangle', icon: <Square className="w-3 h-3" />, description: 'Draw rectangles' },
   { id: 'ellipse', name: 'Ellipse', icon: <Circle className="w-3 h-3" />, description: 'Draw ellipses/circles' },
-  { id: 'text', name: 'Text', icon: <Type className="w-3 h-3" />, description: 'Type text directly' },
-  { id: 'asciitype', name: 'ASCII Type', icon: <TypeOutline className="w-3 h-3" />, description: 'Create ASCII text' },
   { id: 'asciibox', name: 'ASCII Box', icon: <Grid2x2 className="w-3 h-3" />, description: 'Draw boxes and tables' },
+  { id: 'asciitype', name: 'ASCII Type', icon: <TypeOutline className="w-3 h-3" />, description: 'Create ASCII text' },
 ];
 
 const SELECTION_TOOLS: Array<{ id: Tool; name: string; icon: React.ReactNode; description: string }> = [
@@ -101,6 +101,14 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
   // unrelated toolStore mutation (isProcessingHistory, brush settings, etc.)
   const activeTool = useToolStore((s) => s.activeTool);
   const setActiveTool = useToolStore((s) => s.setActiveTool);
+  
+  // For action button disabled states
+  const historyPosition = useToolStore((s) => s.historyPosition);
+  const historyLength = useToolStore((s) => s.historyStack.length);
+  const hasSelection = useToolStore((s) => s.selection.active || s.lassoSelection.active || s.magicWandSelection.active);
+  const hasClipboard = useToolStore((s) => s.hasClipboard());
+  const canUndo = historyPosition >= 0;
+  const canRedo = historyPosition < historyLength - 1;
 
   // Calculate effective tool
   // PERF FIX: Removed altKeyDown/ctrlKeyDown from context — they caused this
@@ -190,6 +198,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          disabled={!canUndo}
                           onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true }))}>
                           <Undo2 className="w-3 h-3" />
                         </Button>
@@ -199,6 +208,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          disabled={!canRedo}
                           onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true }))}>
                           <Redo2 className="w-3 h-3" />
                         </Button>
@@ -208,6 +218,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          disabled={!hasSelection}
                           onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true, bubbles: true }))}>
                           <Copy className="w-3 h-3" />
                         </Button>
@@ -217,6 +228,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button variant="outline" size="sm" className="h-8 w-8 p-0 touch-manipulation"
+                          disabled={!hasClipboard}
                           onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true, bubbles: true }))}>
                           <Clipboard className="w-3 h-3" />
                         </Button>
@@ -293,12 +305,17 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
           effectiveTool === 'eyedropper' ? 'Eyedropper' :
           effectiveTool === 'beziershape' ? 'Bezier Pen' :
           effectiveTool === 'layertransform' ? 'Layer Transform' :
+          effectiveTool === 'text' ? 'Text' :
+          effectiveTool === 'asciitype' ? 'ASCII Type' :
+          effectiveTool === 'asciibox' ? 'ASCII Box' :
           'Tool'
         }</span>
       </div>
 
-      {/* Divider */}
-      <div className="w-px h-5 bg-border/50" />
+      {/* Divider — only when tool has options */}
+      {['rectangle', 'ellipse', 'paintbucket', 'gradientfill', 'magicwand', 'pencil', 'eraser', 'eyedropper', 'beziershape', 'select', 'lasso', 'layertransform'].includes(effectiveTool) && (
+        <div className="w-px h-5 bg-border/50" />
+      )}
 
       {/* Rectangle/Ellipse: Filled toggle */}
       {(effectiveTool === 'rectangle' || effectiveTool === 'ellipse') && (

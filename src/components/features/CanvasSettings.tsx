@@ -49,8 +49,6 @@ export const CanvasSettings: React.FC = () => {
 
   const { pushCanvasResizeHistory } = useToolStore();
   const activeTool = useToolStore((s) => s.activeTool);
-  const toolsWithOptions = ['rectangle', 'ellipse', 'paintbucket', 'gradientfill', 'magicwand', 'pencil', 'eraser', 'eyedropper', 'beziershape', 'select', 'lasso', 'layertransform'];
-  const hasToolOptions = toolsWithOptions.includes(activeTool);
   // PERF FIX: currentFrameIndex only used in callbacks — read from getState()
 
   // Global dialog state for canvas resize (allows keyboard shortcut to trigger)
@@ -349,13 +347,10 @@ export const CanvasSettings: React.FC = () => {
   return (
     <TooltipProvider>
       <div className="flex items-center w-full gap-3">
-        {/* Left: Tool options (when active tool has options) */}
-        {hasToolOptions && (
-          <div className="flex-1 min-w-0 overflow-x-auto">
-            <ToolOptionsPanel activeTool={activeTool} />
-          </div>
-        )}
-        {!hasToolOptions && <div className="flex-1" />}
+        {/* Left: Tool name + options */}
+        <div className="flex-1 min-w-0 overflow-x-auto">
+          <ToolOptionsPanel activeTool={activeTool} />
+        </div>
 
         {/* Right-aligned: Canvas size + divider + Display controls */}
         <div className="flex items-center gap-2 flex-shrink-0">
