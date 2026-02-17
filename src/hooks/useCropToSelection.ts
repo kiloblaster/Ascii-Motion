@@ -5,7 +5,6 @@ import { useToolStore } from '../stores/toolStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { cropAllFramesToSelection } from '../utils/cropUtils';
-import { screenToLocalForLayer } from '../utils/layerTransformUtils';
 import { getBoundsFromMask } from '../utils/selectionUtils';
 import type { CanvasResizeHistoryAction, Cell } from '../types';
 import type { LayerId, Layer, ContentFrame } from '../types/timeline';
@@ -97,7 +96,7 @@ export function useCropToSelection() {
 
     if (isLayerMode) {
       // ── LAYER MODE: Crop ALL layers' content frames ──
-      // Snapshot all layers for undo
+      // Snapshot all layers for undo (deep copy keyframes for proper restore)
       const previousLayerSnapshots = tl.layers.map(l => ({
         id: l.id,
         contentFrames: l.contentFrames.map(cf => ({
@@ -105,75 +104,105 @@ export function useCropToSelection() {
           data: new Map(cf.data),
         })),
         staticProperties: { ...l.staticProperties },
-        propertyTracks: l.propertyTracks.map(t => ({ ...t })),
+        propertyTracks: l.propertyTracks.map(t => ({
+          ...t,
+          keyframes: t.keyframes.map(kf => ({ ...kf })),
+        })),
       }));
       const previousGroupSnapshots = tl.layerGroups.map(g => ({
         ...g,
         staticProperties: { ...g.staticProperties },
+        propertyTracks: (g.propertyTracks ?? []).map(t => ({
+          ...t,
+          keyframes: t.keyframes.map(kf => ({ ...kf })),
+        })),
       }));
 
-      // Crop each layer's content frames using that layer's specific transform
-      for (const layer of tl.layers) {
-        const layerScreenToLocal = (x: number, y: number) =>
-          screenToLocalForLayer(layer.id as string, x, y);
+      // Crop offset: after crop, the canvas origin shifts by (minX, minY) in screen space.
+      // We shift position values by (-minX, -minY) to account for this.
+      // Content data stays in local space (NOT re-keyed) — this correctly preserves
+      // animation at all frames, not just the current one. Content outside the new
+      // canvas bounds simply won't render (unbounded canvas clips at export).
+      //
+      // CRITICAL: For grouped layers, only shift the GROUP's position (not the
+      // child layer's position). In compositing, group position and layer position
+      // are additive, so shifting both would double the offset.
+      const posXOffset = -minX;
+      const posYOffset = -minY;
 
-        for (const cf of layer.contentFrames) {
-          const croppedCells = new Map<string, Cell>();
-          
-          // For each position in the crop bounds, inverse-transform to find source cell
-          for (let y = minY; y <= maxY; y++) {
-            for (let x = minX; x <= maxX; x++) {
-              const local = layerScreenToLocal(x, y);
-              const localKey = `${local.x},${local.y}`;
-              const cell = cf.data.get(localKey);
-              if (cell) {
-                croppedCells.set(`${x - minX},${y - minY}`, { ...cell });
-              }
+      // Collect group IDs for quick lookup
+      const groupChildIds = new Set<string>();
+      for (const group of tl.layerGroups) {
+        for (const childId of group.childLayerIds) {
+          groupChildIds.add(childId as string);
+        }
+      }
+
+      // Shift each UNGROUPED layer's position (grouped layers get shifted via their group)
+      for (const layer of tl.layers) {
+        if (groupChildIds.has(layer.id as string)) continue; // Skip grouped layers
+        
+        const oldPosX = layer.staticProperties['transform.position.x'] ?? 0;
+        const oldPosY = layer.staticProperties['transform.position.y'] ?? 0;
+        
+        tl.setStaticProperty(layer.id, 'transform.position.x', oldPosX + posXOffset);
+        tl.setStaticProperty(layer.id, 'transform.position.y', oldPosY + posYOffset);
+
+        // Shift position keyframes by the same offset
+        for (const track of layer.propertyTracks) {
+          if (track.propertyPath === 'transform.position.x') {
+            for (const kf of track.keyframes) {
+              tl.updateKeyframe(layer.id, track.id, kf.id, {
+                value: (kf.value as number) + posXOffset,
+              });
+            }
+          } else if (track.propertyPath === 'transform.position.y') {
+            for (const kf of track.keyframes) {
+              tl.updateKeyframe(layer.id, track.id, kf.id, {
+                value: (kf.value as number) + posYOffset,
+              });
             }
           }
-
-          tl.updateContentFrameData(layer.id, cf.id, croppedCells);
         }
+      }
 
-        // Reset this layer's position transform
-        tl.setStaticProperty(layer.id, 'transform.position.x', 0);
-        tl.setStaticProperty(layer.id, 'transform.position.y', 0);
-        tl.setStaticProperty(layer.id, 'transform.anchorPoint.x', Math.floor(newWidth / 2));
-        tl.setStaticProperty(layer.id, 'transform.anchorPoint.y', Math.floor(newHeight / 2));
-        // Remove keyframed position/anchor tracks
-        for (const track of [...layer.propertyTracks]) {
-          if (track.propertyPath === 'transform.position.x' || 
-              track.propertyPath === 'transform.position.y' ||
-              track.propertyPath === 'transform.anchorPoint.x' ||
-              track.propertyPath === 'transform.anchorPoint.y') {
-            tl.removePropertyTrack(layer.id, track.id);
+      // Shift group positions the same way
+      for (const group of tl.layerGroups) {
+        const groupId = group.id as unknown as LayerId;
+        const oldGPosX = group.staticProperties?.['transform.position.x'] ?? 0;
+        const oldGPosY = group.staticProperties?.['transform.position.y'] ?? 0;
+
+        tl.setStaticProperty(groupId, 'transform.position.x', oldGPosX + posXOffset);
+        tl.setStaticProperty(groupId, 'transform.position.y', oldGPosY + posYOffset);
+
+        for (const track of (group.propertyTracks ?? [])) {
+          if (track.propertyPath === 'transform.position.x') {
+            for (const kf of track.keyframes) {
+              tl.updateKeyframe(groupId, track.id, kf.id, {
+                value: (kf.value as number) + posXOffset,
+              });
+            }
+          } else if (track.propertyPath === 'transform.position.y') {
+            for (const kf of track.keyframes) {
+              tl.updateKeyframe(groupId, track.id, kf.id, {
+                value: (kf.value as number) + posYOffset,
+              });
+            }
           }
         }
       }
 
-      // Reset group transforms too
-      for (const group of tl.layerGroups) {
-        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.position.x', 0);
-        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.position.y', 0);
-        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.anchorPoint.x', Math.floor(newWidth / 2));
-        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.anchorPoint.y', Math.floor(newHeight / 2));
-      }
-
-      // Resize canvas and load active layer's cropped data
+      // Resize canvas and load active layer's content
       setCanvasSize(newWidth, newHeight);
-      const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+      // Force canvas refresh from the active layer
+      const updatedTl = useTimelineStore.getState();
+      const activeLayer = updatedTl.layers.find(l => l.id === updatedTl.view.activeLayerId);
       if (activeLayer) {
-        const activeCf = activeLayer.contentFrames.find(cf =>
-          tl.view.currentFrame >= cf.startFrame && tl.view.currentFrame < cf.startFrame + cf.durationFrames
-        );
-        // Read the UPDATED content frame data from the store
-        const updatedLayer = useTimelineStore.getState().layers.find(l => l.id === tl.view.activeLayerId);
-        const updatedCf = updatedLayer?.contentFrames.find(cf => cf.id === activeCf?.id);
-        if (updatedCf) {
-          setCanvasData(new Map(updatedCf.data));
-        } else {
-          setCanvasData(new Map());
-        }
+        // Trigger a layer-switch to reload canvas from the layer's content frame
+        useTimelineStore.getState().setActiveLayer(null as unknown as LayerId);
+        setTimeout(() => {
+          useTimelineStore.getState().setActiveLayer(activeLayer.id);
+        }, 0);
       }
 
       // Record history with layer snapshots

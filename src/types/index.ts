@@ -333,11 +333,20 @@ export interface CanvasResizeHistoryAction extends HistoryAction {
       id: string;
       contentFrames: Array<{ id: string; data: Map<string, Cell> }>;
       staticProperties: Record<string, number>;
-      propertyTracks: Array<{ id: string; propertyPath: string }>;
+      propertyTracks: Array<{
+        id: string;
+        propertyPath: string;
+        keyframes: Array<{ id: string; frame: number; value: number | boolean | string; easing: unknown }>;
+      }>;
     }>;
     previousGroupSnapshots?: Array<{
       id: string;
       staticProperties: Record<string, number>;
+      propertyTracks?: Array<{
+        id: string;
+        propertyPath: string;
+        keyframes: Array<{ id: string; frame: number; value: number | boolean | string; easing: unknown }>;
+      }>;
     }>;
   };
 }

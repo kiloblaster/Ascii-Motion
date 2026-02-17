@@ -96,7 +96,7 @@ const processHistoryAction = (
         canvas.setCanvasSize(resizeAction.data.previousWidth, resizeAction.data.previousHeight);
         
         if (hasLayerSnapshots && resizeAction.data.previousLayerSnapshots) {
-          // Multi-layer crop undo: restore ALL layers' content frames and transforms
+          // Multi-layer crop undo: restore ALL layers' content frames, transforms, and keyframes
           const tl = useTimelineStore.getState();
           
           for (const snapshot of resizeAction.data.previousLayerSnapshots) {
@@ -111,14 +111,36 @@ const processHistoryAction = (
             for (const [key, value] of Object.entries(snapshot.staticProperties)) {
               tl.setStaticProperty(layerId, key, value);
             }
+            
+            // Restore keyframe values on property tracks
+            if (snapshot.propertyTracks) {
+              for (const trackSnapshot of snapshot.propertyTracks) {
+                const trackId = trackSnapshot.id as import('../types/timeline').PropertyTrackId;
+                for (const kfSnapshot of trackSnapshot.keyframes) {
+                  tl.updateKeyframe(layerId, trackId, kfSnapshot.id as import('../types/timeline').KeyframeId, {
+                    value: kfSnapshot.value as number,
+                  });
+                }
+              }
+            }
           }
           
-          // Restore group transforms
+          // Restore group transforms and keyframes
           if (resizeAction.data.previousGroupSnapshots) {
             for (const gSnapshot of resizeAction.data.previousGroupSnapshots) {
               const groupId = gSnapshot.id as unknown as import('../types/timeline').LayerId;
               for (const [key, value] of Object.entries(gSnapshot.staticProperties)) {
                 tl.setStaticProperty(groupId, key, value);
+              }
+              if (gSnapshot.propertyTracks) {
+                for (const trackSnapshot of gSnapshot.propertyTracks) {
+                  const trackId = trackSnapshot.id as import('../types/timeline').PropertyTrackId;
+                  for (const kfSnapshot of trackSnapshot.keyframes) {
+                    tl.updateKeyframe(groupId, trackId, kfSnapshot.id as import('../types/timeline').KeyframeId, {
+                      value: kfSnapshot.value as number,
+                    });
+                  }
+                }
               }
             }
           }
