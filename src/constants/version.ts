@@ -1,12 +1,39 @@
-// Auto-generated version file - DO NOT EDIT MANUALLY
-// This file is updated by scripts/version-bump.js during deployment
+// Version file - manually set for major releases, auto-bumped for patches
+// Updated by scripts/version-bump.js during deployment
 
-export const VERSION = "0.2.64";
-export const BUILD_DATE = "2026-02-02T00:20:39.755Z";
-export const BUILD_HASH = "9e7378f";
+export const VERSION = "2.0.0";
+export const BUILD_DATE = "2026-02-17T20:19:36.000Z";
+export const BUILD_HASH = "721af87";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.0",
+    "date": "2026-02-17T20:19:36.000Z",
+    "commits": [
+      "Layer-based timeline system with keyframe interpolation",
+      "Multi-layer compositing with z-order, visibility, solo, lock",
+      "Layer groups with cascading transforms",
+      "Keyframe animation for position, scale, rotation, anchor point",
+      "Cubic bezier easing editor with presets",
+      "Layer transform tool with bounding box handles",
+      "Content frames with draggable timing on timeline",
+      "Property tracks with keyframe diamonds and marquee selection",
+      "Frame rate controls with presets and custom values",
+      "Work area with trim-to-range",
+      "Session format v2.0.0 with automatic v1 migration",
+      "Media import: New Layer mode with video frame rate matching",
+      "Export optimizations: frame deduplication, color dictionaries, compact formats",
+      "Video export: Auto fps mode from project settings",
+      "Multi-layer crop with transform and keyframe preservation",
+      "Multi-layer selection: delete, copy, move across layers",
+      "Onion skinning: current layer and all layers modes",
+      "Layer drag-and-drop reorder with group support",
+      "Resizable timeline panel with ruler, playhead, and zoom",
+      "MCP server v2.0.0 with 17 layer tools",
+      "UI restructure: tool options header bar, 2-column tool panel, canvas zoom footer"
+    ]
+  },
   {
     "version": "0.2.64",
     "date": "2026-02-02T00:20:39.755Z",
