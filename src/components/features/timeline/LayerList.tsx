@@ -10,6 +10,7 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { useLayerLimit } from '../../../hooks/useLayerLimit';
 import { LayerListItem } from './LayerListItem';
@@ -44,6 +45,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   const { addLayer } = useTimelineHistory();
 
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<'above' | 'into' | null>(null);
   const [contextMenu, setContextMenu] = useState<LayerContextMenuState | null>(null);
   const [renamingLayerId, setRenamingLayerId] = useState<LayerId | null>(null);
   const dragSourceIndex = useRef<number | null>(null);
@@ -86,6 +88,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   const handleDragOver = useCallback((e: React.DragEvent, displayIndex: number) => {
     e.preventDefault();
     setDragOverIndex(displayIndex);
+    setDragOverPosition(null); // Regular layer items — no top/bottom split
   }, []);
 
   const handleDrop = useCallback(
@@ -104,35 +107,49 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
         const group = tl.layerGroups.find(g => g.id === groupId);
         if (!group) {
           setDragOverIndex(null);
+          setDragOverPosition(null);
           dragSourceIndex.current = null;
           dragSourceGroupId.current = null;
           return;
         }
 
-        // Determine target position: which store index should the group's
-        // children be placed at?
+        // Snapshot for undo
+        const prevLayers = layers.map(l => ({ ...l }));
+        const prevGroups = tl.layerGroups.map(g => ({ ...g, childLayerIds: [...g.childLayerIds] }));
+
+        // Determine target position in store order
+        // displayIndex >= displayLayers.length means bottom drop zone → store index 0
+        // displayIndex 0 means top of visual list → store index layers.length - 1 (top of z-order)
         const targetStoreIndex = displayIndex >= displayLayers.length
           ? 0
           : layers.length - 1 - displayIndex;
 
-        // Don't drop a group into itself
         const targetLayer = targetStoreIndex >= 0 && targetStoreIndex < layers.length ? layers[targetStoreIndex] : null;
-        if (targetLayer && group.childLayerIds.includes(targetLayer.id)) {
+        const childIds = new Set(group.childLayerIds.map(id => id as string));
+
+        // Don't drop a group onto itself — but allow dropping at position 0 (top)
+        // even if that position happens to be occupied by one of the group's children
+        if (targetLayer && childIds.has(targetLayer.id as string) && displayIndex !== 0 && displayIndex < displayLayers.length) {
           setDragOverIndex(null);
+          setDragOverPosition(null);
           dragSourceIndex.current = null;
           dragSourceGroupId.current = null;
           return;
         }
 
         // Remove all group children from the layers array, then re-insert them
-        // at the target position as a contiguous block
-        const childIds = new Set(group.childLayerIds.map(id => id as string));
         const childLayers = layers.filter(l => childIds.has(l.id as string));
         const otherLayers = layers.filter(l => !childIds.has(l.id as string));
 
         // Find insertion point in the filtered (non-child) array
         let insertIdx: number;
-        if (targetLayer && !childIds.has(targetLayer.id as string)) {
+        if (displayIndex >= displayLayers.length) {
+          // Bottom drop zone → insert at store index 0 (bottom of z-order)
+          insertIdx = 0;
+        } else if (displayIndex === 0) {
+          // Top of list → insert at the end (top of z-order)
+          insertIdx = otherLayers.length;
+        } else if (targetLayer && !childIds.has(targetLayer.id as string)) {
           const targetInOthers = otherLayers.indexOf(targetLayer);
           insertIdx = targetInOthers !== -1 ? targetInOthers : otherLayers.length;
         } else {
@@ -147,7 +164,24 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
 
         useTimelineStore.setState({ layers: newLayers });
 
+        // Record history
+        const historyAction: import('../../../types').LayerReorderHistoryAction = {
+          type: 'layer_reorder',
+          timestamp: Date.now(),
+          description: `Reorder group "${group.name}"`,
+          data: {
+            fromIndex: 0,
+            toIndex: 0,
+            previousLayers: prevLayers,
+            previousGroups: prevGroups,
+            newLayers: newLayers.map(l => ({ ...l })),
+            newGroups: tl.layerGroups.map(g => ({ ...g, childLayerIds: [...g.childLayerIds] })),
+          }
+        };
+        useToolStore.getState().pushToHistory(historyAction);
+
         setDragOverIndex(null);
+        setDragOverPosition(null);
         dragSourceIndex.current = null;
         dragSourceGroupId.current = null;
         return;
@@ -169,6 +203,14 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
       const draggedLayer = layers[fromStoreIndex];
       const targetLayer = toStoreIndex >= 0 && toStoreIndex < layers.length ? layers[toStoreIndex] : null;
 
+      // Snapshot for undo
+      const prevLayers = layers.map(l => ({ ...l }));
+      const prevGroups = useTimelineStore.getState().layerGroups.map(g => ({
+        ...g,
+        childLayerIds: [...g.childLayerIds],
+      }));
+
+      // Perform reorder
       reorderLayers(fromStoreIndex, Math.max(0, toStoreIndex));
 
       // Handle group membership changes
@@ -181,7 +223,38 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
           ? tl.layerGroups.find(g => g.id === draggedLayer.parentGroupId)
           : null;
 
+        // Determine if the drop should add the layer to a group.
+        // Rules:
+        // 1. Drop on group header bottom half → join group
+        // 2. Drop on group header top half → ABOVE group (don't join)
+        // 3. Drop between two group members → join group
+        // 4. Drop below last group member → outside group (don't join)
+        let shouldJoinGroup = false;
         if (targetGroup && (!sourceGroup || sourceGroup.id !== targetGroup.id)) {
+          const targetDisplayIdx = displayIndex;
+          const groupChildIds = new Set(targetGroup.childLayerIds.map(id => id as string));
+
+          // Check if this is a group header drop (first child's displayIndex with dragOverPosition set)
+          const firstChildDisplayIdx = displayLayers.findIndex(l => groupChildIds.has(l.id as string));
+          const isGroupHeaderDrop = targetDisplayIdx === firstChildDisplayIdx && dragOverPosition !== null;
+
+          if (isGroupHeaderDrop) {
+            // Group header: only join if dropped on bottom half ("into")
+            shouldJoinGroup = dragOverPosition === 'into';
+          } else {
+            // Regular member: join if there are more members below (between members)
+            const nextDisplayIdx = targetDisplayIdx + 1;
+            if (nextDisplayIdx < displayLayers.length) {
+              const nextLayer = displayLayers[nextDisplayIdx];
+              if (groupChildIds.has(nextLayer.id as string)) {
+                shouldJoinGroup = true; // Dropping between group members
+              }
+            }
+          }
+        }
+
+        if (shouldJoinGroup && targetGroup) {
+          // Add to target group
           useTimelineStore.setState((state) => ({
             layers: state.layers.map(l =>
               l.id === draggedLayer.id ? { ...l, parentGroupId: targetGroup.id } : l
@@ -192,10 +265,13 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
                 : g
             ),
           }));
-        } else if (sourceGroup && (!targetGroup || targetGroup.id !== sourceGroup.id)) {
+        }
+
+        // Remove from source group if leaving it (and not joining same group)
+        if (sourceGroup && (!shouldJoinGroup || !targetGroup || targetGroup.id !== sourceGroup.id)) {
           useTimelineStore.setState((state) => ({
             layers: state.layers.map(l =>
-              l.id === draggedLayer.id ? { ...l, parentGroupId: targetGroup?.id } : l
+              l.id === draggedLayer.id && !shouldJoinGroup ? { ...l, parentGroupId: undefined } : l
             ),
             layerGroups: state.layerGroups.map(g => {
               if (g.id === sourceGroup.id) {
@@ -203,12 +279,10 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
                 if (remaining.length < 2) return { ...g, childLayerIds: [] };
                 return { ...g, childLayerIds: remaining };
               }
-              if (targetGroup && g.id === targetGroup.id && !g.childLayerIds.includes(draggedLayer.id)) {
-                return { ...g, childLayerIds: [...g.childLayerIds, draggedLayer.id] };
-              }
               return g;
             }).filter(g => g.childLayerIds.length >= 2),
           }));
+          // Clean up orphaned parentGroupIds
           const updatedGroups = useTimelineStore.getState().layerGroups;
           const groupIds = new Set(updatedGroups.map(g => g.id));
           useTimelineStore.setState((state) => ({
@@ -219,17 +293,37 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
             ),
           }));
         }
+
+        // Record history with full snapshot for undo (covers reorder + group changes)
+        const newLayers = useTimelineStore.getState().layers;
+        const newGroups = useTimelineStore.getState().layerGroups;
+        const historyAction: import('../../../types').LayerReorderHistoryAction = {
+          type: 'layer_reorder',
+          timestamp: Date.now(),
+          description: `Reorder layer "${draggedLayer.name}"`,
+          data: {
+            fromIndex: fromStoreIndex,
+            toIndex: Math.max(0, toStoreIndex),
+            // Snapshot for full restore (group membership etc.)
+            previousLayers: prevLayers,
+            previousGroups: prevGroups,
+            newLayers: newLayers.map(l => ({ ...l })),
+            newGroups: newGroups.map(g => ({ ...g, childLayerIds: [...g.childLayerIds] })),
+          }
+        };
+        useToolStore.getState().pushToHistory(historyAction);
       }
 
       setDragOverIndex(null);
       dragSourceIndex.current = null;
       dragSourceGroupId.current = null;
     },
-    [layers, displayLayers.length, reorderLayers],
+    [layers, displayLayers, reorderLayers, dragOverPosition],
   );
 
   const handleDragEnd = useCallback(() => {
     setDragOverIndex(null);
+    setDragOverPosition(null);
     dragSourceIndex.current = null;
     dragSourceGroupId.current = null;
   }, []);
@@ -266,11 +360,20 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
                 onSelect={() => {
                   setActiveGroup(group.id);
                   clearLayerSelection();
-                  setEditingKeyframe(null); // Dismiss keyframe editor so group panel shows
+                  setEditingKeyframe(null);
                 }}
                 isDragOver={dragOverIndex === groupDisplayIndex}
+                dragOverPosition={dragOverIndex === groupDisplayIndex ? dragOverPosition : null}
                 onDragStart={() => handleDragStart(groupDisplayIndex, group.id)}
-                onDragOver={(e) => handleDragOver(e, groupDisplayIndex)}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverIndex(groupDisplayIndex);
+                  // Detect top/bottom half of the group header
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  const y = e.clientY - rect.top;
+                  const isTopHalf = y < rect.height / 2;
+                  setDragOverPosition(isTopHalf ? 'above' : 'into');
+                }}
                 onDrop={() => handleDrop(groupDisplayIndex)}
                 onDragEnd={handleDragEnd}
               />

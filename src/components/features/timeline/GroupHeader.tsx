@@ -39,6 +39,7 @@ interface GroupHeaderProps {
   onDrop?: () => void;
   onDragEnd?: () => void;
   isDragOver?: boolean;
+  dragOverPosition?: 'above' | 'into' | null;
 }
 
 export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function GroupHeader({
@@ -51,6 +52,7 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
   onDrop,
   onDragEnd,
   isDragOver,
+  dragOverPosition,
 }) {
   const toggleGroupCollapsed = useTimelineStore((s) => s.toggleGroupCollapsed);
   const layers = useTimelineStore((s) => s.layers);
@@ -115,7 +117,8 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
       className={cn(
         'border-b border-border/50 select-none bg-muted/40 group',
         isSelected && 'bg-accent/40',
-        isDragOver && 'border-t-2 border-t-primary',
+        isDragOver && dragOverPosition === 'above' && 'border-t-2 border-t-primary',
+        isDragOver && dragOverPosition === 'into' && 'bg-primary/20',
       )}
       onClick={onSelect}
       onContextMenu={onContextMenu}

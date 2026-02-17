@@ -842,11 +842,22 @@ const processHistoryAction = (
     }
 
     case 'layer_reorder': {
-      const tl = useTimelineStore.getState();
-      if (isRedo) {
-        tl.reorderLayers(action.data.fromIndex, action.data.toIndex);
+      const reorderAction = action as import('../types').LayerReorderHistoryAction;
+      if (reorderAction.data.previousLayers && reorderAction.data.newLayers) {
+        // Full snapshot restore (includes group membership changes)
+        if (isRedo) {
+          useTimelineStore.setState({ layers: reorderAction.data.newLayers, layerGroups: reorderAction.data.newGroups ?? [] });
+        } else {
+          useTimelineStore.setState({ layers: reorderAction.data.previousLayers, layerGroups: reorderAction.data.previousGroups ?? [] });
+        }
       } else {
-        tl.reorderLayers(action.data.toIndex, action.data.fromIndex);
+        // Simple index swap (legacy)
+        const tl = useTimelineStore.getState();
+        if (isRedo) {
+          tl.reorderLayers(reorderAction.data.fromIndex, reorderAction.data.toIndex);
+        } else {
+          tl.reorderLayers(reorderAction.data.toIndex, reorderAction.data.fromIndex);
+        }
       }
       break;
     }

@@ -639,6 +639,11 @@ export interface LayerReorderHistoryAction extends HistoryAction {
   data: {
     fromIndex: number;
     toIndex: number;
+    // Full snapshots for undo/redo when group membership changes are involved
+    previousLayers?: import('./timeline').Layer[];
+    previousGroups?: import('./timeline').LayerGroup[];
+    newLayers?: import('./timeline').Layer[];
+    newGroups?: import('./timeline').LayerGroup[];
   };
 }
 
