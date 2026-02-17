@@ -72,41 +72,81 @@ const processHistoryAction = (
       const resizeAction = action as CanvasResizeHistoryAction;
       const canvas = useCanvasStore.getState();
       
-      // Check if this is a crop operation with all frames data
       const isCropOperation = resizeAction.data.isCropOperation === true;
+      const hasLayerSnapshots = !!resizeAction.data.previousLayerSnapshots;
       
       if (isRedo) {
-        // Redo: Apply new size
         canvas.setCanvasSize(resizeAction.data.newWidth, resizeAction.data.newHeight);
         
-        // If crop operation, restore all frames to cropped state
-        if (isCropOperation && resizeAction.data.allFramesNewData) {
+        if (isCropOperation && !hasLayerSnapshots && resizeAction.data.allFramesNewData) {
+          // Legacy single-layer crop redo
           resizeAction.data.allFramesNewData.forEach((frameData: Map<string, Cell>, index: number) => {
             animationStore.setFrameData(index, frameData);
           });
         }
+        // Multi-layer crop redo: re-run the crop (not easily reversible from snapshots alone)
+        // For now, re-crop is not supported — user would need to re-execute the crop
         
-        // Update current canvas to match current frame
         const currentFrame = animationStore.frames[resizeAction.data.frameIndex];
         if (currentFrame) {
           canvas.setCanvasData(currentFrame.data);
         }
       } else {
-        // Undo: Restore previous size and data
+        // Undo
         canvas.setCanvasSize(resizeAction.data.previousWidth, resizeAction.data.previousHeight);
         
-        // If crop operation, restore all frames to pre-crop state
-        if (isCropOperation && resizeAction.data.allFramesPreviousData) {
+        if (hasLayerSnapshots && resizeAction.data.previousLayerSnapshots) {
+          // Multi-layer crop undo: restore ALL layers' content frames and transforms
+          const tl = useTimelineStore.getState();
+          
+          for (const snapshot of resizeAction.data.previousLayerSnapshots) {
+            const layerId = snapshot.id as import('../types/timeline').LayerId;
+            
+            // Restore content frame data
+            for (const cfSnapshot of snapshot.contentFrames) {
+              tl.updateContentFrameData(layerId, cfSnapshot.id as import('../types/timeline').ContentFrameId, new Map(cfSnapshot.data));
+            }
+            
+            // Restore static properties (position, anchor)
+            for (const [key, value] of Object.entries(snapshot.staticProperties)) {
+              tl.setStaticProperty(layerId, key, value);
+            }
+          }
+          
+          // Restore group transforms
+          if (resizeAction.data.previousGroupSnapshots) {
+            for (const gSnapshot of resizeAction.data.previousGroupSnapshots) {
+              const groupId = gSnapshot.id as unknown as import('../types/timeline').LayerId;
+              for (const [key, value] of Object.entries(gSnapshot.staticProperties)) {
+                tl.setStaticProperty(groupId, key, value);
+              }
+            }
+          }
+          
+          // Reload canvas from active layer
+          const activeLayerId = tl.view.activeLayerId;
+          if (activeLayerId) {
+            const layer = useTimelineStore.getState().layers.find(l => l.id === activeLayerId);
+            if (layer) {
+              const frame = tl.view.currentFrame;
+              const cf = layer.contentFrames.find(c => frame >= c.startFrame && frame < c.startFrame + c.durationFrames);
+              if (cf) {
+                canvas.setCanvasData(new Map(cf.data));
+              }
+            }
+          }
+        } else if (isCropOperation && resizeAction.data.allFramesPreviousData) {
+          // Legacy single-layer crop undo
           resizeAction.data.allFramesPreviousData.forEach((frameData: Map<string, Cell>, index: number) => {
             animationStore.setFrameData(index, frameData);
           });
+          canvas.setCanvasData(resizeAction.data.previousCanvasData);
+        } else {
+          // Simple resize undo (no crop)
+          canvas.setCanvasData(resizeAction.data.previousCanvasData);
         }
-        
-        // Restore current frame's data
-        canvas.setCanvasData(resizeAction.data.previousCanvasData);
       }
       
-      // Set current frame to match the frame this resize was made in
       animationStore.setCurrentFrame(resizeAction.data.frameIndex);
       break;
     }

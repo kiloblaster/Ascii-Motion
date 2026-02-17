@@ -324,10 +324,21 @@ export interface CanvasResizeHistoryAction extends HistoryAction {
     newHeight: number;
     previousCanvasData: Map<string, Cell>;
     frameIndex: number;
-    // Optional crop operation data
+    // Optional crop operation data (legacy single-layer)
     allFramesPreviousData?: Map<string, Cell>[];
     allFramesNewData?: Map<string, Cell>[];
     isCropOperation?: boolean;
+    // Multi-layer crop snapshots
+    previousLayerSnapshots?: Array<{
+      id: string;
+      contentFrames: Array<{ id: string; data: Map<string, Cell> }>;
+      staticProperties: Record<string, number>;
+      propertyTracks: Array<{ id: string; propertyPath: string }>;
+    }>;
+    previousGroupSnapshots?: Array<{
+      id: string;
+      staticProperties: Record<string, number>;
+    }>;
   };
 }
 

@@ -4,10 +4,11 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { useAnimationStore } from '../stores/animationStore';
 import { useTimelineStore } from '../stores/timelineStore';
-import { cropCanvasToSelection, cropAllFramesToSelection } from '../utils/cropUtils';
-import { screenToLocal } from '../utils/layerTransformUtils';
-import type { CanvasResizeHistoryAction } from '../types';
-import type { LayerId } from '../types/timeline';
+import { cropAllFramesToSelection } from '../utils/cropUtils';
+import { screenToLocalForLayer } from '../utils/layerTransformUtils';
+import { getBoundsFromMask } from '../utils/selectionUtils';
+import type { CanvasResizeHistoryAction, Cell } from '../types';
+import type { LayerId, Layer, ContentFrame } from '../types/timeline';
 
 /**
  * Hook for cropping canvas to selection across all frames
@@ -59,7 +60,7 @@ export function useCropToSelection() {
   }, [getActiveSelection]);
 
   /**
-   * Crop canvas to current selection across all frames
+   * Crop canvas to current selection across ALL layers
    */
   const cropToSelection = useCallback(() => {
     const selectedCells = getActiveSelection();
@@ -69,15 +70,16 @@ export function useCropToSelection() {
       return;
     }
 
-    // Crop current frame to get new dimensions
-    const cropResult = cropCanvasToSelection(cells, selectedCells, screenToLocal);
-    
-    if (!cropResult) {
+    // Get crop bounds from selection (screen space)
+    const bounds = getBoundsFromMask(selectedCells);
+    if (!bounds) {
       console.warn('Failed to calculate crop dimensions');
       return;
     }
 
-    const { newWidth, newHeight, croppedCells } = cropResult;
+    const { minX, minY, maxX, maxY } = bounds;
+    const newWidth = maxX - minX + 1;
+    const newHeight = maxY - minY + 1;
 
     // Validate new dimensions
     if (newWidth < 4 || newWidth > 200 || newHeight < 4 || newHeight > 100) {
@@ -85,81 +87,159 @@ export function useCropToSelection() {
       return;
     }
 
-    // Save previous state for undo - including ALL frames
+    const tl = useTimelineStore.getState();
+    const isLayerMode = tl.layers.length > 0;
+
+    // Save previous state for undo
     const previousWidth = canvasWidth;
     const previousHeight = canvasHeight;
     const previousCells = new Map(cells);
-    const previousAllFramesData = frames.map(frame => new Map(frame.data));
 
-    // Crop all frames
-    const croppedFrames = cropAllFramesToSelection(frames, selectedCells, screenToLocal);
-    
-    if (!croppedFrames) {
-      console.warn('Failed to crop frames');
-      return;
-    }
+    if (isLayerMode) {
+      // ── LAYER MODE: Crop ALL layers' content frames ──
+      // Snapshot all layers for undo
+      const previousLayerSnapshots = tl.layers.map(l => ({
+        id: l.id,
+        contentFrames: l.contentFrames.map(cf => ({
+          id: cf.id,
+          data: new Map(cf.data),
+        })),
+        staticProperties: { ...l.staticProperties },
+        propertyTracks: l.propertyTracks.map(t => ({ ...t })),
+      }));
+      const previousGroupSnapshots = tl.layerGroups.map(g => ({
+        ...g,
+        staticProperties: { ...g.staticProperties },
+      }));
 
-    // Apply crop to all frames
-    croppedFrames.forEach((croppedFrameData, index) => {
-      setFrameData(index, croppedFrameData);
-    });
+      // Crop each layer's content frames using that layer's specific transform
+      for (const layer of tl.layers) {
+        const layerScreenToLocal = (x: number, y: number) =>
+          screenToLocalForLayer(layer.id as string, x, y);
 
-    // Apply crop to current canvas
-    setCanvasSize(newWidth, newHeight);
-    setCanvasData(croppedCells);
+        for (const cf of layer.contentFrames) {
+          const croppedCells = new Map<string, Cell>();
+          
+          // For each position in the crop bounds, inverse-transform to find source cell
+          for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+              const local = layerScreenToLocal(x, y);
+              const localKey = `${local.x},${local.y}`;
+              const cell = cf.data.get(localKey);
+              if (cell) {
+                croppedCells.set(`${x - minX},${y - minY}`, { ...cell });
+              }
+            }
+          }
 
-    // Reset the active layer's position transform so cropped content renders at origin
-    const tl = useTimelineStore.getState();
-    const activeLayerId = tl.view.activeLayerId;
-    if (activeLayerId) {
-      // Reset position to (0,0) — content is now positioned relative to new canvas origin
-      tl.setStaticProperty(activeLayerId, 'transform.position.x', 0);
-      tl.setStaticProperty(activeLayerId, 'transform.position.y', 0);
-      // Reset anchor point to center of new canvas
-      tl.setStaticProperty(activeLayerId, 'transform.anchorPoint.x', Math.floor(newWidth / 2));
-      tl.setStaticProperty(activeLayerId, 'transform.anchorPoint.y', Math.floor(newHeight / 2));
-      // Remove any keyframed position/anchor tracks (they'd be wrong after crop)
-      const layer = tl.layers.find(l => l.id === activeLayerId);
-      if (layer) {
+          tl.updateContentFrameData(layer.id, cf.id, croppedCells);
+        }
+
+        // Reset this layer's position transform
+        tl.setStaticProperty(layer.id, 'transform.position.x', 0);
+        tl.setStaticProperty(layer.id, 'transform.position.y', 0);
+        tl.setStaticProperty(layer.id, 'transform.anchorPoint.x', Math.floor(newWidth / 2));
+        tl.setStaticProperty(layer.id, 'transform.anchorPoint.y', Math.floor(newHeight / 2));
+        // Remove keyframed position/anchor tracks
         for (const track of [...layer.propertyTracks]) {
           if (track.propertyPath === 'transform.position.x' || 
               track.propertyPath === 'transform.position.y' ||
               track.propertyPath === 'transform.anchorPoint.x' ||
               track.propertyPath === 'transform.anchorPoint.y') {
-            tl.removePropertyTrack(activeLayerId, track.id);
+            tl.removePropertyTrack(layer.id, track.id);
           }
         }
       }
-      // If in a group, reset group position too
-      const group = tl.layerGroups.find(g => g.childLayerIds.includes(activeLayerId));
-      if (group) {
+
+      // Reset group transforms too
+      for (const group of tl.layerGroups) {
         tl.setStaticProperty(group.id as unknown as LayerId, 'transform.position.x', 0);
         tl.setStaticProperty(group.id as unknown as LayerId, 'transform.position.y', 0);
+        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.anchorPoint.x', Math.floor(newWidth / 2));
+        tl.setStaticProperty(group.id as unknown as LayerId, 'transform.anchorPoint.y', Math.floor(newHeight / 2));
       }
-    }
 
-    // Add to history - we'll use a custom approach to store all frames
-    // We'll create a canvas_resize action but extend it with all frames data
-    const action: CanvasResizeHistoryAction = {
-      type: 'canvas_resize' as const,
-      timestamp: Date.now(),
-      description: `Crop canvas from ${previousWidth}×${previousHeight} to ${newWidth}×${newHeight}`,
-      data: {
-        previousWidth,
-        previousHeight,
-        newWidth,
-        newHeight,
-        previousCanvasData: previousCells,
-        frameIndex: currentFrameIndex,
-        // Store all frames' previous data for crop operations
-        allFramesPreviousData: previousAllFramesData,
-        allFramesNewData: croppedFrames,
-        isCropOperation: true
+      // Resize canvas and load active layer's cropped data
+      setCanvasSize(newWidth, newHeight);
+      const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+      if (activeLayer) {
+        const activeCf = activeLayer.contentFrames.find(cf =>
+          tl.view.currentFrame >= cf.startFrame && tl.view.currentFrame < cf.startFrame + cf.durationFrames
+        );
+        // Read the UPDATED content frame data from the store
+        const updatedLayer = useTimelineStore.getState().layers.find(l => l.id === tl.view.activeLayerId);
+        const updatedCf = updatedLayer?.contentFrames.find(cf => cf.id === activeCf?.id);
+        if (updatedCf) {
+          setCanvasData(new Map(updatedCf.data));
+        } else {
+          setCanvasData(new Map());
+        }
       }
-    };
-    
-    // Push to history using the internal method
-    useToolStore.getState().pushToHistory(action);
+
+      // Record history with layer snapshots
+      const action: CanvasResizeHistoryAction = {
+        type: 'canvas_resize' as const,
+        timestamp: Date.now(),
+        description: `Crop canvas from ${previousWidth}×${previousHeight} to ${newWidth}×${newHeight}`,
+        data: {
+          previousWidth,
+          previousHeight,
+          newWidth,
+          newHeight,
+          previousCanvasData: previousCells,
+          frameIndex: currentFrameIndex,
+          isCropOperation: true,
+          // Layer snapshots for multi-layer undo
+          previousLayerSnapshots,
+          previousGroupSnapshots,
+        }
+      };
+      useToolStore.getState().pushToHistory(action);
+
+    } else {
+      // ── LEGACY MODE: Crop via adapter (single-layer) ──
+      const previousAllFramesData = frames.map(frame => new Map(frame.data));
+      const croppedFrames = cropAllFramesToSelection(frames, selectedCells);
+      
+      if (!croppedFrames) {
+        console.warn('Failed to crop frames');
+        return;
+      }
+
+      croppedFrames.forEach((croppedFrameData, index) => {
+        setFrameData(index, croppedFrameData);
+      });
+
+      setCanvasSize(newWidth, newHeight);
+      // Crop the current canvas cells
+      const croppedCanvasCells = new Map<string, Cell>();
+      selectedCells.forEach((key) => {
+        const [sx, sy] = key.split(',').map(Number);
+        const cell = cells.get(key);
+        if (cell) {
+          croppedCanvasCells.set(`${sx - minX},${sy - minY}`, { ...cell });
+        }
+      });
+      setCanvasData(croppedCanvasCells);
+
+      const action: CanvasResizeHistoryAction = {
+        type: 'canvas_resize' as const,
+        timestamp: Date.now(),
+        description: `Crop canvas from ${previousWidth}×${previousHeight} to ${newWidth}×${newHeight}`,
+        data: {
+          previousWidth,
+          previousHeight,
+          newWidth,
+          newHeight,
+          previousCanvasData: previousCells,
+          frameIndex: currentFrameIndex,
+          allFramesPreviousData: previousAllFramesData,
+          allFramesNewData: croppedFrames,
+          isCropOperation: true
+        }
+      };
+      useToolStore.getState().pushToHistory(action);
+    }
 
     // Clear the selection after crop
     if (activeTool === 'select') {
