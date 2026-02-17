@@ -1966,11 +1966,14 @@ export class ExportRenderer {
         };
       });
 
+      // Deduplicate consecutive identical frames (merge durations)
+      const deduplicatedFramesData = this.deduplicateCliFrames(framesData);
+
       this.updateProgress('Generating component code...', 60);
 
       const componentCode = this.generateInkComponentCode({
         componentName,
-        framesData,
+        framesData: deduplicatedFramesData,
         colorMap,
         colorMode: settings.colorMode,
         loopAnimation: settings.loopAnimation,
@@ -2440,11 +2443,14 @@ export class ExportRenderer {
         };
       });
 
+      // Deduplicate consecutive identical frames (merge durations)
+      const deduplicatedFramesData = this.deduplicateCliFrames(framesData);
+
       this.updateProgress('Generating component code...', 60);
 
       const componentCode = this.generateOpenTuiComponentCode({
         componentName,
-        framesData,
+        framesData: deduplicatedFramesData,
         colorMap,
         colorMode: settings.colorMode,
         loopAnimation: settings.loopAnimation,
@@ -2781,12 +2787,15 @@ export class ExportRenderer {
         });
       }
 
+      // Deduplicate consecutive identical frames (merge durations)
+      const deduplicatedFramesData = this.deduplicateCliFrames(framesData);
+
       this.updateProgress('Generating Go code...', 60);
 
       // Generate Go code
       const goCode = this.generateBubbleteaCode({
         packageName: sanitizedPackageName,
-        framesData,
+        framesData: deduplicatedFramesData,
         colorMap,
         colorMode: settings.colorMode,
         playbackStyle: settings.playbackStyle,
@@ -3777,6 +3786,37 @@ export class ExportRenderer {
     }
     
     return videoFrames;
+  }
+
+  /**
+   * Deduplicate consecutive identical CLI frames by merging their durations.
+   * Compares content rows + color maps to detect identical frames.
+   * Used by Ink, OpenTUI, and BubbleTea exports.
+   */
+  private deduplicateCliFrames(
+    frames: Array<{ duration: number; content: string[]; fgColors: Record<string, string>; bgColors: Record<string, string> }>
+  ): typeof frames {
+    if (frames.length <= 1) return frames;
+
+    const hashFrame = (f: typeof frames[0]): string => {
+      return f.content.join('\n') + '|' + JSON.stringify(f.fgColors) + '|' + JSON.stringify(f.bgColors);
+    };
+
+    const result: typeof frames = [];
+    let prevHash = '';
+
+    for (const frame of frames) {
+      const hash = hashFrame(frame);
+      if (result.length > 0 && hash === prevHash) {
+        // Identical to previous — extend duration
+        result[result.length - 1].duration += frame.duration;
+      } else {
+        result.push({ ...frame });
+        prevHash = hash;
+      }
+    }
+
+    return result;
   }
 
   /**
