@@ -1275,38 +1275,62 @@ export class ExportRenderer {
 
       this.updateProgress('Serializing animation data...', 20);
 
-      const framesPayload = data.frames.map((frame) => {
-        const cells: Array<{ x: number; y: number; char: string; color: string; bgColor?: string }> = [];
-
-        frame.data.forEach((cell, key) => {
-          if (!cell || !cell.char) {
-            return;
-          }
-
-          const [x, y] = key.split(',').map(Number);
-          const cellEntry: { x: number; y: number; char: string; color: string; bgColor?: string } = {
-            x,
-            y,
-            char: cell.char,
-            color: cell.color || '#ffffff'
-          };
-
-          if (cell.bgColor && cell.bgColor !== 'transparent') {
-            cellEntry.bgColor = cell.bgColor;
-          }
-
-          cells.push(cellEntry);
+      // ── Optimization 1: Build color dictionary ──
+      // Collect all unique colors across all frames
+      const colorSet = new Set<string>();
+      for (const frame of data.frames) {
+        frame.data.forEach((cell) => {
+          if (cell?.color) colorSet.add(cell.color);
+          if (cell?.bgColor && cell.bgColor !== 'transparent') colorSet.add(cell.bgColor);
         });
+      }
+      const colorPalette = Array.from(colorSet).sort();
+      const colorIndex = new Map<string, number>();
+      colorPalette.forEach((c, i) => colorIndex.set(c, i));
 
-        cells.sort((a, b) => (a.y - b.y) || (a.x - b.x));
-
-        return {
-          duration: Math.max(frame.duration, 16),
-          cells
-        };
+      // ── Optimization 2: Compact cell format (arrays instead of objects) ──
+      // Format: [x, y, "char", colorIdx] or [x, y, "char", colorIdx, bgColorIdx]
+      const rawFrames = data.frames.map((frame) => {
+        const cells: Array<(number | string)[]> = [];
+        frame.data.forEach((cell, key) => {
+          if (!cell || !cell.char) return;
+          const [x, y] = key.split(',').map(Number);
+          const cIdx = colorIndex.get(cell.color || '#ffffff') ?? 0;
+          if (cell.bgColor && cell.bgColor !== 'transparent') {
+            const bgIdx = colorIndex.get(cell.bgColor)!;
+            cells.push([x, y, cell.char, cIdx, bgIdx]);
+          } else {
+            cells.push([x, y, cell.char, cIdx]);
+          }
+        });
+        cells.sort((a, b) => ((a[1] as number) - (b[1] as number)) || ((a[0] as number) - (b[0] as number)));
+        return { duration: Math.max(frame.duration, 16), cells };
       });
 
-      const framesJson = JSON.stringify(framesPayload, null, 2);
+      // ── Optimization 3: Frame deduplication ──
+      // Merge consecutive frames with identical cell data into a single entry with accumulated duration
+      const hashFrame = (cells: Array<(number | string)[]>): string => {
+        return JSON.stringify(cells);
+      };
+
+      const framesPayload: Array<{ duration: number; cells: Array<(number | string)[]> }> = [];
+      for (let i = 0; i < rawFrames.length; i++) {
+        const frame = rawFrames[i];
+        const hash = hashFrame(frame.cells);
+        if (framesPayload.length > 0) {
+          const prev = framesPayload[framesPayload.length - 1];
+          const prevHash = hashFrame(prev.cells);
+          if (hash === prevHash) {
+            // Identical to previous — extend duration
+            prev.duration += frame.duration;
+            continue;
+          }
+        }
+        framesPayload.push({ duration: frame.duration, cells: frame.cells });
+      }
+
+      const paletteJson = JSON.stringify(colorPalette);
+      const framesJson = JSON.stringify(framesPayload);
       // Font stack is already properly formatted (no quotes) from fontMetrics
       const fontStack =
         data.fontMetrics?.fontFamily || 'SF Mono, Monaco, Cascadia Code, Consolas, JetBrains Mono, Fira Code, Monaspace Neon, Geist Mono, Courier New, monospace';
@@ -1316,6 +1340,7 @@ export class ExportRenderer {
       const componentCode = this.generateReactComponentCode({
         componentName,
         framesJson,
+        paletteJson,
         isTypescript: settings.typescript,
         includeControls: settings.includeControls,
         canvasWidth: canvasPixelWidth,
@@ -1372,6 +1397,7 @@ export class ExportRenderer {
   private generateReactComponentCode(options: {
     componentName: string;
     framesJson: string;
+    paletteJson: string;
     isTypescript: boolean;
     includeControls: boolean;
     canvasWidth: number;
@@ -1385,6 +1411,7 @@ export class ExportRenderer {
     const {
       componentName,
       framesJson,
+      paletteJson,
       isTypescript,
       includeControls,
       canvasWidth,
@@ -1404,10 +1431,13 @@ export class ExportRenderer {
     const hooksImport = `import { useEffect, useRef, useCallback${includeControls ? ', useState' : ''} } from 'react';`;
 
     const typeBlock = isTypescript
-      ? `type CellData = {\n  x: number;\n  y: number;\n  char: string;\n  color: string;\n  bgColor?: string;\n};\n\n` +
-        `type Frame = {\n  duration: number;\n  cells: CellData[];\n};\n\n` +
+      ? `// Compact cell format: [x, y, char, colorIndex, bgColorIndex?]\ntype CellData = (number | string)[];\n\ntype Frame = {\n  duration: number;\n  cells: CellData[];\n};\n\n` +
         `type AsciiMotionComponentProps = {\n  showControls?: boolean;\n  autoPlay?: boolean;\n  onReady?: (api: {\n    play: () => void;\n    pause: () => void;\n    togglePlay: () => void;\n    restart: () => void;\n  }) => void;\n};`
-      : `/**\n * @typedef {{ x: number, y: number, char: string, color: string, bgColor?: string }} CellData\n * @typedef {{ duration: number, cells: CellData[] }} Frame\n */\n\n/**\n * @typedef {Object} AsciiMotionComponentProps\n * @property {boolean} [showControls]\n * @property {boolean} [autoPlay]\n * @property {(api: { play: () => void; pause: () => void; togglePlay: () => void; restart: () => void; }) => void} [onReady]\n */`;
+      : `/**\n * Compact cell format: [x, y, char, colorIndex, bgColorIndex?]\n * @typedef {(number|string)[]} CellData\n * @typedef {{ duration: number, cells: CellData[] }} Frame\n */\n\n/**\n * @typedef {Object} AsciiMotionComponentProps\n * @property {boolean} [showControls]\n * @property {boolean} [autoPlay]\n * @property {(api: { play: () => void; pause: () => void; togglePlay: () => void; restart: () => void; }) => void} [onReady]\n */`;
+
+    const paletteDeclaration = isTypescript
+      ? `const COLORS: string[] = ${paletteJson};`
+      : `const COLORS = ${paletteJson};`;
 
     const framesDeclaration = isTypescript
       ? `const FRAMES: Frame[] = ${framesJson};`
@@ -1563,16 +1593,22 @@ export class ExportRenderer {
       '  }',
       '',
       '  for (const cell of frame.cells) {',
-      '    if (cell.bgColor) {',
-      '      context.fillStyle = cell.bgColor;',
-      '      context.fillRect(cell.x * CELL_WIDTH, cell.y * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);',
+      '    const x = cell[0];',
+      '    const y = cell[1];',
+      '    const char = cell[2];',
+      '    const color = COLORS[cell[3]];',
+      '    const bgColor = cell.length > 4 ? COLORS[cell[4]] : null;',
+      '',
+      '    if (bgColor) {',
+      '      context.fillStyle = bgColor;',
+      '      context.fillRect(x * CELL_WIDTH, y * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);',
       '    }',
       '',
-      "    context.fillStyle = cell.color || '#ffffff';",
+      "    context.fillStyle = color || '#ffffff';",
       '    context.fillText(',
-      '      cell.char,',
-      '      cell.x * CELL_WIDTH + CELL_WIDTH / 2,',
-      '      cell.y * CELL_HEIGHT + CELL_HEIGHT / 2',
+      '      char,',
+      '      x * CELL_WIDTH + CELL_WIDTH / 2,',
+      '      y * CELL_HEIGHT + CELL_HEIGHT / 2',
       '    );',
       '  }'
     ];
@@ -1773,6 +1809,8 @@ export class ExportRenderer {
     lines.push(hooksImport);
     lines.push('');
     lines.push(typeBlock);
+    lines.push('');
+    lines.push(paletteDeclaration);
     lines.push('');
     lines.push(framesDeclaration);
     lines.push('');
