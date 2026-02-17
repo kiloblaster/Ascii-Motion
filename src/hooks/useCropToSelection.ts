@@ -7,7 +7,7 @@ import { useTimelineStore } from '../stores/timelineStore';
 import { cropAllFramesToSelection } from '../utils/cropUtils';
 import { getBoundsFromMask } from '../utils/selectionUtils';
 import type { CanvasResizeHistoryAction, Cell } from '../types';
-import type { LayerId, Layer, ContentFrame } from '../types/timeline';
+import type { LayerId } from '../types/timeline';
 
 /**
  * Hook for cropping canvas to selection across all frames

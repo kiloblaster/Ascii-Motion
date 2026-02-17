@@ -301,10 +301,11 @@ export class ExportRenderer {
     this.updateProgress('Preparing video export...', 0);
 
     // Resolve 'auto' frame rate to the project's frame rate
-    const resolvedSettings: VideoExportSettings = {
+    const resolvedFrameRate = settings.frameRate === 'auto' ? (data.frameRate || 12) : settings.frameRate;
+    const resolvedSettings = {
       ...settings,
-      frameRate: settings.frameRate === 'auto' ? (data.frameRate || 12) : settings.frameRate,
-    };
+      frameRate: resolvedFrameRate,
+    } as VideoExportSettings & { frameRate: number };
 
     try {
       // Check if we have frames to export
@@ -3820,34 +3821,6 @@ export class ExportRenderer {
   }
 
   /**
-   * Calculate how many video frames an animation frame should occupy based on its duration
-   */
-  private calculateVideoFramesForDuration(durationMs: number, videoFrameRate: number): number {
-    // Convert duration to seconds, then multiply by frame rate
-    const durationSeconds = durationMs / 1000;
-    const videoFrameCount = Math.max(1, Math.round(durationSeconds * videoFrameRate));
-    return videoFrameCount;
-  }
-
-  /**
-   * Clone a canvas element
-   */
-  private cloneCanvas(originalCanvas: HTMLCanvasElement): HTMLCanvasElement {
-    const clonedCanvas = document.createElement('canvas');
-    clonedCanvas.width = originalCanvas.width;
-    clonedCanvas.height = originalCanvas.height;
-    
-    const clonedCtx = clonedCanvas.getContext('2d');
-    const originalCtx = originalCanvas.getContext('2d');
-    
-    if (clonedCtx && originalCtx) {
-      clonedCtx.drawImage(originalCanvas, 0, 0);
-    }
-    
-    return clonedCanvas;
-  }
-
-  /**
    * Convert loop setting to numeric multiplier
    */
   private getLoopMultiplier(loops: VideoExportSettings['loops']): number {
@@ -3875,7 +3848,7 @@ export class ExportRenderer {
         codec: 'V_VP9',
         width: frames[0].width,
         height: frames[0].height,
-        frameRate: settings.frameRate
+        frameRate: settings.frameRate as number
       }
     });
 
@@ -3914,7 +3887,7 @@ export class ExportRenderer {
         codec: 'vp09.00.10.08', // VP9 codec
         width: frames[0].width,
         height: frames[0].height,
-        framerate: settings.frameRate,
+        framerate: settings.frameRate as number,
         bitrate: this.getBitrateForQuality(settings.quality, frames[0].width, frames[0].height)
       });
 
@@ -3924,7 +3897,7 @@ export class ExportRenderer {
         
         // Create VideoFrame from canvas
         const frame = new VideoFrame(canvas, {
-          timestamp: (i * 1000000) / settings.frameRate // microseconds
+          timestamp: (i * 1000000) / (settings.frameRate as number) // microseconds
         });
         
         // Encode the frame
