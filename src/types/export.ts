@@ -65,7 +65,7 @@ export interface BubbleteaExportSettings {
 
 export interface VideoExportSettings {
   sizeMultiplier: 1 | 2 | 4;
-  frameRate: number; // 1-60 fps
+  frameRate: number | 'auto'; // 'auto' = use project frame rate, or 1-60 fps
   frameRange: { start: number; end: number } | 'all';
   quality: 'high' | 'medium' | 'low'; // Used for WebM encoding
   crf: number; // 0-51, used for H.264 MP4 encoding (lower = higher quality)

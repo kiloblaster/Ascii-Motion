@@ -300,6 +300,12 @@ export class ExportRenderer {
   ): Promise<void> {
     this.updateProgress('Preparing video export...', 0);
 
+    // Resolve 'auto' frame rate to the project's frame rate
+    const resolvedSettings: VideoExportSettings = {
+      ...settings,
+      frameRate: settings.frameRate === 'auto' ? (data.frameRate || 12) : settings.frameRate,
+    };
+
     try {
       // Check if we have frames to export
       if (data.frames.length === 0) {
@@ -307,17 +313,17 @@ export class ExportRenderer {
       }
 
       // Check WebCodecs support for WebM
-      if (settings.format === 'webm' && !this.supportsWebCodecs()) {
+      if (resolvedSettings.format === 'webm' && !this.supportsWebCodecs()) {
         throw new Error('WebCodecs is not supported in your browser. Please use a modern Chrome, Edge, or Safari browser, or switch to MP4 format.');
       }
 
       this.updateProgress('Setting up video encoder...', 10);
 
-      if (settings.format === 'webm') {
-        await this.exportWebMVideo(data, settings, filename);
+      if (resolvedSettings.format === 'webm') {
+        await this.exportWebMVideo(data, resolvedSettings, filename);
       } else {
         // MP4 fallback using canvas frame capture and blob creation
-        await this.exportMP4Fallback(data, settings, filename);
+        await this.exportMP4Fallback(data, resolvedSettings, filename);
       }
       
     } catch (error) {
@@ -3680,20 +3686,18 @@ export class ExportRenderer {
     // Calculate how many loops to generate
     const loopMultiplier = this.getLoopMultiplier(settings.loops);
     
-    // Pre-calculate video frame counts for each animation frame
-    const frameVideoFrameCounts = originalFrames.map(frame => 
-      this.calculateVideoFramesForDuration(frame.duration, settings.frameRate)
-    );
-    
-    const totalVideoFrames = frameVideoFrameCounts.reduce((sum, count) => sum + count, 0) * loopMultiplier;
+    // Each animation frame = exactly 1 video frame.
+    // The video fps controls playback speed:
+    // - Auto/project fps: plays at intended speed
+    // - Different fps: same frames, different playback speed
+    const totalVideoFrames = originalFrames.length * loopMultiplier;
     
     let globalVideoFrameIndex = 0;
     
-    // Generate frames for all loops
+    // Generate frames for all loops — 1 video frame per animation frame
     for (let loop = 0; loop < loopMultiplier; loop++) {
       for (let animFrameIndex = 0; animFrameIndex < originalFrames.length; animFrameIndex++) {
         const animationFrame = originalFrames[animFrameIndex];
-        const videoFrameCount = frameVideoFrameCounts[animFrameIndex];
         
         // Create high-resolution canvas for this animation frame
         const frameCanvas = this.createExportCanvas(
@@ -3704,7 +3708,7 @@ export class ExportRenderer {
           data.typography
         );
         
-        // Render the animation frame once
+        // Render the animation frame
         await this.renderFrame(
           frameCanvas.canvas,
           animationFrame.data,
@@ -3720,25 +3724,17 @@ export class ExportRenderer {
             scale: frameCanvas.scale
           }
         );
-        // Duplicate this canvas for the required number of video frames
-        for (let videoFrameIndex = 0; videoFrameIndex < videoFrameCount; videoFrameIndex++) {
-          // Clone the canvas for each video frame
-          const clonedCanvas = this.cloneCanvas(frameCanvas.canvas);
-          videoFrames.push(clonedCanvas);
-          
-          globalVideoFrameIndex++;
-          
-          // Update progress (spread across 20-50% range)
-          const progress = 20 + (globalVideoFrameIndex / totalVideoFrames) * 30;
-          this.updateProgress(
-            `Rendering video frame ${globalVideoFrameIndex}/${totalVideoFrames} (anim frame ${animFrameIndex + 1}/${originalFrames.length}, loop ${loop + 1}/${loopMultiplier})...`, 
-            progress
-          );
-        }
         
-        // Clean up the original canvas
-        frameCanvas.canvas.width = 0;
-        frameCanvas.canvas.height = 0;
+        // 1 video frame per animation frame
+        videoFrames.push(frameCanvas.canvas);
+        globalVideoFrameIndex++;
+        
+        // Update progress (spread across 20-50% range)
+        const progress = 20 + (globalVideoFrameIndex / totalVideoFrames) * 30;
+        this.updateProgress(
+          `Rendering video frame ${globalVideoFrameIndex}/${totalVideoFrames} (anim frame ${animFrameIndex + 1}/${originalFrames.length}, loop ${loop + 1}/${loopMultiplier})...`, 
+          progress
+        );
       }
     }
     
