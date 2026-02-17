@@ -207,7 +207,16 @@ Before submitting any architectural change, ask yourself:
 ---
 
 ## Project Context
-ASCII Motion is a React + TypeScript web application for creating and animating ASCII art. We use Vite for building, Shadcn/ui for components, Zustand for state management, and Tailwind CSS v3 for styling.
+ASCII Motion is a React + TypeScript web application for creating and animating ASCII art with a professional layer-based timeline system. The app uses a compositing architecture where multiple layers are rendered with keyframe-interpolated transforms (position, scale, rotation, anchor point). We use Vite for building, Shadcn/ui for components, Zustand for state management (primary store: `timelineStore.ts`), and Tailwind CSS v3 for styling.
+
+**Key architectural components:**
+- **`timelineStore.ts`** — Primary state: layers, content frames, keyframes, playback, timeline config
+- **`animationStore.ts`** — Compatibility adapter providing legacy API over `timelineStore`
+- **`useCompositedCanvas.ts`** — Composites all visible layers for rendering
+- **`useFrameSynchronization.ts`** — Syncs active layer's content frame ↔ canvas store
+- **`layerCompositing.ts`** — Multi-layer compositing with transform support
+- **`layerTransformUtils.ts`** — Screen↔local coordinate conversion for layer transforms
+- **Session format v2.0.0** — Preserves layers, keyframes, transforms; auto-migrates v1 files
 
 ## 🚨 **CRITICAL: Security Headers & Cross-Origin Configuration**
 
@@ -1658,14 +1667,19 @@ Before creating any new file, ask:
 - [ ] Keep navigation clear in `docs/README.md`
 
 ### 2. State Management with Zustand
-**Current focused, single-responsibility stores:**
-- `useCanvasStore` - Canvas data, dimensions, cells, and canvas operations
-- `useAnimationStore` - Timeline, frames, playback state  
-- `useToolStore` - Active tool, tool settings, drawing state, undo/redo
-
-**Future planned stores:**
-- `useProjectStore` - Project metadata, save/load operations (planned)
-- `useUIStore` - UI state, panels, dialogs (if needed)
+**Current stores (layer-based timeline architecture):**
+- `useTimelineStore` - **PRIMARY**: Layers, content frames, keyframes, property tracks, timeline config, playback, groups
+- `useCanvasStore` - Canvas working buffer for the active layer's current content frame
+- `useAnimationStore` - **Compatibility adapter** providing legacy frame-based API over `timelineStore` (do NOT use for new code)
+- `useToolStore` - Active tool, tool settings, drawing state, undo/redo history
+- `useProjectMetadataStore` - Project name, description
+- `useImportStore` - Media import workflow state, settings, preview
+- `useExportStore` - Export dialog state, format settings
+- `useGeneratorsStore` - Generator definitions, preview, output
+- `useBezierStore` - Bezier pen tool state
+- `usePreviewStore` - Preview overlay for effects/generators
+- `usePaletteStore` - Color palettes
+- `useCharacterPaletteStore` - Character palettes and mapping
 
 **Store Patterns:**
 ```typescript
@@ -3767,93 +3781,46 @@ const useCanvasDragAndDrop = () => {
 
 ### 7. Animation & Timeline Guidelines
 
-**Frame Synchronization with Move Commit Pattern:**
-```typescript
-// ✅ CORRECT: Commit move operations before frame switching
-const useFrameSynchronization = (moveState, setMoveState) => {
-  useEffect(() => {
-    if (currentFrameIndex !== previousFrameIndex) {
-      let currentCellsToSave = new Map(cells);
-      
-      // Commit pending moves to preserve user work
-      if (moveState) {
-        const totalOffset = {
-          x: moveState.baseOffset.x + moveState.currentOffset.x,
-          y: moveState.baseOffset.y + moveState.currentOffset.y
-        };
-        
-        const newCells = new Map(cells);
-        moveState.originalData.forEach((_, key) => newCells.delete(key));
-        moveState.originalData.forEach((cell, key) => {
-          const [origX, origY] = key.split(',').map(Number);
-          const newX = origX + totalOffset.x;
-          const newY = origY + totalOffset.y;
-          if (newX >= 0 && newX < width && newY >= 0 && newY < height) {
-            newCells.set(`${newX},${newY}`, cell);
-          }
-        });
-        
-        // Save committed data, not original canvas data
-        currentCellsToSave = newCells;
-        setCanvasData(newCells);
+**Layer-Based Timeline Architecture (v2.0.0):**
 
-**🚨 CRITICAL: Frame Operation Race Condition Prevention (Updated Sept 8, 2025)**
+The animation system uses a layer-based model where each layer contains content frames (segments of ASCII canvas data with timing) and property tracks (keyframeable transforms). The `timelineStore` is the source of truth; `canvasStore` acts as a working buffer for the active layer's current content frame.
 
-**Frame Synchronization Guards Pattern:**
-```typescript
-// ✅ MANDATORY: Use operation flags to prevent race conditions
-const useFrameSynchronization = () => {
-  const { isDeletingFrame, isDraggingFrame, isAddingFrame } = useAnimationStore();
-  
-  useEffect(() => {
-    // 🚨 GUARD CONDITION: Never save during frame operations
-    if (isDeletingFrame || isDraggingFrame || isAddingFrame) {
-      return; // Skip auto-save to prevent data corruption
-    }
-    
-    // Normal synchronization logic only when safe
-    if (shouldSave && frameChanged) {
-      saveCanvasToFrame();
-    }
-  }, [frameIndex, cells, isDeletingFrame, isDraggingFrame, isAddingFrame]);
-};
-
-// ✅ FRAME OPERATION PATTERN: Set flags during operations
-const deleteFrame = (index: number) => {
-  set({ isDeletingFrame: true });
-  
-  // Perform atomic frame deletion
-  set((state) => ({
-    frames: state.frames.filter((_, i) => i !== index),
-    currentFrameIndex: Math.min(state.currentFrameIndex, newLength - 1)
-  }));
-  
-  // Reset flag after operation completes
-  setTimeout(() => set({ isDeletingFrame: false }), 0);
-};
+**Data Flow:**
+```
+timelineStore (layers, content frames, keyframes)
+    |
+    v
+useFrameSynchronization (syncs active layer's content frame <-> canvasStore)
+    |
+    v
+canvasStore (working buffer for drawing tools)
+    |
+    v
+useCompositedCanvas (composites all layers for rendering)
+    |
+    v
+useCanvasRenderer (draws to canvas element)
 ```
 
-**⚠️ Race Condition Symptoms:**
-- Frame deletion shows wrong remaining frames ([1,2,3,4] → delete 3 → [1,2,3] instead of [1,2,4])
-- Canvas data from wrong frame appears after operations
-- Frame reordering corrupts animation sequence
-- Undo/redo restores incorrect frame data
+**Key Sync Rules:**
+- When active layer changes: flush canvas to old layer's content frame, load new layer's content frame
+- When frame changes: same flush/load cycle
+- `isImportingSession` flag blocks auto-save during session import to prevent race conditions
+- Drawing tools write to `canvasStore`; debounced auto-save writes back to the active layer's content frame in `timelineStore`
 
-**🔧 Required Implementation Pattern:**
-1. **Add operation flags to store** (`isDeletingFrame`, `isDraggingFrame`, etc.)
-2. **Guard useFrameSynchronization** with flag checks
-3. **Set flags before operations**, reset after completion  
-4. **Use atomic state updates** for frame array modifications
-5. **Timeout-based flag resets** to handle async completion
-        setMoveState(null);
-      }
-      
-      // Save committed changes to frame before switching
-      setFrameData(previousFrameIndex, currentCellsToSave);
-      loadFrameToCanvas(currentFrameIndex);
-    }
-  }, [currentFrameIndex, moveState]);
-};
+**Content Frame Model:**
+```typescript
+interface ContentFrame {
+  id: ContentFrameId;
+  name: string;
+  startFrame: number;      // When this content starts on the timeline
+  durationFrames: number;  // How many frames it lasts
+  data: Map<string, Cell>; // The ASCII cell data
+}
+```
+
+**Keyframe Interpolation:**
+Transform properties (position, scale, rotation, anchor point) are interpolated between keyframes using cubic bezier easing. The compositing engine applies these transforms when rendering each layer.
 
 // ❌ WRONG: Lose user work by not committing moves
 if (currentFrameIndex !== previousFrameIndex) {
@@ -4033,7 +4000,7 @@ npm run lint
 3. **Use performance tools** - Leverage measureCanvasRender, PerformanceMonitor for development
 4. **Think in components** - Break down features into reusable, memoized pieces
 5. **Optimize for the user workflow** - Make common actions fast and intuitive
-6. **Plan for future features** - Design APIs that can be extended (Steps 5.2-5.3)
+6. **Plan for future features** - Design APIs that can be extended
 7. **Test cross-browser** - Ensure compatibility with major browsers
 8. **Consider accessibility** - Use proper ARIA labels and keyboard navigation
 9. **Monitor render performance** - Use development tools to validate optimizations
@@ -4053,7 +4020,39 @@ npm run lint
 
 **If any checkbox above is unchecked, your work is not finished!**
 
-## Current Architecture Status (Enhanced October 11, 2025):
+## Current Architecture Status (v2.0.0, February 2026):
+
+**Layer-Based Timeline System (v2.0.0)**
+
+ASCII Motion v2.0.0 replaces the v1 frame-by-frame animation model with a professional layer-based timeline system with keyframe interpolation.
+
+**Core Architecture:**
+- **`timelineStore.ts`** - Primary state: layers, content frames, keyframes, property tracks, groups, timeline config, playback
+- **`animationStore.ts`** - Compatibility adapter providing legacy API over `timelineStore`. Do NOT use for new code.
+- **`layerCompositing.ts`** - Multi-layer compositing with inverse-mapping transforms
+- **`layerTransformUtils.ts`** - `screenToLocal()`, `localToScreen()`, `screenToLocalForLayer()` for coordinate conversion
+- **`useCompositedCanvas.ts`** - Composites all visible layers for rendering
+- **`useFrameSynchronization.ts`** - Bidirectional sync between `canvasStore` and `timelineStore` content frames
+- **`sessionMigration.ts`** - v1-to-v2 session format migration with validation and repair
+
+**Layer System Features:**
+- Layers with z-order compositing, groups with cascading transforms
+- Keyframe interpolation (position, scale, rotation, anchor point) with cubic bezier easing
+- Content frames with draggable timing, property tracks with keyframe diamonds
+- Layer transform tool (V hotkey) with bounding box handles
+- Multi-layer selection, crop, merge, solo/visibility/lock
+- Frame rate controls, work area with trim, onion skinning
+
+**Import/Export:**
+- Media import with New Layer mode, video frame rate matching
+- All exports composite layers; React/CLI exports use frame deduplication and color dictionaries
+- Video export with Auto fps mode; session export in v2.0.0 format
+- Crop operates across all layers with transform preservation
+
+**Coordinate System Rule:**
+Mouse events produce screen space coordinates. Drawing tools call `screenToLocal()` before `setCell()`. Selection masks stay in screen space. The compositing engine forward-transforms local-space content to screen space for rendering.
+
+**Previous v1 Architecture Notes (Oct 2025 and earlier):**
 🚨 **LATEST**: Optimized Playback UI Sync (Oct 11, 2025)
 
 **Optimized Playback UI Sync (Oct 11, 2025):**
@@ -4251,7 +4250,9 @@ npm run lint
 - Performance optimizations support large grids (200x100+ cells)
 - Advanced selection tools (rectangular, lasso) with move functionality
 - Text input tool with cursor rendering and conflict-free operation
-- Ready for Steps 5.2-5.3 and Phase 2: Animation System
+- Layer-based timeline with keyframe interpolation (v2.0.0)
+- Multi-layer compositing, groups, transform tools
+- Session format v2.0.0 with automatic v1 migration
 **When Working with Canvas Components (Post Step 5.1):**
 1. **Use CanvasProvider** - Wrap canvas components in context
 2. **Use established hooks** - `useCanvasContext()`, `useCanvasState()`, `useMemoizedGrid()`, etc.
@@ -4275,24 +4276,26 @@ npm run lint
 ### **Current Layout Architecture:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Header: ASCII Motion + Theme Toggle                        │
+│ Header: Tool Options Bar | Canvas Size/Display | Theme      │
 ├─────────────────────────────────────────────────────────────┤
-│ Left Sidebar    │ Center Canvas Area  │ Right Sidebar       │
-│ - Tools (11)    │ ┌─────────────────┐ │ - Status Info       │
-│ - Characters    │ │ Canvas Settings │ │ - Canvas Info       │
-│ - Colors        │ │ (Centered)      │ │ - Animation Info    │
-│                 │ ├─────────────────┤ │ - Current Tool      │
-│                 │ │                 │ │ - Character Info    │
-│                 │ │ Canvas Grid     │ │                     │
-│                 │ │                 │ │                     │
-│                 │ │                 │ │                     │
-│                 │ ├─────────────────┤ │                     │
-│                 │ │ Grid: 80×26     │ │                     │
-│                 │ │ [Action Buttons]│ │                     │
-│                 │ │ Status: Ready   │ │                     │
-│                 │ └─────────────────┘ │                     │
+│ Tool Panel    │ Center Canvas Area    │ Right Sidebar       │
+│ (84px, 2-col) │ ┌───────────────────┐ │ - Layer Properties  │
+│ - Drawing     │ │                   │ │ - Group Properties  │
+│ - Selection   │ │ Canvas Grid       │ │ - Keyframe Editor   │
+│ - Utility     │ │ (composited view) │ │                     │
+│ - Actions     │ │                   │ │                     │
+│ - Colors      │ ├───────────────────┤ │                     │
+│ - Characters  │ │ Zoom Controls     │ │                     │
+│               │ └───────────────────┘ │                     │
 ├─────────────────────────────────────────────────────────────┤
-│ Timeline Footer: Coming Soon                               │
+│ Timeline Panel (resizable via drag handle)                  │
+│ ┌─────────────┬─────────────────────────────────────────────┤
+│ │ Toolbar: Frame Ops | Playback | Frame Counter            │
+│ ├─────────────┼─────────────────────────────────────────────┤
+│ │ Layer List  │ Timeline Ruler + Playhead                   │
+│ │ (w-52)      │ Content Frame Blocks + Keyframe Diamonds    │
+│ ├─────────────┴─────────────────────────────────────────────┤
+│ │ Footer: Work Area | Onion Skin | Zoom + Frame Timeline    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
