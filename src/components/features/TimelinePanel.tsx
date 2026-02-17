@@ -24,7 +24,7 @@ import { GroupPropertiesPanel } from './timeline/GroupPropertiesPanel';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Slider } from '../ui/slider';
-import { ZoomIn, CornerDownLeft, CornerDownRight, Scissors, X } from 'lucide-react';
+import { ZoomIn, CornerDownLeft, CornerDownRight, Scissors, X, RulerDimensionLine } from 'lucide-react';
 import { useTimelineHistory } from '../../hooks/useTimelineHistory';
 
 /**
@@ -47,11 +47,14 @@ const TimelineFooter = React.memo(function TimelineFooter({
   clearWorkArea: () => void;
 }) {
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
+  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
   const setWorkAreaStart = useTimelineStore((s) => s.setWorkAreaStart);
   const setWorkAreaEnd = useTimelineStore((s) => s.setWorkAreaEnd);
+  const footerRef = useRef<HTMLDivElement>(null);
 
   return (
     <div
+      ref={footerRef}
       className="flex-shrink-0 border-t border-border/50 px-2 py-1.5 flex items-center gap-2 h-[34px]"
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
@@ -120,8 +123,28 @@ const TimelineFooter = React.memo(function TimelineFooter({
         <OnionSkinControls />
       </div>
 
-      {/* Right: Zoom */}
+      {/* Right: Zoom + Frame timeline */}
+      <TooltipProvider>
       <div className="flex items-center gap-1 flex-shrink-0">
+        <Tooltip><TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 w-5 p-0"
+            onClick={() => {
+              // Calculate zoom to fit entire timeline in view
+              // Track area width ≈ footer width (they're in the same flex column)
+              const containerWidth = footerRef.current?.parentElement?.clientWidth ?? 600;
+              // Subtract layer list width (w-52 = 208px) and some padding
+              const trackWidth = Math.max(100, containerWidth - 220);
+              const BASE_PX = 12; // BASE_PX_PER_FRAME from TimelineTrackArea
+              const fitZoom = trackWidth / (durationFrames * BASE_PX);
+              setZoom(Math.max(0.5, Math.min(8, Math.round(fitZoom * 4) / 4)));
+            }}
+          >
+            <RulerDimensionLine className="w-3 h-3" />
+          </Button>
+        </TooltipTrigger><TooltipContent>Frame entire timeline</TooltipContent></Tooltip>
         <ZoomIn className="w-3 h-3 text-muted-foreground" />
         <Slider
           value={zoom}
@@ -135,6 +158,7 @@ const TimelineFooter = React.memo(function TimelineFooter({
           {zoom.toFixed(1)}x
         </span>
       </div>
+      </TooltipProvider>
     </div>
   );
 });
