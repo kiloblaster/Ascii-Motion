@@ -7,7 +7,12 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import { getToolForHotkey } from '../constants/hotkeys';
 import { useZoomControls } from './useZoomControls';
 import { useFrameNavigation } from './useFrameNavigation';
+import { useTimelineHistory } from './useTimelineHistory';
 import { useAnimationHistory } from './useAnimationHistory';
+import { getContentFrameAtTime, compositeLayersAtFrame } from '../utils/layerCompositing';
+import { screenToLocal, screenToLocalForLayer } from '../utils/layerTransformUtils';
+import { useOptimizedPlayback } from './useOptimizedPlayback';
+import { usePlaybackOnlySnapshot } from './usePlaybackOnlySnapshot';
 import { usePaletteStore } from '../stores/paletteStore';
 import { useCharacterPaletteStore } from '../stores/characterPaletteStore';
 import { useFlipUtilities } from './useFlipUtilities';
@@ -18,6 +23,9 @@ import { clearAllSelections, hasAnySelection } from './useSelectionSync';
 import { useSelectionStore } from '../stores/selectionStore';
 import { ANSI_COLORS } from '../constants/colors';
 import type { AnyHistoryAction, CanvasHistoryAction, CanvasResizeHistoryAction, FrameId, Cell } from '../types';
+import { useTimelineStore } from '../stores/timelineStore';
+import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyPath } from '../types/timeline';
+import { PROPERTY_DEFINITIONS } from '../types/timeline';
 
 type CanvasStoreState = ReturnType<typeof useCanvasStore.getState>;
 type CanvasStoreForHistory = Pick<CanvasStoreState, 'setCanvasData'>;
@@ -64,41 +72,103 @@ const processHistoryAction = (
       const resizeAction = action as CanvasResizeHistoryAction;
       const canvas = useCanvasStore.getState();
       
-      // Check if this is a crop operation with all frames data
       const isCropOperation = resizeAction.data.isCropOperation === true;
+      const hasLayerSnapshots = !!resizeAction.data.previousLayerSnapshots;
       
       if (isRedo) {
-        // Redo: Apply new size
         canvas.setCanvasSize(resizeAction.data.newWidth, resizeAction.data.newHeight);
         
-        // If crop operation, restore all frames to cropped state
-        if (isCropOperation && resizeAction.data.allFramesNewData) {
+        if (isCropOperation && !hasLayerSnapshots && resizeAction.data.allFramesNewData) {
+          // Legacy single-layer crop redo
           resizeAction.data.allFramesNewData.forEach((frameData: Map<string, Cell>, index: number) => {
             animationStore.setFrameData(index, frameData);
           });
         }
+        // Multi-layer crop redo: re-run the crop (not easily reversible from snapshots alone)
+        // For now, re-crop is not supported — user would need to re-execute the crop
         
-        // Update current canvas to match current frame
         const currentFrame = animationStore.frames[resizeAction.data.frameIndex];
         if (currentFrame) {
           canvas.setCanvasData(currentFrame.data);
         }
       } else {
-        // Undo: Restore previous size and data
+        // Undo
         canvas.setCanvasSize(resizeAction.data.previousWidth, resizeAction.data.previousHeight);
         
-        // If crop operation, restore all frames to pre-crop state
-        if (isCropOperation && resizeAction.data.allFramesPreviousData) {
+        if (hasLayerSnapshots && resizeAction.data.previousLayerSnapshots) {
+          // Multi-layer crop undo: restore ALL layers' content frames, transforms, and keyframes
+          const tl = useTimelineStore.getState();
+          
+          for (const snapshot of resizeAction.data.previousLayerSnapshots) {
+            const layerId = snapshot.id as import('../types/timeline').LayerId;
+            
+            // Restore content frame data
+            for (const cfSnapshot of snapshot.contentFrames) {
+              tl.updateContentFrameData(layerId, cfSnapshot.id as import('../types/timeline').ContentFrameId, new Map(cfSnapshot.data));
+            }
+            
+            // Restore static properties (position, anchor)
+            for (const [key, value] of Object.entries(snapshot.staticProperties)) {
+              tl.setStaticProperty(layerId, key, value);
+            }
+            
+            // Restore keyframe values on property tracks
+            if (snapshot.propertyTracks) {
+              for (const trackSnapshot of snapshot.propertyTracks) {
+                const trackId = trackSnapshot.id as import('../types/timeline').PropertyTrackId;
+                for (const kfSnapshot of trackSnapshot.keyframes) {
+                  tl.updateKeyframe(layerId, trackId, kfSnapshot.id as import('../types/timeline').KeyframeId, {
+                    value: kfSnapshot.value as number,
+                  });
+                }
+              }
+            }
+          }
+          
+          // Restore group transforms and keyframes
+          if (resizeAction.data.previousGroupSnapshots) {
+            for (const gSnapshot of resizeAction.data.previousGroupSnapshots) {
+              const groupId = gSnapshot.id as unknown as import('../types/timeline').LayerId;
+              for (const [key, value] of Object.entries(gSnapshot.staticProperties)) {
+                tl.setStaticProperty(groupId, key, value);
+              }
+              if (gSnapshot.propertyTracks) {
+                for (const trackSnapshot of gSnapshot.propertyTracks) {
+                  const trackId = trackSnapshot.id as import('../types/timeline').PropertyTrackId;
+                  for (const kfSnapshot of trackSnapshot.keyframes) {
+                    tl.updateKeyframe(groupId, trackId, kfSnapshot.id as import('../types/timeline').KeyframeId, {
+                      value: kfSnapshot.value as number,
+                    });
+                  }
+                }
+              }
+            }
+          }
+          
+          // Reload canvas from active layer
+          const activeLayerId = tl.view.activeLayerId;
+          if (activeLayerId) {
+            const layer = useTimelineStore.getState().layers.find(l => l.id === activeLayerId);
+            if (layer) {
+              const frame = tl.view.currentFrame;
+              const cf = layer.contentFrames.find(c => frame >= c.startFrame && frame < c.startFrame + c.durationFrames);
+              if (cf) {
+                canvas.setCanvasData(new Map(cf.data));
+              }
+            }
+          }
+        } else if (isCropOperation && resizeAction.data.allFramesPreviousData) {
+          // Legacy single-layer crop undo
           resizeAction.data.allFramesPreviousData.forEach((frameData: Map<string, Cell>, index: number) => {
             animationStore.setFrameData(index, frameData);
           });
+          canvas.setCanvasData(resizeAction.data.previousCanvasData);
+        } else {
+          // Simple resize undo (no crop)
+          canvas.setCanvasData(resizeAction.data.previousCanvasData);
         }
-        
-        // Restore current frame's data
-        canvas.setCanvasData(resizeAction.data.previousCanvasData);
       }
       
-      // Set current frame to match the frame this resize was made in
       animationStore.setCurrentFrame(resizeAction.data.frameIndex);
       break;
     }
@@ -221,43 +291,72 @@ const processHistoryAction = (
       
     case 'apply_effect': {
       const effectAction = action as import('../types').ApplyEffectHistoryAction;
+      const tl = useTimelineStore.getState();
+      
       if (isRedo) {
-        // Redo: Restore the "after" state (following the forward snapshot pattern)
-        if (effectAction.data.applyToTimeline) {
-          // Restore all affected frames to their post-effect state
-          if (effectAction.data.newFramesData) {
+        if (effectAction.data.targetScope === 'all-layers' && effectAction.data.newLayerFramesData) {
+          // Multi-layer redo: restore each layer's frames from stored data
+          for (const { layerId, framesData } of effectAction.data.newLayerFramesData) {
+            const layer = tl.layers.find(l => (l.id as string) === layerId);
+            if (layer) {
+              for (const { frameIndex, data } of framesData) {
+                const cf = layer.contentFrames[frameIndex];
+                if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
+              }
+            }
+          }
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.applyToTimeline && effectAction.data.newFramesData) {
+          // Single-layer timeline redo
+          const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+          const targetLayer = targetLayerId
+            ? tl.layers.find(l => (l.id as string) === targetLayerId)
+            : tl.layers.find(l => l.id === tl.view.activeLayerId);
+          if (targetLayer) {
             effectAction.data.newFramesData.forEach(({ frameIndex, data }) => {
-              animationStore.setFrameData(frameIndex, data);
+              const cf = targetLayer.contentFrames[frameIndex];
+              if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
             });
-            console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to ${effectAction.data.newFramesData.length} frames`);
-          } else {
-            console.warn(`⚠️ Redo for ${effectAction.data.effectType} effect: newFramesData missing (legacy entry)`);
           }
-        } else {
-          // Restore single canvas to its post-effect state
-          if (effectAction.data.newCanvasData) {
-            canvasStore.setCanvasData(effectAction.data.newCanvasData);
-            console.log(`✅ Redo: Applied ${effectAction.data.effectType} effect to canvas`);
-          } else {
-            console.warn(`⚠️ Redo for ${effectAction.data.effectType} effect: newCanvasData missing (legacy entry)`);
-          }
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.newCanvasData) {
+          // Single-layer current frame redo
+          canvasStore.setCanvasData(effectAction.data.newCanvasData);
         }
       } else {
         // Undo: Restore previous data
-        if (effectAction.data.applyToTimeline) {
-          // Restore all affected frames
-          if (effectAction.data.previousFramesData) {
+        if (effectAction.data.targetScope === 'all-layers' && effectAction.data.previousLayerFramesData) {
+          // Multi-layer undo: restore each layer's frames from stored data
+          for (const { layerId, framesData } of effectAction.data.previousLayerFramesData) {
+            const layer = tl.layers.find(l => (l.id as string) === layerId);
+            if (layer) {
+              for (const { frameIndex, data } of framesData) {
+                const cf = layer.contentFrames[frameIndex];
+                if (cf) tl.updateContentFrameData(layer.id, cf.id, data);
+              }
+            }
+          }
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.applyToTimeline && effectAction.data.previousFramesData) {
+          // Single-layer timeline undo
+          const targetLayerId = effectAction.data.affectedLayerIds?.[0];
+          const targetLayer = targetLayerId
+            ? tl.layers.find(l => (l.id as string) === targetLayerId)
+            : tl.layers.find(l => l.id === tl.view.activeLayerId);
+          if (targetLayer) {
             effectAction.data.previousFramesData.forEach(({ frameIndex, data }) => {
-              animationStore.setFrameData(frameIndex, data);
+              const cf = targetLayer.contentFrames[frameIndex];
+              if (cf) tl.updateContentFrameData(targetLayer.id, cf.id, data);
             });
-            console.log(`✅ Undo: Restored ${effectAction.data.previousFramesData.length} frames from ${effectAction.data.effectType} effect`);
           }
-        } else {
-          // Restore single canvas
-          if (effectAction.data.previousCanvasData) {
-            canvasStore.setCanvasData(effectAction.data.previousCanvasData);
-            console.log(`✅ Undo: Restored canvas from ${effectAction.data.effectType} effect`);
-          }
+          const currentData = animationStore.getFrameData(animationStore.currentFrameIndex);
+          if (currentData) canvasStore.setCanvasData(currentData);
+        } else if (effectAction.data.previousCanvasData) {
+          // Single-layer current frame undo
+          canvasStore.setCanvasData(effectAction.data.previousCanvasData);
         }
       }
       break;
@@ -431,7 +530,53 @@ const processHistoryAction = (
     case 'import_media': {
       const importAction = action as import('../types').ImportMediaHistoryAction;
       
-      if (importAction.data.mode === 'single') {
+      if (importAction.data.mode === 'new_layer') {
+        // New layer import — undo removes the layer, redo re-creates from snapshot
+        const tl = useTimelineStore.getState();
+        
+        if (isRedo) {
+          const snapshot = importAction.data.layerSnapshot;
+          if (snapshot) {
+            const newLayerId = tl.addLayer(importAction.data.layerName);
+            if (newLayerId) {
+              // Remove the default empty content frame
+              const newLayer = tl.layers.find(l => l.id === newLayerId);
+              if (newLayer) {
+                for (const cf of [...newLayer.contentFrames]) {
+                  tl.removeContentFrame(newLayerId, cf.id);
+                }
+              }
+              // Restore content frames from snapshot
+              const snapshotFrames = (snapshot as { contentFrames?: Array<{ startFrame: number; durationFrames: number; data: Record<string, { char: string; textColor: string; bgColor: string }> }> }).contentFrames;
+              if (snapshotFrames) {
+                for (const cf of snapshotFrames) {
+                  const cellData = new Map<string, import('../types').Cell>();
+                  if (cf.data) {
+                    for (const [key, cell] of Object.entries(cf.data)) {
+                      cellData.set(key, cell as unknown as import('../types').Cell);
+                    }
+                  }
+                  tl.addContentFrame(newLayerId, cf.startFrame, cf.durationFrames, cellData);
+                }
+              }
+              // Update the history action's layerId to the new one (for subsequent undo)
+              importAction.data.layerId = newLayerId as string;
+              console.log(`✅ Redo: Re-created imported media layer "${importAction.data.layerName}" (${importAction.data.importedFrameCount} frames)`);
+            }
+          }
+        } else {
+          // Undo: Remove the imported layer
+          const layerId = importAction.data.layerId;
+          if (layerId) {
+            tl.removeLayer(layerId as import('../types/timeline').LayerId);
+            // Restore previous active layer
+            if (importAction.data.previousActiveLayerId) {
+              tl.setActiveLayer(importAction.data.previousActiveLayerId as import('../types/timeline').LayerId);
+            }
+            console.log(`✅ Undo: Removed imported media layer "${importAction.data.layerName}"`);
+          }
+        }
+      } else if (importAction.data.mode === 'single') {
         // Single image import - restore canvas data
         if (isRedo) {
           if (importAction.data.newCanvasData) {
@@ -470,28 +615,61 @@ const processHistoryAction = (
           }
         }
       }
+      
+      // Restore/reapply frame rate change if applicable
+      if (importAction.data.previousProjectFps !== undefined && importAction.data.newProjectFps !== undefined) {
+        const tl = useTimelineStore.getState();
+        if (isRedo) {
+          tl.setFrameRate(importAction.data.newProjectFps, false);
+          console.log(`✅ Redo: Restored project frame rate to ${importAction.data.newProjectFps} fps`);
+        } else {
+          tl.setFrameRate(importAction.data.previousProjectFps, false);
+          console.log(`✅ Undo: Restored project frame rate to ${importAction.data.previousProjectFps} fps`);
+        }
+      }
       break;
     }
     
     case 'apply_generator': {
       const generatorAction = action as import('../types').ApplyGeneratorHistoryAction;
+      const tl = useTimelineStore.getState();
       
-      // Generators always work with frames (not single canvas)
       if (isRedo) {
-        if (generatorAction.data.newFrames) {
-          animationStore.replaceFrames(
-            generatorAction.data.newFrames,
-            generatorAction.data.newCurrentFrame || 0
-          );
-          console.log(`✅ Redo: Applied ${generatorAction.data.generatorId} generator (${generatorAction.data.frameCount} frames)`);
+        // Redo: Re-create the generator layer from the snapshot
+        const snapshot = generatorAction.data.layerSnapshot;
+        if (snapshot) {
+          // Add a new layer and populate it from the snapshot
+          const newLayerId = tl.addLayer(generatorAction.data.layerName);
+          if (newLayerId) {
+            // Remove the default empty content frame
+            const newLayer = tl.layers.find(l => l.id === newLayerId);
+            if (newLayer) {
+              for (const cf of [...newLayer.contentFrames]) {
+                tl.removeContentFrame(newLayerId, cf.id);
+              }
+            }
+            // Restore content frames from snapshot
+            const snapshotFrames = (snapshot as { contentFrames?: Array<{ startFrame: number; durationFrames: number; data: Record<string, { char: string; textColor: string; bgColor: string }> }> }).contentFrames;
+            if (snapshotFrames) {
+              for (const cf of snapshotFrames) {
+                const cellData = new Map<string, import('../types').Cell>();
+                if (cf.data) {
+                  for (const [key, cell] of Object.entries(cf.data)) {
+                    cellData.set(key, cell as unknown as import('../types').Cell);
+                  }
+                }
+                tl.addContentFrame(newLayerId, cf.startFrame, cf.durationFrames, cellData);
+              }
+            }
+            console.log(`✅ Redo: Re-created ${generatorAction.data.layerName} layer (${generatorAction.data.frameCount} frames)`);
+          }
         }
       } else {
-        if (generatorAction.data.previousFrames) {
-          animationStore.replaceFrames(
-            generatorAction.data.previousFrames,
-            generatorAction.data.previousCurrentFrame || 0
-          );
-          console.log(`✅ Undo: Restored ${generatorAction.data.previousFrames.length} frame(s) before ${generatorAction.data.generatorId} generator`);
+        // Undo: Remove the generator layer
+        const layerId = generatorAction.data.layerId;
+        if (layerId) {
+          tl.removeLayer(layerId as import('../types/timeline').LayerId);
+          console.log(`✅ Undo: Removed ${generatorAction.data.layerName} layer`);
         }
       }
       break;
@@ -672,6 +850,528 @@ const processHistoryAction = (
       }
       break;
     }
+
+    // ============================================
+    // Layer/Timeline Actions (v2.0.0)
+    // ============================================
+
+    case 'layer_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-insert the layer at its original position
+        const newLayers = [...tl.layers];
+        newLayers.splice(action.data.insertIndex, 0, structuredClone(action.data.layerData));
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: action.data.layerId as LayerId },
+        });
+      } else {
+        // Remove the added layer
+        const newLayers = tl.layers.filter((l) => l.id !== action.data.layerId);
+        const newActive = newLayers.length > 0
+          ? newLayers[Math.min(action.data.insertIndex, newLayers.length - 1)].id
+          : null;
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: newActive },
+        });
+      }
+      break;
+    }
+
+    case 'layer_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the layer
+        const newLayers = tl.layers.filter((l) => l.id !== action.data.layerId);
+        const newActive = newLayers.length > 0
+          ? newLayers[Math.min(action.data.index, newLayers.length - 1)].id
+          : null;
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: newActive },
+        });
+      } else {
+        // Re-insert the removed layer at its original position
+        const newLayers = [...tl.layers];
+        newLayers.splice(action.data.index, 0, structuredClone(action.data.layerData));
+        useTimelineStore.setState({
+          layers: newLayers,
+          view: { ...tl.view, activeLayerId: action.data.layerId as LayerId },
+        });
+      }
+      break;
+    }
+
+    case 'layer_reorder': {
+      const reorderAction = action as import('../types').LayerReorderHistoryAction;
+      if (reorderAction.data.previousLayers && reorderAction.data.newLayers) {
+        // Full snapshot restore (includes group membership changes)
+        if (isRedo) {
+          useTimelineStore.setState({ layers: reorderAction.data.newLayers, layerGroups: reorderAction.data.newGroups ?? [] });
+        } else {
+          useTimelineStore.setState({ layers: reorderAction.data.previousLayers, layerGroups: reorderAction.data.previousGroups ?? [] });
+        }
+      } else {
+        // Simple index swap (legacy)
+        const tl = useTimelineStore.getState();
+        if (isRedo) {
+          tl.reorderLayers(reorderAction.data.fromIndex, reorderAction.data.toIndex);
+        } else {
+          tl.reorderLayers(reorderAction.data.toIndex, reorderAction.data.fromIndex);
+        }
+      }
+      break;
+    }
+
+    case 'layer_rename': {
+      const tl = useTimelineStore.getState();
+      const name = isRedo ? action.data.newName : action.data.oldName;
+      tl.renameLayer(action.data.layerId as LayerId, name);
+      break;
+    }
+
+    case 'layer_visibility': {
+      const tl = useTimelineStore.getState();
+      const visible = isRedo ? action.data.newVisible : action.data.oldVisible;
+      tl.setLayerVisible(action.data.layerId as LayerId, visible);
+      break;
+    }
+
+    case 'layer_opacity': {
+      const tl = useTimelineStore.getState();
+      const opacity = isRedo ? action.data.newOpacity : action.data.oldOpacity;
+      tl.setLayerOpacity(action.data.layerId as LayerId, opacity);
+      break;
+    }
+
+    case 'content_frame_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-add the content frame
+        const layer = tl.layers.find((l) => l.id === action.data.layerId);
+        if (layer) {
+          const frameData = action.data.frameData;
+          tl.addContentFrame(
+            action.data.layerId as LayerId,
+            frameData.startFrame,
+            frameData.durationFrames,
+            frameData.data instanceof Map ? frameData.data : new Map(Object.entries(frameData.data ?? {})),
+          );
+        }
+      } else {
+        // Remove the added content frame
+        tl.removeContentFrame(
+          action.data.layerId as LayerId,
+          action.data.frameId as ContentFrameId,
+        );
+      }
+      break;
+    }
+
+    case 'content_frame_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the content frame
+        tl.removeContentFrame(
+          action.data.layerId as LayerId,
+          action.data.frameId as ContentFrameId,
+        );
+      } else {
+        // Re-add the removed content frame
+        const frameData = action.data.frameData;
+        tl.addContentFrame(
+          action.data.layerId as LayerId,
+          frameData.startFrame,
+          frameData.durationFrames,
+          frameData.data instanceof Map ? frameData.data : new Map(Object.entries(frameData.data ?? {})),
+        );
+      }
+      break;
+    }
+
+    case 'content_frame_timing': {
+      const tl = useTimelineStore.getState();
+      const timing = isRedo ? action.data.newTiming : action.data.oldTiming;
+      tl.updateContentFrameTiming(
+        action.data.layerId as LayerId,
+        action.data.frameId as ContentFrameId,
+        timing.startFrame,
+        timing.durationFrames,
+      );
+      // Restore timeline duration if it was changed by auto-extend
+      const targetDuration = isRedo ? action.data.newTimelineDuration : action.data.previousTimelineDuration;
+      if (targetDuration !== undefined && tl.config.durationFrames !== targetDuration) {
+        tl.setDuration(targetDuration);
+      }
+      break;
+    }
+
+    case 'content_frame_data': {
+      const tl = useTimelineStore.getState();
+      const data = isRedo ? action.data.newData : action.data.previousData;
+      const mapData = data instanceof Map ? data : new Map(Object.entries(data ?? {}));
+      tl.updateContentFrameData(
+        action.data.layerId as LayerId,
+        action.data.frameId as ContentFrameId,
+        mapData as Map<string, import('../types').Cell>,
+      );
+      break;
+    }
+
+    case 'keyframe_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-add the keyframe
+        tl.addKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframe.frame,
+          action.data.keyframe.value as number,
+        );
+      } else {
+        // Remove the added keyframe
+        tl.removeKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframeId as KeyframeId,
+        );
+      }
+      break;
+    }
+
+    case 'keyframe_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the keyframe
+        tl.removeKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframeId as KeyframeId,
+        );
+      } else {
+        // Re-add the removed keyframe
+        tl.addKeyframe(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+          action.data.keyframe.frame,
+          action.data.keyframe.value as number,
+        );
+      }
+      break;
+    }
+
+    case 'keyframe_update': {
+      const tl = useTimelineStore.getState();
+      const kf = isRedo ? action.data.newValue : action.data.oldValue;
+      tl.updateKeyframe(
+        action.data.layerId as LayerId,
+        action.data.trackId as PropertyTrackId,
+        action.data.keyframeId as KeyframeId,
+        { frame: kf.frame, value: kf.value as number, easing: kf.easing },
+      );
+      break;
+    }
+
+    case 'property_track_add': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-add the property track
+        tl.addPropertyTrack(
+          action.data.layerId as LayerId,
+          action.data.propertyPath as PropertyPath,
+        );
+      } else {
+        // Remove the added property track
+        tl.removePropertyTrack(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+        );
+      }
+      break;
+    }
+
+    case 'property_track_remove': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-remove the property track
+        tl.removePropertyTrack(
+          action.data.layerId as LayerId,
+          action.data.trackId as PropertyTrackId,
+        );
+      } else {
+        // Re-add the removed property track with its keyframes
+        const trackData = action.data.trackData;
+        const newTrackId = tl.addPropertyTrack(
+          action.data.layerId as LayerId,
+          trackData.propertyPath as PropertyPath,
+        );
+        // Restore keyframes
+        if (newTrackId && trackData.keyframes) {
+          for (const kf of trackData.keyframes) {
+            tl.addKeyframe(
+              action.data.layerId as LayerId,
+              newTrackId,
+              kf.frame,
+              kf.value as number,
+            );
+          }
+        }
+      }
+      break;
+    }
+
+    case 'frame_rate_change': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            frameRate: action.data.newFps,
+            durationFrames: action.data.newDuration,
+            durationMs: (action.data.newDuration / action.data.newFps) * 1000,
+          },
+          layers: structuredClone(action.data.newLayers),
+        });
+      } else {
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            frameRate: action.data.oldFps,
+            durationFrames: action.data.oldDuration,
+            durationMs: (action.data.oldDuration / action.data.oldFps) * 1000,
+          },
+          layers: structuredClone(action.data.oldLayers),
+        });
+      }
+      break;
+    }
+
+    case 'static_property_change': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        tl.setStaticProperty(
+          action.data.layerId as LayerId,
+          action.data.propertyPath,
+          action.data.newValue,
+        );
+      } else {
+        if (action.data.oldValue !== undefined) {
+          tl.setStaticProperty(
+            action.data.layerId as LayerId,
+            action.data.propertyPath,
+            action.data.oldValue,
+          );
+        } else {
+          // Property didn't exist before — remove it by setting to the default
+          const def = PROPERTY_DEFINITIONS[action.data.propertyPath as PropertyPath];
+          const defaultVal = (def?.defaultValue as number) ?? 0;
+          tl.setStaticProperty(
+            action.data.layerId as LayerId,
+            action.data.propertyPath,
+            defaultVal,
+          );
+        }
+      }
+      break;
+    }
+
+    case 'content_frame_reorder': {
+      // Restore the before or after snapshot of all affected layers' content frames
+      const snapshot = isRedo ? action.data.newState : action.data.previousState;
+      const tl = useTimelineStore.getState();
+
+      for (const layerSnap of snapshot) {
+        const lid = layerSnap.layerId as LayerId;
+        const layer = tl.layers.find((l) => l.id === lid);
+        if (!layer) continue;
+
+        // Remove all existing content frames on this layer
+        for (const cf of [...layer.contentFrames]) {
+          tl.removeContentFrame(lid, cf.id as ContentFrameId);
+        }
+
+        // Re-add content frames from the snapshot
+        for (const cf of layerSnap.contentFrames) {
+          const data = cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data ?? {}));
+          tl.addContentFrame(lid, cf.startFrame, cf.durationFrames, data as Map<string, import('../types').Cell>);
+        }
+      }
+
+      // Restore keyframe positions if synced keyframes were moved
+      const kfSnapshot = isRedo ? action.data.newKeyframes : action.data.previousKeyframes;
+      if (kfSnapshot && kfSnapshot.length > 0) {
+        const tl2 = useTimelineStore.getState();
+        for (const entry of kfSnapshot) {
+          tl2.moveKeyframe(
+            entry.layerId as LayerId,
+            entry.trackId as PropertyTrackId,
+            entry.keyframeId as KeyframeId,
+            entry.frame,
+          );
+        }
+      }
+
+      // Restore timeline duration if it changed (e.g., remove blank space)
+      const targetDuration = isRedo ? action.data.newTimelineDuration : action.data.previousTimelineDuration;
+      if (targetDuration !== undefined) {
+        useTimelineStore.getState().setDuration(targetDuration);
+      }
+      break;
+    }
+
+    case 'timeline_duration_change': {
+      const tl = useTimelineStore.getState();
+      const duration = isRedo ? action.data.newDuration : action.data.oldDuration;
+      tl.setDuration(duration);
+      break;
+    }
+
+    case 'trim_to_work_area': {
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        // Re-apply trimmed state
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            durationFrames: action.data.newDuration,
+            durationMs: (action.data.newDuration / tl.config.frameRate) * 1000,
+          },
+          layers: structuredClone(action.data.newLayers),
+          view: {
+            ...tl.view,
+            workAreaStart: 0,
+            workAreaEnd: action.data.newDuration,
+            workAreaEnabled: false,
+            currentFrame: Math.min(tl.view.currentFrame, action.data.newDuration - 1),
+          },
+        });
+      } else {
+        // Restore pre-trim state
+        useTimelineStore.setState({
+          config: {
+            ...tl.config,
+            durationFrames: action.data.previousDuration,
+            durationMs: (action.data.previousDuration / tl.config.frameRate) * 1000,
+          },
+          layers: structuredClone(action.data.previousLayers),
+          view: {
+            ...tl.view,
+            workAreaStart: action.data.previousWorkAreaStart,
+            workAreaEnd: action.data.previousWorkAreaEnd,
+            workAreaEnabled: true,
+          },
+        });
+      }
+      break;
+    }
+
+    case 'apply_transforms': {
+      const tl = useTimelineStore.getState();
+      const targetLayer = isRedo ? structuredClone(action.data.newLayer) : structuredClone(action.data.previousLayer);
+      const layerId = action.data.layerId as LayerId;
+      useTimelineStore.setState({
+        layers: tl.layers.map((l) => l.id === layerId ? targetLayer : l),
+      });
+      // Reload canvas if this is the active layer
+      if (tl.view.activeLayerId === layerId) {
+        const cf = targetLayer.contentFrames.find(
+          (c: { startFrame: number; durationFrames: number }) =>
+            tl.view.currentFrame >= c.startFrame && tl.view.currentFrame < c.startFrame + c.durationFrames,
+        );
+        if (cf) {
+          const data = cf.data instanceof Map ? cf.data : new Map(Object.entries(cf.data ?? {}));
+          animationStore.setFrameData(animationStore.currentFrameIndex, data as Map<string, import('../types').Cell>);
+          canvasStore.setCanvasData(data as Map<string, import('../types').Cell>);
+        }
+      }
+      break;
+    }
+
+    case 'merge_layers': {
+      const mergeAction = action as import('../types').MergeLayersHistoryAction;
+      const tl = useTimelineStore.getState();
+      
+      if (isRedo) {
+        // Redo: remove the original layers, insert the merged one
+        const idsToRemove = new Set(mergeAction.data.removedLayers.map(l => l.id));
+        const withoutRemoved = tl.layers.filter(l => !idsToRemove.has(l.id));
+        const mergedLayerRestored = {
+          ...mergeAction.data.mergedLayer,
+          contentFrames: mergeAction.data.mergedLayer.contentFrames.map((cf) => ({
+            ...cf,
+            data: cf.data instanceof Map ? cf.data : new Map(Object.entries((cf.data ?? {}) as Record<string, unknown>)),
+          })),
+        };
+        const insertIdx = Math.min(mergeAction.data.insertIndex, withoutRemoved.length);
+        const newLayers = [
+          ...withoutRemoved.slice(0, insertIdx),
+          mergedLayerRestored,
+          ...withoutRemoved.slice(insertIdx),
+        ];
+        useTimelineStore.setState({
+          layers: newLayers as import('../types/timeline').Layer[],
+          view: { ...tl.view, activeLayerId: mergedLayerRestored.id as import('../types/timeline').LayerId },
+        });
+      } else {
+        // Undo: remove the merged layer, restore the original layers at their indices
+        const mergedId = mergeAction.data.mergedLayer.id;
+        const withoutMerged = tl.layers.filter(l => (l.id as string) !== (mergedId as string));
+        
+        // Re-insert original layers at their original positions
+        const restoredLayers = [...withoutMerged];
+        const sortedEntries = mergeAction.data.removedLayers
+          .map((l, i) => ({ layer: l, index: mergeAction.data.removedIndices[i] }))
+          .sort((a, b) => a.index - b.index);
+        
+        for (const entry of sortedEntries) {
+          const restored = {
+            ...entry.layer,
+            contentFrames: entry.layer.contentFrames.map((cf) => ({
+              ...cf,
+              data: cf.data instanceof Map ? cf.data : new Map(Object.entries((cf.data ?? {}) as Record<string, unknown>)),
+            })),
+          };
+          const idx = Math.min(entry.index, restoredLayers.length);
+          restoredLayers.splice(idx, 0, restored as import('../types/timeline').Layer);
+        }
+        
+        useTimelineStore.setState({
+          layers: restoredLayers,
+          view: { ...tl.view, activeLayerId: sortedEntries[0]?.layer.id as import('../types/timeline').LayerId },
+        });
+      }
+      // Sync canvas
+      const updated = useTimelineStore.getState();
+      const activeL = updated.layers.find(l => l.id === updated.view.activeLayerId);
+      if (activeL && activeL.contentFrames.length > 0) {
+        canvasStore.setCanvasData(activeL.contentFrames[0].data instanceof Map ? activeL.contentFrames[0].data : new Map());
+      }
+      break;
+    }
+
+    case 'create_group': {
+      const groupAction = action as import('../types').CreateGroupHistoryAction;
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        tl.createGroup(groupAction.data.groupName, groupAction.data.layerIds.map(id => id as import('../types/timeline').LayerId));
+      } else {
+        tl.ungroupLayers(groupAction.data.groupId as import('../types/timeline').LayerGroupId);
+      }
+      break;
+    }
+
+    case 'ungroup_layers': {
+      const ungroupAction = action as import('../types').UngroupLayersHistoryAction;
+      const tl = useTimelineStore.getState();
+      if (isRedo) {
+        tl.ungroupLayers(ungroupAction.data.group.id);
+      } else {
+        // Re-create the group
+        tl.createGroup(ungroupAction.data.group.name, ungroupAction.data.group.childLayerIds);
+      }
+      break;
+    }
       
     default:
       console.warn('Unknown history action type:', action);
@@ -697,19 +1397,30 @@ const processHistoryAction = (
 export const useKeyboardShortcuts = () => {
   const { cells, setCanvasData, width, height } = useCanvasStore();
   const { startPasteMode, commitPaste, pasteMode } = useCanvasContext();
-  const { toggleOnionSkin, currentFrameIndex, frames, selectedFrameIndices } = useAnimationStore();
+  const currentFrameIndex = useAnimationStore((s) => s.currentFrameIndex);
+  const frames = useAnimationStore((s) => s.frames);
+  const selectedFrameIndices = useAnimationStore((s) => s.selectedFrameIndices);
+  const toggleOnionSkin = useAnimationStore((s) => s.toggleOnionSkin);
   const { zoomIn, zoomOut } = useZoomControls();
   const { showSaveProjectDialog, showSaveAsDialog, showOpenProjectDialog } = useProjectFileActions();
   
   // Frame navigation and management hooks
   const { navigateNext, navigatePrevious, navigateFirst, navigateLast, canNavigate } = useFrameNavigation();
   const { addFrame, removeFrame, duplicateFrame, duplicateFrameRange, deleteFrameRange } = useAnimationHistory();
+
+  // Playback hooks (so Space key works in both Frames and Timeline tabs)
+  const { startOptimizedPlayback, stopOptimizedPlayback } = useOptimizedPlayback();
+  const playbackSnapshot = usePlaybackOnlySnapshot();
+  const isPlaybackActive = playbackSnapshot.isActive;
   
   // Flip utilities for Shift+H and Shift+V
   const { flipHorizontal, flipVertical } = useFlipUtilities();
   
   // Crop utility for Cmd+Shift+C / Ctrl+Shift+C
   const { canCrop, cropToSelection } = useCropToSelection();
+
+  // Timeline layer-aware content frame operations
+  const { addContentFrame, removeContentFrame, duplicateContentFrame, splitContentFrame, updateContentFrameTiming, createGroup } = useTimelineHistory();
 
   // Helper function to handle different types of history actions
   const handleHistoryAction = useCallback((action: AnyHistoryAction, isRedo: boolean) => {
@@ -1042,6 +1753,7 @@ export const useKeyboardShortcuts = () => {
       } else {
         // Block tool hotkeys and other single-key shortcuts that conflict with typing
         // This includes letters (b, p, e, etc.), numbers, AND spacebar for text input
+        if (event.key === 'u') console.log('[DEBUG] U blocked by focused input:', activeElement.tagName, activeElement.className);
         return;
       }
     }
@@ -1052,10 +1764,14 @@ export const useKeyboardShortcuts = () => {
       return; // Let the text tool handle all other keys
     }
 
-    // Spacebar playback toggle - let it pass through to AnimationTimeline component
-    // Don't preventDefault here, let the timeline handler deal with it
+    // Spacebar playback toggle — handled here so it works in both Frames and Timeline tabs
     if (!isModifierPressed && (event.key === ' ' || event.key === 'Space')) {
-      // Just return without preventing default - let the event bubble to AnimationTimeline
+      event.preventDefault(); // Prevent page scroll
+      if (isPlaybackActive) {
+        stopOptimizedPlayback({ preserveFrameIndex: true });
+      } else {
+        startOptimizedPlayback();
+      }
       return;
     }
 
@@ -1078,6 +1794,51 @@ export const useKeyboardShortcuts = () => {
 
     // Handle Delete/Backspace key (without modifier) - Clear selected cells
     if ((event.key === 'Delete' || event.key === 'Backspace') && !isModifierPressed) {
+      // Helper: clear selection cells from all visible/unlocked layers when multi-layer mode is on
+      // Also records undo history for each affected layer
+      const clearSelectionFromAllLayers = (cellKeys: Set<string> | string[]) => {
+        const { selectionAffectsAllLayers } = useToolStore.getState();
+        if (!selectionAffectsAllLayers) return;
+        const tl = useTimelineStore.getState();
+        const currentFrame = tl.view.currentFrame;
+        const { pushToHistory } = useToolStore.getState();
+        for (const layer of tl.layers) {
+          if (layer.id === tl.view.activeLayerId) continue; // Active layer handled by canvas
+          if (!layer.visible || layer.locked) continue;
+          const cf = getContentFrameAtTime(layer, currentFrame);
+          if (!cf) continue;
+          const previousData = new Map(cf.data);
+          const newData = new Map(cf.data);
+          let changed = false;
+          // Convert screen-space selection keys to this layer's local space
+          // (includes group transforms if the layer is in a group)
+          for (const key of cellKeys) {
+            const [sx, sy] = key.split(',').map(Number);
+            const local = screenToLocalForLayer(layer.id as string, sx, sy);
+            const localKey = `${local.x},${local.y}`;
+            if (newData.has(localKey)) {
+              newData.delete(localKey);
+              changed = true;
+            }
+          }
+          if (changed) {
+            tl.updateContentFrameData(layer.id, cf.id, newData);
+            // Record history for this layer's content frame change
+            pushToHistory({
+              type: 'content_frame_data',
+              timestamp: Date.now(),
+              description: `Delete selection on ${layer.name}`,
+              data: {
+                layerId: layer.id as string,
+                frameId: cf.id as string,
+                previousData,
+                newData: new Map(newData),
+              },
+            } as import('../types').ContentFrameDataHistoryAction);
+          }
+        }
+      };
+
       // Check if any selection is active and clear the selected cells
       if (magicWandSelection.active && magicWandSelection.selectedCells.size > 0) {
         event.preventDefault();
@@ -1086,13 +1847,18 @@ export const useKeyboardShortcuts = () => {
   const { pushCanvasHistory, finalizeCanvasHistory } = useToolStore.getState();
   pushCanvasHistory(new Map(cells), currentFrameIndex, 'Delete magic wand selection');
         
-        // Clear all selected cells
+        // Clear all selected cells (convert screen-space to local space for active layer)
         const newCells = new Map(cells);
         magicWandSelection.selectedCells.forEach(cellKey => {
-          newCells.delete(cellKey);
+          const [sx, sy] = cellKey.split(',').map(Number);
+          const local = screenToLocal(sx, sy);
+          newCells.delete(`${local.x},${local.y}`);
         });
   setCanvasData(newCells);
   finalizeCanvasHistory(new Map(newCells));
+        
+        // Clear from other layers if multi-layer mode is on
+        clearSelectionFromAllLayers(magicWandSelection.selectedCells);
         
         // Clear the selection after deleting content
         clearMagicWandSelection();
@@ -1106,13 +1872,18 @@ export const useKeyboardShortcuts = () => {
   const { pushCanvasHistory: pushCanvasHistory2, finalizeCanvasHistory: finalizeCanvasHistory2 } = useToolStore.getState();
   pushCanvasHistory2(new Map(cells), currentFrameIndex, 'Delete lasso selection');
         
-        // Clear all selected cells
+        // Clear all selected cells (convert screen-space to local space for active layer)
         const newCells = new Map(cells);
         lassoSelection.selectedCells.forEach(cellKey => {
-          newCells.delete(cellKey);
+          const [sx, sy] = cellKey.split(',').map(Number);
+          const local = screenToLocal(sx, sy);
+          newCells.delete(`${local.x},${local.y}`);
         });
   setCanvasData(newCells);
   finalizeCanvasHistory2(new Map(newCells));
+        
+        // Clear from other layers if multi-layer mode is on
+        clearSelectionFromAllLayers(lassoSelection.selectedCells);
         
         // Clear the selection after deleting content
         clearLassoSelection();
@@ -1136,12 +1907,22 @@ export const useKeyboardShortcuts = () => {
         
         for (let y = minY; y <= maxY; y++) {
           for (let x = minX; x <= maxX; x++) {
-            const cellKey = `${x},${y}`;
-            newCells.delete(cellKey);
+            // Convert screen-space to local space for active layer
+            const local = screenToLocal(x, y);
+            newCells.delete(`${local.x},${local.y}`);
           }
         }
   setCanvasData(newCells);
   finalizeCanvasHistory3(new Map(newCells));
+        
+        // Clear from other layers if multi-layer mode is on
+        const rectKeys = new Set<string>();
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            rectKeys.add(`${x},${y}`);
+          }
+        }
+        clearSelectionFromAllLayers(rectKeys);
         
         // Clear the selection after deleting content
         clearSelection();
@@ -1195,6 +1976,13 @@ export const useKeyboardShortcuts = () => {
         return;
       }
 
+      // Shift+N — Add new layer
+      if (event.key === 'N' || event.key === 'n') {
+        event.preventDefault();
+        useTimelineStore.getState().addLayer();
+        return;
+      }
+
       if (event.key === 'H' || event.key === 'h') {
         event.preventDefault();
         flipHorizontal();
@@ -1238,6 +2026,24 @@ export const useKeyboardShortcuts = () => {
         zoomOut();
         return;
       }
+
+      // Handle timeline zoom hotkeys (1 = zoom out, 2 = zoom in)
+      if (event.key === '1') {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          tl.setZoom(Math.max(0.5, tl.view.zoom - 0.5));
+          return;
+        }
+      }
+      if (event.key === '2') {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          tl.setZoom(Math.min(16, tl.view.zoom + 0.5));
+          return;
+        }
+      }
       
       // Handle frame navigation shortcuts (comma and period keys)
       if (event.key === ',' && canNavigate) {
@@ -1272,6 +2078,43 @@ export const useKeyboardShortcuts = () => {
         navigatePaletteColor('next');
         return;
       }
+
+      // Toggle show all keyframes (expand/collapse all layers with keyframes)
+      if (event.key === 'u' && !event.repeat) {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          // Capture the current state NOW (before any async delay)
+          const shouldExpand = tl.view.expandedLayerIds.size === 0;
+          // Use setTimeout to escape the keyboard event handler's execution context.
+          setTimeout(() => {
+            const current = useTimelineStore.getState();
+            if (shouldExpand) {
+              // Expand layers with keyframes; if none, expand all
+              const withKfs = current.layers.filter((l) =>
+                l.propertyTracks.some((t) => t.keyframes.length > 0)
+              );
+              const toExpand = withKfs.length > 0 ? withKfs : current.layers;
+              current.setExpandedLayerIds(new Set(toExpand.map((l) => l.id)));
+              // Also expand any collapsed groups so their children are visible
+              if (current.layerGroups.length > 0) {
+                const hasCollapsed = current.layerGroups.some((g) => g.collapsed);
+                if (hasCollapsed) {
+                  useTimelineStore.setState({
+                    layerGroups: current.layerGroups.map((g) =>
+                      g.collapsed ? { ...g, collapsed: false } : g
+                    ),
+                  });
+                }
+              }
+            } else {
+              // Collapse all
+              current.setExpandedLayerIds(new Set());
+            }
+          }, 0);
+          return;
+        }
+      }
       
       const targetTool = getToolForHotkey(event.key);
       if (targetTool) {
@@ -1283,20 +2126,77 @@ export const useKeyboardShortcuts = () => {
 
     // Check for modifier keys (Cmd on Mac, Ctrl on Windows/Linux)
     if (!isModifierPressed) return;
+
+    // Handle Ctrl+Arrow Left/Right: jump to next/previous visible keyframe
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      const tl = useTimelineStore.getState();
+      if (tl.layers.length > 0) {
+        event.preventDefault();
+        const current = tl.view.currentFrame;
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const expandedIds = tl.view.expandedLayerIds;
+
+        // Collect all keyframe frame numbers from expanded (visible) layers
+        const keyframeFrames = new Set<number>();
+        for (const layer of tl.layers) {
+          if (!expandedIds.has(layer.id)) continue; // skip collapsed layers
+          for (const track of layer.propertyTracks) {
+            for (const kf of track.keyframes) {
+              keyframeFrames.add(kf.frame);
+            }
+          }
+        }
+
+        if (keyframeFrames.size > 0) {
+          const sorted = [...keyframeFrames].sort((a, b) => a - b);
+          let target: number | null = null;
+          if (direction === 1) {
+            // Next keyframe after current
+            target = sorted.find((f) => f > current) ?? null;
+          } else {
+            // Previous keyframe before current
+            for (let i = sorted.length - 1; i >= 0; i--) {
+              if (sorted[i] < current) { target = sorted[i]; break; }
+            }
+          }
+          if (target !== null) {
+            tl.goToFrame(target);
+          }
+        }
+        return;
+      }
+    }
     
     // Handle Ctrl+Delete or Ctrl+Backspace for frame deletion (before the switch statement)
     if ((event.key === 'Delete' || event.key === 'Backspace') && isModifierPressed) {
+      event.preventDefault();
+
+      // Layer mode: delete content frame block
+      const tl = useTimelineStore.getState();
+      if (tl.layers.length > 0) {
+        const activeLayerId = tl.view.activeLayerId;
+        const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+        if (activeLayer) {
+          const selectedIds = tl.view.selectedContentFrameIds;
+          if (selectedIds.size > 0) {
+            for (const cfId of selectedIds) {
+              removeContentFrame(activeLayer.id, cfId);
+            }
+            tl.clearContentFrameSelection();
+          } else {
+            const cf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+            if (cf) removeContentFrame(activeLayer.id, cf.id);
+          }
+        }
+        return;
+      }
+
+      // Legacy mode
       if (frames.length > 1) {
-        event.preventDefault();
-        
-        // Check if multiple frames are selected
         const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
-        
         if (selectedFrames.length > 1) {
-          // Batch delete all selected frames
           deleteFrameRange(selectedFrames);
         } else {
-          // Single frame delete
           removeFrame(currentFrameIndex);
         }
       }
@@ -1304,34 +2204,143 @@ export const useKeyboardShortcuts = () => {
     }
 
     switch (normalizedKey) {
-      case 'n':
-        // Ctrl+N = Add new frame after current frame
+      case 'g': {
+        // Cmd/Ctrl+G = Group selected layers
         if (!event.shiftKey) {
           event.preventDefault();
-          addFrame(currentFrameIndex + 1);
-        }
-        break;
-        
-      case 'd':
-        // Cmd/Ctrl+D = Deselect All (if selection exists) OR Duplicate current frame (if no selection)
-        // This matches Photoshop/Figma behavior where Cmd+D is "Deselect"
-        if (!event.shiftKey) {
-          event.preventDefault();
-          
-          // PERSISTENT SELECTION: Cmd+D is a primary way to deselect
-          if (hasAnySelection()) {
-            clearAllSelections();
-          } else {
-            // No selection - duplicate frame (legacy behavior)
-            const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
-            if (selectedFrames.length > 1) {
-              duplicateFrameRange(selectedFrames);
-            } else {
-              duplicateFrame(currentFrameIndex);
+          const tl = useTimelineStore.getState();
+          const selectedIds = Array.from(tl.view.selectedLayerIds);
+          if (selectedIds.length >= 2) {
+            // Check none are already in a group
+            const allFree = selectedIds.every(id => {
+              const l = tl.layers.find(layer => layer.id === id);
+              return l && !l.parentGroupId;
+            });
+            if (allFree) {
+              createGroup('Group', selectedIds);
             }
           }
         }
         break;
+      }
+
+      case 'n': {
+        // Ctrl+N = Add new frame block at playhead
+        if (!event.shiftKey) {
+          event.preventDefault();
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer) {
+              addContentFrame(activeLayer.id, tl.view.currentFrame, 1);
+            }
+          } else {
+            addFrame(currentFrameIndex + 1);
+          }
+        }
+        break;
+      }
+        
+      case 'd': {
+        // Cmd/Ctrl+D = Deselect (if selection) or Duplicate frame block
+        if (!event.shiftKey) {
+          event.preventDefault();
+          
+          if (hasAnySelection()) {
+            clearAllSelections();
+          } else {
+            const tl = useTimelineStore.getState();
+            if (tl.layers.length > 0) {
+              const activeLayerId = tl.view.activeLayerId;
+              const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+              if (activeLayer) {
+                const selectedIds = tl.view.selectedContentFrameIds;
+                if (selectedIds.size > 0) {
+                  for (const cfId of selectedIds) {
+                    const cf = activeLayer.contentFrames.find((c) => c.id === cfId);
+                    if (cf) duplicateContentFrame(activeLayer.id, cf.id);
+                  }
+                } else {
+                  const cf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+                  if (cf) duplicateContentFrame(activeLayer.id, cf.id);
+                }
+              }
+            } else {
+              const selectedFrames = Array.from(selectedFrameIndices).sort((a, b) => a - b);
+              if (selectedFrames.length > 1) {
+                duplicateFrameRange(selectedFrames);
+              } else {
+                duplicateFrame(currentFrameIndex);
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case 'x': {
+        // Ctrl+X = Split frame block at playhead (layer mode)
+        if (!event.shiftKey) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            event.preventDefault();
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer) {
+              const cf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+              if (cf && tl.view.currentFrame > cf.startFrame) {
+                splitContentFrame(activeLayer.id, cf.id, tl.view.currentFrame);
+              }
+            }
+          }
+          // In non-layer mode, don't prevent default (allows native cut)
+        }
+        break;
+      }
+
+      case ',': {
+        // Ctrl+, = Set selected frame start to playhead
+        if (!event.shiftKey) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            event.preventDefault();
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer && tl.view.selectedContentFrameIds.size === 1) {
+              const cfId = [...tl.view.selectedContentFrameIds][0];
+              const cf = activeLayer.contentFrames.find((c) => c.id === cfId);
+              if (cf) {
+                const cfEnd = cf.startFrame + cf.durationFrames;
+                const newStart = Math.min(tl.view.currentFrame, cfEnd - 1);
+                updateContentFrameTiming(activeLayer.id, cf.id, newStart, cfEnd - newStart);
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      case '.': {
+        // Ctrl+. = Set selected frame end to playhead
+        if (!event.shiftKey) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            event.preventDefault();
+            const activeLayerId = tl.view.activeLayerId;
+            const activeLayer = tl.layers.find((l) => l.id === activeLayerId) ?? tl.layers[0];
+            if (activeLayer && tl.view.selectedContentFrameIds.size === 1) {
+              const cfId = [...tl.view.selectedContentFrameIds][0];
+              const cf = activeLayer.contentFrames.find((c) => c.id === cfId);
+              if (cf) {
+                const newEnd = Math.max(tl.view.currentFrame + 1, cf.startFrame + 1);
+                updateContentFrameTiming(activeLayer.id, cf.id, cf.startFrame, newEnd - cf.startFrame);
+              }
+            }
+          }
+        }
+        break;
+      }
 
         
       case 'a':
@@ -1356,15 +2365,29 @@ export const useKeyboardShortcuts = () => {
         
       case 'c':
         // Copy selection (prioritize magic wand, then lasso, then rectangular)
-        if (magicWandSelection.active) {
-          event.preventDefault();
-          copyMagicWandSelection(cells);
-        } else if (lassoSelection.active) {
-          event.preventDefault();
-          copyLassoSelection(cells);
-        } else if (selection.active) {
-          event.preventDefault();
-          copySelection(cells);
+        // When "All Layers" is on, copy from composited view instead of active layer
+        {
+          const { selectionAffectsAllLayers } = useToolStore.getState();
+          let copySource = cells;
+          if (selectionAffectsAllLayers) {
+            // Get composited cells from all visible layers
+            const tl = useTimelineStore.getState();
+            if (tl.layers.length > 0) {
+              const canvasWidth = useCanvasStore.getState().width;
+              const canvasHeight = useCanvasStore.getState().height;
+              copySource = compositeLayersAtFrame(tl.layers, tl.view.currentFrame, canvasWidth, canvasHeight, undefined, false, tl.layerGroups);
+            }
+          }
+          if (magicWandSelection.active) {
+            event.preventDefault();
+            copyMagicWandSelection(copySource, selectionAffectsAllLayers);
+          } else if (lassoSelection.active) {
+            event.preventDefault();
+            copyLassoSelection(copySource, selectionAffectsAllLayers);
+          } else if (selection.active) {
+            event.preventDefault();
+            copySelection(copySource, selectionAffectsAllLayers);
+          }
         }
         break;
         
@@ -1489,7 +2512,15 @@ export const useKeyboardShortcuts = () => {
     showSaveProjectDialog,
     showSaveAsDialog,
     showOpenProjectDialog,
-    blockBrowserShortcut
+    blockBrowserShortcut,
+    isPlaybackActive,
+    startOptimizedPlayback,
+    stopOptimizedPlayback,
+    addContentFrame,
+    removeContentFrame,
+    duplicateContentFrame,
+    splitContentFrame,
+    updateContentFrameTiming,
   ]);
 
   const handleShortcutKeyPress = useCallback((event: KeyboardEvent) => {

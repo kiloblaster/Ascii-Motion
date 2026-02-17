@@ -57,11 +57,10 @@ export const InkExportDialog: React.FC = () => {
   const setIsExporting = useExportStore((state) => state.setIsExporting);
   const isExporting = useExportStore((state) => state.isExporting);
 
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'ink';
+  const exportData = useExportDataCollector(isOpen);
 
   const [copySuccess, setCopySuccess] = useState(false);
-
-  const isOpen = showExportModal && activeFormat === 'ink';
 
   const sanitizedFileName = useMemo(() => finalizeFileName(sanitizeFileName(inkSettings.fileName)), [inkSettings.fileName]);
   const componentName = useMemo(() => toPascalCase(sanitizedFileName || inkSettings.fileName), [inkSettings.fileName, sanitizedFileName]);

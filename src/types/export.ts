@@ -1,6 +1,7 @@
 import type { Frame, Cell, Tool } from './index';
 import type { FontMetrics } from '../utils/fontMetrics';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from './palette';
+import type { SessionDataV2 } from './timeline';
 
 // Export format identifiers
 export type ExportFormatId = 'png' | 'svg' | 'mp4' | 'session' | 'media' | 'text' | 'json' | 'html' | 'react' | 'ink' | 'opentui' | 'bubbletea';
@@ -64,7 +65,7 @@ export interface BubbleteaExportSettings {
 
 export interface VideoExportSettings {
   sizeMultiplier: 1 | 2 | 4;
-  frameRate: number; // 1-60 fps
+  frameRate: number | 'auto'; // 'auto' = use project frame rate, or 1-60 fps
   frameRange: { start: number; end: number } | 'all';
   quality: 'high' | 'medium' | 'low'; // Used for WebM encoding
   crf: number; // 0-51, used for H.264 MP4 encoding (lower = higher quality)
@@ -186,6 +187,10 @@ export interface ExportDataBundle {
 
   // Character palette state
   characterPaletteState: CharacterPaletteExportState;
+
+  // Layer data (v2 session data for session exports — raw layer structure)
+  // Present when layers exist; session export uses this instead of composited frames
+  sessionDataV2?: SessionDataV2;
 }
 
 // Export result from exporters

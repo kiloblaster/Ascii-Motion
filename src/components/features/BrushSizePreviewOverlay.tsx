@@ -197,33 +197,33 @@ export const BrushSizePreviewOverlay: React.FC = () => {
   
   return (
     <>
-      {/* CSS keyframes for horizontal-only slide animations */}
+      {/* CSS keyframes for slide animations */}
       <style>{`
         @keyframes slideInFromLeft {
           from {
             opacity: 0;
-            transform: translateX(-1rem) translateY(-50%);
+            transform: translateX(-1rem);
           }
           to {
             opacity: 1;
-            transform: translateX(0) translateY(-50%);
+            transform: translateX(0);
           }
         }
         @keyframes slideOutToLeft {
           from {
             opacity: 1;
-            transform: translateX(0) translateY(-50%);
+            transform: translateX(0);
           }
           to {
             opacity: 0;
-            transform: translateX(-1rem) translateY(-50%);
+            transform: translateX(-1rem);
           }
         }
       `}</style>
       
       <div
         ref={overlayRef}
-        className="fixed left-56 top-1/2 -translate-y-1/2 z-[99998]"
+        className="fixed left-[84px] top-[100px] z-[99998]"
         style={getAnimationStyle()}
       >
         <Card 

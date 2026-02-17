@@ -39,6 +39,7 @@ export interface EffectsState {
   isOpen: boolean;                           // Main effects panel visibility
   activeEffect: EffectType | null;           // Currently open effect panel
   applyToTimeline: boolean;                  // Timeline vs canvas targeting
+  targetScope: 'active-layer' | 'all-layers'; // Which layers to target when applying to timeline
   
   // Effect Settings State
   levelsSettings: LevelsEffectSettings;
@@ -65,6 +66,7 @@ export interface EffectsState {
   openEffectPanel: (effect: EffectType) => void;
   closeEffectPanel: () => void;
   setApplyToTimeline: (apply: boolean) => void;
+  setTargetScope: (scope: 'active-layer' | 'all-layers') => void;
   
   // Actions - Effect Settings
   updateLevelsSettings: (settings: Partial<LevelsEffectSettings>) => void;
@@ -118,6 +120,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
   isOpen: false,
   activeEffect: null,
   applyToTimeline: false,
+  targetScope: 'active-layer' as const,
   
   // Default effect settings
   levelsSettings: { ...DEFAULT_LEVELS_SETTINGS },
@@ -165,6 +168,22 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
   
   setApplyToTimeline: (apply: boolean) => {
     set({ applyToTimeline: apply });
+    // Re-analyze canvas since available chars/colors depend on timeline scope
+    get().clearAnalysisCache();
+    get().analyzeCanvas();
+  },
+  
+  setTargetScope: (scope: 'active-layer' | 'all-layers') => {
+    set({ targetScope: scope });
+    // Re-analyze canvas since available chars/colors depend on layer scope
+    get().clearAnalysisCache();
+    get().analyzeCanvas();
+    // Refresh preview if it's currently active
+    if (get().isPreviewActive) {
+      get().updatePreview().catch(error => {
+        console.error('Preview refresh on scope change failed:', error);
+      });
+    }
   },
   
   // Effect Settings Actions
@@ -232,12 +251,13 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       
       const canvasStore = useCanvasStore.getState();
       const animationStore = useAnimationStore.getState();
+      const { targetScope, applyToTimeline } = get();
       
       const { cells } = canvasStore;
       const { frames } = animationStore;
       
-      // Generate hash for cache invalidation
-      const canvasHash = generateCanvasHash(cells, frames.length);
+      // Generate hash for cache invalidation (include scope in hash)
+      const canvasHash = generateCanvasHash(cells, frames.length) + `_${targetScope}_${applyToTimeline}`;
       
       // Check if analysis is still valid
       const currentAnalysis = get().canvasAnalysis;
@@ -254,44 +274,69 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       const colorFrequency: Record<string, number> = {};
       const characterFrequency: Record<string, number> = {};
       
-      // Analyze current canvas
-      cells.forEach(cell => {
-        // Track colors
-        if (cell.color && cell.color !== 'transparent') {
-          uniqueColors.add(cell.color);
-          colorFrequency[cell.color] = (colorFrequency[cell.color] || 0) + 1;
-        }
-        if (cell.bgColor && cell.bgColor !== 'transparent') {
-          uniqueColors.add(cell.bgColor);
-          colorFrequency[cell.bgColor] = (colorFrequency[cell.bgColor] || 0) + 1;
-        }
-        
-        // Track characters
-        if (cell.char && cell.char.trim()) {
-          uniqueCharacters.add(cell.char);
-          characterFrequency[cell.char] = (characterFrequency[cell.char] || 0) + 1;
-        }
-      });
-      
-      // If applying to timeline, analyze all frames
-      if (get().applyToTimeline) {
-        frames.forEach(frame => {
-          frame.data.forEach(cell => {
-            // Same analysis for timeline frames
-            if (cell.color && cell.color !== 'transparent') {
-              uniqueColors.add(cell.color);
-              colorFrequency[cell.color] = (colorFrequency[cell.color] || 0) + 1;
-            }
-            if (cell.bgColor && cell.bgColor !== 'transparent') {
-              uniqueColors.add(cell.bgColor);
-              colorFrequency[cell.bgColor] = (colorFrequency[cell.bgColor] || 0) + 1;
-            }
-            if (cell.char && cell.char.trim()) {
-              uniqueCharacters.add(cell.char);
-              characterFrequency[cell.char] = (characterFrequency[cell.char] || 0) + 1;
-            }
-          });
+      // Helper to analyze a set of cells
+      const analyzeCells = (cellMap: Map<string, import('../types').Cell>) => {
+        cellMap.forEach(cell => {
+          if (cell.color && cell.color !== 'transparent') {
+            uniqueColors.add(cell.color);
+            colorFrequency[cell.color] = (colorFrequency[cell.color] || 0) + 1;
+          }
+          if (cell.bgColor && cell.bgColor !== 'transparent') {
+            uniqueColors.add(cell.bgColor);
+            colorFrequency[cell.bgColor] = (colorFrequency[cell.bgColor] || 0) + 1;
+          }
+          if (cell.char && cell.char.trim()) {
+            uniqueCharacters.add(cell.char);
+            characterFrequency[cell.char] = (characterFrequency[cell.char] || 0) + 1;
+          }
         });
+      };
+      
+      if (targetScope === 'all-layers') {
+        // All-layers scope: analyze all visible/unlocked layers
+        const { useTimelineStore } = await import('./timelineStore');
+        const { getContentFrameAtTime } = await import('../utils/layerCompositing');
+        const tl = useTimelineStore.getState();
+        const currentFrame = tl.view.currentFrame;
+        const targetLayers = tl.layers.filter(l => l.visible && !l.locked);
+        
+        if (applyToTimeline) {
+          // All frames on all target layers
+          for (const layer of targetLayers) {
+            for (const cf of layer.contentFrames) {
+              // Use canvasStore cells for the active layer's current frame
+              if (layer.id === tl.view.activeLayerId) {
+                const activeCf = getContentFrameAtTime(layer, currentFrame);
+                if (activeCf && cf.id === activeCf.id) {
+                  analyzeCells(cells); // Use working copy
+                  continue;
+                }
+              }
+              analyzeCells(cf.data);
+            }
+          }
+        } else {
+          // Current frame only on all target layers
+          for (const layer of targetLayers) {
+            if (layer.id === tl.view.activeLayerId) {
+              analyzeCells(cells); // Active layer uses working copy
+            } else {
+              const cf = getContentFrameAtTime(layer, currentFrame);
+              if (cf) analyzeCells(cf.data);
+            }
+          }
+        }
+      } else {
+        // Active-layer scope: analyze only active layer
+        // Always analyze current canvas (active layer working copy)
+        analyzeCells(cells);
+        
+        // If applying to timeline, also analyze all other frames on this layer
+        if (applyToTimeline) {
+          frames.forEach(frame => {
+            analyzeCells(frame.data);
+          });
+        }
       }
       
       // Create analysis results
@@ -409,9 +454,6 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       const canvasStore = useCanvasStore.getState();
       const previewStore = usePreviewStore.getState();
       
-      // Get current canvas data
-      const currentCells = canvasStore.cells;
-      
       // Get effect settings
       let effectSettings;
       switch (state.previewEffect) {
@@ -435,27 +477,150 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       }
       
       // Get canvas background color for blend operations
-      const canvasBackgroundColor = useCanvasStore.getState().canvasBackgroundColor;
+      const canvasBackgroundColor = canvasStore.canvasBackgroundColor;
       
       // Get selection mask if active (effects only apply within selection)
       const selectionState = useSelectionStore.getState();
       const selectionMask = selectionState.isActive ? selectionState.selectedCells : undefined;
       
-      // Process effect on current canvas data (await the async function)
-      const result = await processEffect(
-        state.previewEffect,
-        currentCells,
-        effectSettings,
-        canvasBackgroundColor,
-        { selectionMask }
-      );
-      
-      // Update preview store with processed cells if successful
-      if (result.success && result.processedCells) {
-        previewStore.setPreviewData(result.processedCells);
+      if (state.targetScope === 'all-layers') {
+        // All-layers preview: process each visible/unlocked layer's current-frame cells,
+        // then composite the full result so the user sees how the effect looks
+        // across the entire composited stack.
+        try {
+          const { useTimelineStore } = await import('./timelineStore');
+          const { compositeLayersAtFrame, getContentFrameAtTime } = await import('../utils/layerCompositing');
+          const tl = useTimelineStore.getState();
+          
+          if (tl.layers.length === 0) {
+            // No layers — fall through to single-canvas mode
+            const result = await processEffect(state.previewEffect, canvasStore.cells, effectSettings, canvasBackgroundColor, { selectionMask });
+            if (result.success && result.processedCells) {
+              previewStore.setPreviewData(result.processedCells);
+            }
+            return;
+          }
+          
+          const currentFrame = tl.view.currentFrame;
+          const canvasWidth = canvasStore.width;
+          const canvasHeight = canvasStore.height;
+          
+          // Build modified layers: for each visible/unlocked layer, process its current frame data
+          const modifiedLayers = await Promise.all(tl.layers.map(async (layer) => {
+            const isTarget = layer.visible && !layer.locked;
+            if (!isTarget) return layer; // Keep non-target layers unchanged
+            
+            // Get the content frame at the current playhead
+            const cf = getContentFrameAtTime(layer, currentFrame);
+            if (!cf || cf.data.size === 0) return layer; // No content at this frame
+            
+            // Use canvasStore cells for the active layer (reflects in-progress edits)
+            const cellsToProcess = (layer.id === tl.view.activeLayerId) ? canvasStore.cells : cf.data;
+            
+            // Process this layer's cells through the effect
+            const result = await processEffect(state.previewEffect!, cellsToProcess, effectSettings, canvasBackgroundColor, { selectionMask });
+            
+            if (result.success && result.processedCells) {
+              // Replace only the current content frame's data with processed cells
+              return {
+                ...layer,
+                contentFrames: layer.contentFrames.map(f =>
+                  f.id === cf.id ? { ...f, data: result.processedCells! } : f
+                ),
+              };
+            }
+            return layer;
+          }));
+          
+          // Composite all layers with the modified data
+          const compositedPreview = compositeLayersAtFrame(
+            modifiedLayers as import('../types/timeline').Layer[],
+            currentFrame,
+            canvasWidth,
+            canvasHeight,
+            undefined,
+            false,
+            tl.layerGroups,
+          );
+          
+          previewStore.setPreviewData(compositedPreview);
+        } catch (err) {
+          console.error('All-layers preview failed:', err);
+          previewStore.clearPreview();
+        }
       } else {
-        console.error('Preview processing failed:', result);
-        previewStore.clearPreview();
+        // Active-layer preview: process current canvas cells (active layer's working copy)
+        const currentCells = canvasStore.cells;
+        
+        const result = await processEffect(
+          state.previewEffect,
+          currentCells,
+          effectSettings,
+          canvasBackgroundColor,
+          { selectionMask }
+        );
+        
+        if (result.success && result.processedCells) {
+          // For the preview to show correctly in the composited view,
+          // we need to composite the full stack but with the active layer's
+          // current frame replaced by the processed cells.
+          try {
+            const { useTimelineStore } = await import('./timelineStore');
+            const { compositeLayersAtFrame, getContentFrameAtTime } = await import('../utils/layerCompositing');
+            const tl = useTimelineStore.getState();
+            
+            if (tl.layers.length > 0) {
+              const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+              if (activeLayer) {
+                const currentFrame = tl.view.currentFrame;
+                const canvasWidth = canvasStore.width;
+                const canvasHeight = canvasStore.height;
+                const activeCf = getContentFrameAtTime(activeLayer, currentFrame);
+                
+                if (activeCf) {
+                  // Build layers with the active layer's current frame replaced by processed cells
+                  const modifiedLayers = tl.layers.map(layer => {
+                    if (layer.id !== activeLayer.id) return layer;
+                    return {
+                      ...layer,
+                      contentFrames: layer.contentFrames.map(cf =>
+                        cf.id === activeCf.id ? { ...cf, data: result.processedCells! } : cf
+                      ),
+                    };
+                  });
+                  
+                  const compositedPreview = compositeLayersAtFrame(
+                    modifiedLayers as import('../types/timeline').Layer[],
+                    currentFrame,
+                    canvasWidth,
+                    canvasHeight,
+                    undefined,
+                    false,
+                    tl.layerGroups,
+                  );
+                  
+                  previewStore.setPreviewData(compositedPreview);
+                  return;
+                }
+              }
+            }
+          } catch {
+            // Fall through to simple preview
+          }
+          
+          // Fallback: transform to screen space and show just the active layer cells
+          let previewCells = result.processedCells;
+          try {
+            const { transformCellMapToScreen } = await import('../utils/layerTransformUtils');
+            previewCells = transformCellMapToScreen(previewCells);
+          } catch {
+            // Use local-space cells
+          }
+          previewStore.setPreviewData(previewCells);
+        } else {
+          console.error('Preview processing failed:', result);
+          previewStore.clearPreview();
+        }
       }
       
     } catch (error) {
@@ -501,46 +666,69 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       const { processEffect, processEffectOnFrames } = await import('../utils/effectsProcessing');
 
       if (state.applyToTimeline) {
-        // Apply to entire timeline
+        // Apply effect to content frames, scoped by targetScope
         const { useAnimationStore } = await import('./animationStore');
         const animationStore = useAnimationStore.getState();
+        const { useTimelineStore } = await import('./timelineStore');
+        const tl = useTimelineStore.getState();
         
         // Get canvas background color for blend operations
         const { useCanvasStore } = await import('./canvasStore');
         const canvasBackgroundColor = useCanvasStore.getState().canvasBackgroundColor;
         
-        const result = await processEffectOnFrames(
-          effect,
-          animationStore.frames,
-          settings,
-          () => {
-            // Progress tracking could be added here if needed
-          },
-          canvasBackgroundColor
-        );
+        // Determine which layers to process based on scope
+        const layersToProcess = state.targetScope === 'all-layers'
+          ? tl.layers.filter(l => l.visible && !l.locked)
+          : (() => {
+              const activeLayer = tl.layers.find(l => l.id === tl.view.activeLayerId);
+              return activeLayer ? [activeLayer] : [];
+            })();
+        
+        if (layersToProcess.length === 0) {
+          set({ lastError: state.targetScope === 'all-layers' ? 'No visible, unlocked layers' : 'No active layer' });
+          return false;
+        }
+        
+        // Process each target layer
+        for (const layer of layersToProcess) {
+          // Build legacy frames from this layer's content frames
+          const layerFrames = layer.contentFrames.map(cf => ({
+            id: cf.id as unknown as import('../types').FrameId,
+            name: cf.name,
+            duration: Math.round(cf.durationFrames * (1000 / tl.config.frameRate)),
+            data: cf.data,
+          }));
+          
+          const result = await processEffectOnFrames(
+            effect,
+            layerFrames,
+            settings,
+            () => {},
+            canvasBackgroundColor
+          );
 
-        if (result.errors.length > 0) {
-          console.warn('Effect processing had errors:', result.errors);
+          if (result.errors.length > 0) {
+            console.warn(`Effect processing had errors on layer "${layer.name}":`, result.errors);
+          }
+
+          // Write processed frames back to this layer's content frames
+          for (let i = 0; i < result.processedFrames.length && i < layer.contentFrames.length; i++) {
+            const processedFrame = result.processedFrames[i];
+            const contentFrame = layer.contentFrames[i];
+            tl.updateContentFrameData(layer.id, contentFrame.id, processedFrame.data);
+          }
         }
 
-        // Update animation store with processed frames
-        // Use the set function directly to update frames
-        useAnimationStore.setState((state) => ({
-          ...state,
-          frames: result.processedFrames
-        }));
-
-        // Sync the canvas with the processed current frame
-        const updatedAnimationStore = useAnimationStore.getState();
-        const currentFrame = updatedAnimationStore.frames[updatedAnimationStore.currentFrameIndex];
-        if (currentFrame) {
-          const { useCanvasStore } = await import('./canvasStore');
-          const canvasStore = useCanvasStore.getState();
-          canvasStore.setCanvasData(currentFrame.data);
+        // Sync the canvas with the current frame's data
+        const currentIdx = animationStore.currentFrameIndex;
+        const currentData = animationStore.getFrameData(currentIdx);
+        if (currentData) {
+          const { useCanvasStore: cs } = await import('./canvasStore');
+          cs.getState().setCanvasData(currentData);
         }
 
       } else {
-        // Apply to current canvas only
+        // Apply to current frame only
         const { useCanvasStore } = await import('./canvasStore');
         const canvasStore = useCanvasStore.getState();
         
@@ -548,20 +736,67 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
         const selectionState = useSelectionStore.getState();
         const selectionMask = selectionState.isActive ? selectionState.selectedCells : undefined;
         
-        const result = await processEffect(
-          effect,
-          canvasStore.cells,
-          settings,
-          canvasStore.canvasBackgroundColor,
-          { selectionMask }
-        );
-
-        if (result.success && result.processedCells) {
-          // Update canvas store with processed cells
-          const { setCanvasData } = canvasStore;
-          setCanvasData(result.processedCells);
+        if (state.targetScope === 'all-layers') {
+          // All-layers at current frame: process each visible/unlocked layer's
+          // content frame that overlaps the playhead
+          const { useTimelineStore } = await import('./timelineStore');
+          const { getContentFrameAtTime } = await import('../utils/layerCompositing');
+          const tl = useTimelineStore.getState();
+          const currentFrame = tl.view.currentFrame;
+          const canvasBackgroundColor = canvasStore.canvasBackgroundColor;
+          
+          const targetLayers = tl.layers.filter(l => l.visible && !l.locked);
+          if (targetLayers.length === 0) {
+            set({ lastError: 'No visible, unlocked layers' });
+            return false;
+          }
+          
+          for (const layer of targetLayers) {
+            const cf = getContentFrameAtTime(layer, currentFrame);
+            if (!cf || cf.data.size === 0) continue;
+            
+            // Use canvasStore cells for the active layer (reflects in-progress edits)
+            const cellsToProcess = (layer.id === tl.view.activeLayerId) ? canvasStore.cells : cf.data;
+            
+            const result = await processEffect(
+              effect,
+              cellsToProcess,
+              settings,
+              canvasBackgroundColor,
+              { selectionMask }
+            );
+            
+            if (result.success && result.processedCells) {
+              tl.updateContentFrameData(layer.id, cf.id, result.processedCells);
+              // If this is the active layer, also update the working canvas
+              if (layer.id === tl.view.activeLayerId) {
+                canvasStore.setCanvasData(result.processedCells);
+              }
+            }
+          }
+          
+          // Re-sync canvas from the active layer (in case it wasn't a target)
+          const { useAnimationStore: getAnim } = await import('./animationStore');
+          const currentData = getAnim.getState().getFrameData(getAnim.getState().currentFrameIndex);
+          if (currentData) {
+            canvasStore.setCanvasData(currentData);
+          }
         } else {
-          throw new Error(result.error || 'Effect processing failed');
+          // Active layer at current frame only (original behavior)
+          const result = await processEffect(
+            effect,
+            canvasStore.cells,
+            settings,
+            canvasStore.canvasBackgroundColor,
+            { selectionMask }
+          );
+
+          if (result.success && result.processedCells) {
+            const { setCanvasData } = canvasStore;
+            setCanvasData(result.processedCells);
+          } else {
+            throw new Error(result.error || 'Effect processing failed');
+          }
         }
       }
 
@@ -594,6 +829,7 @@ export const useEffectsStore = create<EffectsState>((set, get) => ({
       isOpen: false,
       activeEffect: null,
       applyToTimeline: false,
+      targetScope: 'active-layer' as const,
       levelsSettings: { ...DEFAULT_LEVELS_SETTINGS },
       hueSaturationSettings: { ...DEFAULT_HUE_SATURATION_SETTINGS },
       remapColorsSettings: { ...DEFAULT_REMAP_COLORS_SETTINGS },

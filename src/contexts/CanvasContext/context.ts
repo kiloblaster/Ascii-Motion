@@ -80,11 +80,20 @@ export interface CanvasActions {
   setJustCommittedMove: (committed: boolean) => void;
 
   setHoveredCell: (cell: { x: number; y: number } | null) => void;
+  // Ref-based hoveredCell for zero-latency rendering (bypasses React state)
+  hoveredCellRef: React.MutableRefObject<{ x: number; y: number } | null>;
+  // Register a callback to be called directly when hovered cell changes (no React render)
+  registerHoveredCellRender: (callback: (() => void) | null) => (() => void);
   setHoverPreview: (preview: {
     active: boolean;
     mode: 'none' | 'brush' | 'eraser-brush' | 'eraser-brush-active' | 'rectangle' | 'ellipse' | 'line';
     cells: Array<{ x: number; y: number }>;
   }) => void;
+
+  // Ref-based hover preview for zero-latency rendering (bypasses React state)
+  hoverPreviewRef: React.MutableRefObject<CanvasState['hoverPreview']>;
+  // Register a callback to be called directly when hover preview changes (no React render)
+  registerHoverRender: (callback: (() => void) | null) => void;
 
   setMoveState: (state: CanvasState['moveState']) => void;
 

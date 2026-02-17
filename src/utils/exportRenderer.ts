@@ -300,6 +300,13 @@ export class ExportRenderer {
   ): Promise<void> {
     this.updateProgress('Preparing video export...', 0);
 
+    // Resolve 'auto' frame rate to the project's frame rate
+    const resolvedFrameRate = settings.frameRate === 'auto' ? (data.frameRate || 12) : settings.frameRate;
+    const resolvedSettings = {
+      ...settings,
+      frameRate: resolvedFrameRate,
+    } as VideoExportSettings & { frameRate: number };
+
     try {
       // Check if we have frames to export
       if (data.frames.length === 0) {
@@ -307,17 +314,17 @@ export class ExportRenderer {
       }
 
       // Check WebCodecs support for WebM
-      if (settings.format === 'webm' && !this.supportsWebCodecs()) {
+      if (resolvedSettings.format === 'webm' && !this.supportsWebCodecs()) {
         throw new Error('WebCodecs is not supported in your browser. Please use a modern Chrome, Edge, or Safari browser, or switch to MP4 format.');
       }
 
       this.updateProgress('Setting up video encoder...', 10);
 
-      if (settings.format === 'webm') {
-        await this.exportWebMVideo(data, settings, filename);
+      if (resolvedSettings.format === 'webm') {
+        await this.exportWebMVideo(data, resolvedSettings, filename);
       } else {
         // MP4 fallback using canvas frame capture and blob creation
-        await this.exportMP4Fallback(data, settings, filename);
+        await this.exportMP4Fallback(data, resolvedSettings, filename);
       }
       
     } catch (error) {
@@ -327,7 +334,11 @@ export class ExportRenderer {
   }
 
   /**
-   * Export complete session as JSON file
+  /**
+   * Export complete session as JSON file.
+   * When layer data is available (v2), writes SessionDataV2 format
+   * preserving full layer structure, keyframes, and transforms.
+   * Otherwise falls back to v1 flat-frame format.
    */
   async exportSession(
     data: ExportDataBundle, 
@@ -339,33 +350,8 @@ export class ExportRenderer {
     try {
       this.updateProgress('Serializing data...', 30);
 
-      // Create session data structure
-      const sessionData = {
-        version: '1.0.0',
-        name: data.metadata.projectName || data.name || 'Untitled Project',
-        description: data.metadata.projectDescription || data.description,
-        metadata: settings.includeMetadata ? {
-          exportedAt: new Date().toISOString(),
-          exportVersion: '1.0.0',
-          userAgent: navigator.userAgent
-        } : undefined,
-        canvas: {
-          width: data.canvasDimensions.width,
-          height: data.canvasDimensions.height,
-          canvasBackgroundColor: data.canvasBackgroundColor,
-          showGrid: data.showGrid
-        },
-        animation: {
-          frames: data.frames.map(frame => ({
-            id: frame.id,
-            name: frame.name,
-            duration: frame.duration,
-            data: Object.fromEntries(frame.data.entries())
-          })),
-          currentFrameIndex: data.currentFrameIndex,
-          frameRate: data.frameRate,
-          looping: data.looping
-        },
+      // Shared tool/palette/typography/UI state for both v1 and v2
+      const sharedState = {
         tools: {
           activeTool: data.toolState.activeTool,
           selectedCharacter: data.toolState.selectedCharacter,
@@ -402,6 +388,55 @@ export class ExportRenderer {
           characterSpacing: data.characterPaletteState.characterSpacing
         } : undefined
       };
+
+      let sessionData: Record<string, unknown>;
+
+      if (data.sessionDataV2) {
+        // ─── V2 FORMAT: Full layer structure with keyframes ───
+        sessionData = {
+          ...data.sessionDataV2,
+          // Enrich with project name/description
+          name: data.metadata.projectName || data.name || 'Untitled Project',
+          description: data.metadata.projectDescription || data.description,
+          metadata: settings.includeMetadata ? {
+            exportedAt: new Date().toISOString(),
+            exportVersion: '2.0.0',
+            userAgent: navigator.userAgent
+          } : undefined,
+          // Attach shared state that the timeline store doesn't track
+          ...sharedState,
+        };
+      } else {
+        // ─── V1 FORMAT: Flat frames (legacy / no layers) ───
+        sessionData = {
+          version: '1.0.0',
+          name: data.metadata.projectName || data.name || 'Untitled Project',
+          description: data.metadata.projectDescription || data.description,
+          metadata: settings.includeMetadata ? {
+            exportedAt: new Date().toISOString(),
+            exportVersion: '1.0.0',
+            userAgent: navigator.userAgent
+          } : undefined,
+          canvas: {
+            width: data.canvasDimensions.width,
+            height: data.canvasDimensions.height,
+            canvasBackgroundColor: data.canvasBackgroundColor,
+            showGrid: data.showGrid
+          },
+          animation: {
+            frames: data.frames.map(frame => ({
+              id: frame.id,
+              name: frame.name,
+              duration: frame.duration,
+              data: Object.fromEntries(frame.data.entries())
+            })),
+            currentFrameIndex: data.currentFrameIndex,
+            frameRate: data.frameRate,
+            looping: data.looping
+          },
+          ...sharedState,
+        };
+      }
 
       this.updateProgress('Converting to JSON...', 70);
 
@@ -1241,38 +1276,62 @@ export class ExportRenderer {
 
       this.updateProgress('Serializing animation data...', 20);
 
-      const framesPayload = data.frames.map((frame) => {
-        const cells: Array<{ x: number; y: number; char: string; color: string; bgColor?: string }> = [];
-
-        frame.data.forEach((cell, key) => {
-          if (!cell || !cell.char) {
-            return;
-          }
-
-          const [x, y] = key.split(',').map(Number);
-          const cellEntry: { x: number; y: number; char: string; color: string; bgColor?: string } = {
-            x,
-            y,
-            char: cell.char,
-            color: cell.color || '#ffffff'
-          };
-
-          if (cell.bgColor && cell.bgColor !== 'transparent') {
-            cellEntry.bgColor = cell.bgColor;
-          }
-
-          cells.push(cellEntry);
+      // ── Optimization 1: Build color dictionary ──
+      // Collect all unique colors across all frames
+      const colorSet = new Set<string>();
+      for (const frame of data.frames) {
+        frame.data.forEach((cell) => {
+          if (cell?.color) colorSet.add(cell.color);
+          if (cell?.bgColor && cell.bgColor !== 'transparent') colorSet.add(cell.bgColor);
         });
+      }
+      const colorPalette = Array.from(colorSet).sort();
+      const colorIndex = new Map<string, number>();
+      colorPalette.forEach((c, i) => colorIndex.set(c, i));
 
-        cells.sort((a, b) => (a.y - b.y) || (a.x - b.x));
-
-        return {
-          duration: Math.max(frame.duration, 16),
-          cells
-        };
+      // ── Optimization 2: Compact cell format (arrays instead of objects) ──
+      // Format: [x, y, "char", colorIdx] or [x, y, "char", colorIdx, bgColorIdx]
+      const rawFrames = data.frames.map((frame) => {
+        const cells: Array<(number | string)[]> = [];
+        frame.data.forEach((cell, key) => {
+          if (!cell || !cell.char) return;
+          const [x, y] = key.split(',').map(Number);
+          const cIdx = colorIndex.get(cell.color || '#ffffff') ?? 0;
+          if (cell.bgColor && cell.bgColor !== 'transparent') {
+            const bgIdx = colorIndex.get(cell.bgColor)!;
+            cells.push([x, y, cell.char, cIdx, bgIdx]);
+          } else {
+            cells.push([x, y, cell.char, cIdx]);
+          }
+        });
+        cells.sort((a, b) => ((a[1] as number) - (b[1] as number)) || ((a[0] as number) - (b[0] as number)));
+        return { duration: Math.max(frame.duration, 16), cells };
       });
 
-      const framesJson = JSON.stringify(framesPayload, null, 2);
+      // ── Optimization 3: Frame deduplication ──
+      // Merge consecutive frames with identical cell data into a single entry with accumulated duration
+      const hashFrame = (cells: Array<(number | string)[]>): string => {
+        return JSON.stringify(cells);
+      };
+
+      const framesPayload: Array<{ duration: number; cells: Array<(number | string)[]> }> = [];
+      for (let i = 0; i < rawFrames.length; i++) {
+        const frame = rawFrames[i];
+        const hash = hashFrame(frame.cells);
+        if (framesPayload.length > 0) {
+          const prev = framesPayload[framesPayload.length - 1];
+          const prevHash = hashFrame(prev.cells);
+          if (hash === prevHash) {
+            // Identical to previous — extend duration
+            prev.duration += frame.duration;
+            continue;
+          }
+        }
+        framesPayload.push({ duration: frame.duration, cells: frame.cells });
+      }
+
+      const paletteJson = JSON.stringify(colorPalette);
+      const framesJson = JSON.stringify(framesPayload);
       // Font stack is already properly formatted (no quotes) from fontMetrics
       const fontStack =
         data.fontMetrics?.fontFamily || 'SF Mono, Monaco, Cascadia Code, Consolas, JetBrains Mono, Fira Code, Monaspace Neon, Geist Mono, Courier New, monospace';
@@ -1282,6 +1341,7 @@ export class ExportRenderer {
       const componentCode = this.generateReactComponentCode({
         componentName,
         framesJson,
+        paletteJson,
         isTypescript: settings.typescript,
         includeControls: settings.includeControls,
         canvasWidth: canvasPixelWidth,
@@ -1338,6 +1398,7 @@ export class ExportRenderer {
   private generateReactComponentCode(options: {
     componentName: string;
     framesJson: string;
+    paletteJson: string;
     isTypescript: boolean;
     includeControls: boolean;
     canvasWidth: number;
@@ -1351,6 +1412,7 @@ export class ExportRenderer {
     const {
       componentName,
       framesJson,
+      paletteJson,
       isTypescript,
       includeControls,
       canvasWidth,
@@ -1370,10 +1432,13 @@ export class ExportRenderer {
     const hooksImport = `import { useEffect, useRef, useCallback${includeControls ? ', useState' : ''} } from 'react';`;
 
     const typeBlock = isTypescript
-      ? `type CellData = {\n  x: number;\n  y: number;\n  char: string;\n  color: string;\n  bgColor?: string;\n};\n\n` +
-        `type Frame = {\n  duration: number;\n  cells: CellData[];\n};\n\n` +
+      ? `// Compact cell format: [x, y, char, colorIndex, bgColorIndex?]\ntype CellData = (number | string)[];\n\ntype Frame = {\n  duration: number;\n  cells: CellData[];\n};\n\n` +
         `type AsciiMotionComponentProps = {\n  showControls?: boolean;\n  autoPlay?: boolean;\n  onReady?: (api: {\n    play: () => void;\n    pause: () => void;\n    togglePlay: () => void;\n    restart: () => void;\n  }) => void;\n};`
-      : `/**\n * @typedef {{ x: number, y: number, char: string, color: string, bgColor?: string }} CellData\n * @typedef {{ duration: number, cells: CellData[] }} Frame\n */\n\n/**\n * @typedef {Object} AsciiMotionComponentProps\n * @property {boolean} [showControls]\n * @property {boolean} [autoPlay]\n * @property {(api: { play: () => void; pause: () => void; togglePlay: () => void; restart: () => void; }) => void} [onReady]\n */`;
+      : `/**\n * Compact cell format: [x, y, char, colorIndex, bgColorIndex?]\n * @typedef {(number|string)[]} CellData\n * @typedef {{ duration: number, cells: CellData[] }} Frame\n */\n\n/**\n * @typedef {Object} AsciiMotionComponentProps\n * @property {boolean} [showControls]\n * @property {boolean} [autoPlay]\n * @property {(api: { play: () => void; pause: () => void; togglePlay: () => void; restart: () => void; }) => void} [onReady]\n */`;
+
+    const paletteDeclaration = isTypescript
+      ? `const COLORS: string[] = ${paletteJson};`
+      : `const COLORS = ${paletteJson};`;
 
     const framesDeclaration = isTypescript
       ? `const FRAMES: Frame[] = ${framesJson};`
@@ -1529,16 +1594,22 @@ export class ExportRenderer {
       '  }',
       '',
       '  for (const cell of frame.cells) {',
-      '    if (cell.bgColor) {',
-      '      context.fillStyle = cell.bgColor;',
-      '      context.fillRect(cell.x * CELL_WIDTH, cell.y * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);',
+      '    const x = cell[0];',
+      '    const y = cell[1];',
+      '    const char = cell[2];',
+      '    const color = COLORS[cell[3]];',
+      '    const bgColor = cell.length > 4 ? COLORS[cell[4]] : null;',
+      '',
+      '    if (bgColor) {',
+      '      context.fillStyle = bgColor;',
+      '      context.fillRect(x * CELL_WIDTH, y * CELL_HEIGHT, CELL_WIDTH, CELL_HEIGHT);',
       '    }',
       '',
-      "    context.fillStyle = cell.color || '#ffffff';",
+      "    context.fillStyle = color || '#ffffff';",
       '    context.fillText(',
-      '      cell.char,',
-      '      cell.x * CELL_WIDTH + CELL_WIDTH / 2,',
-      '      cell.y * CELL_HEIGHT + CELL_HEIGHT / 2',
+      '      char,',
+      '      x * CELL_WIDTH + CELL_WIDTH / 2,',
+      '      y * CELL_HEIGHT + CELL_HEIGHT / 2',
       '    );',
       '  }'
     ];
@@ -1740,6 +1811,8 @@ export class ExportRenderer {
     lines.push('');
     lines.push(typeBlock);
     lines.push('');
+    lines.push(paletteDeclaration);
+    lines.push('');
     lines.push(framesDeclaration);
     lines.push('');
     lines.push(`const CANVAS_WIDTH = ${canvasWidth};`);
@@ -1894,11 +1967,14 @@ export class ExportRenderer {
         };
       });
 
+      // Deduplicate consecutive identical frames (merge durations)
+      const deduplicatedFramesData = this.deduplicateCliFrames(framesData);
+
       this.updateProgress('Generating component code...', 60);
 
       const componentCode = this.generateInkComponentCode({
         componentName,
-        framesData,
+        framesData: deduplicatedFramesData,
         colorMap,
         colorMode: settings.colorMode,
         loopAnimation: settings.loopAnimation,
@@ -2368,11 +2444,14 @@ export class ExportRenderer {
         };
       });
 
+      // Deduplicate consecutive identical frames (merge durations)
+      const deduplicatedFramesData = this.deduplicateCliFrames(framesData);
+
       this.updateProgress('Generating component code...', 60);
 
       const componentCode = this.generateOpenTuiComponentCode({
         componentName,
-        framesData,
+        framesData: deduplicatedFramesData,
         colorMap,
         colorMode: settings.colorMode,
         loopAnimation: settings.loopAnimation,
@@ -2709,12 +2788,15 @@ export class ExportRenderer {
         });
       }
 
+      // Deduplicate consecutive identical frames (merge durations)
+      const deduplicatedFramesData = this.deduplicateCliFrames(framesData);
+
       this.updateProgress('Generating Go code...', 60);
 
       // Generate Go code
       const goCode = this.generateBubbleteaCode({
         packageName: sanitizedPackageName,
-        framesData,
+        framesData: deduplicatedFramesData,
         colorMap,
         colorMode: settings.colorMode,
         playbackStyle: settings.playbackStyle,
@@ -3652,20 +3734,18 @@ export class ExportRenderer {
     // Calculate how many loops to generate
     const loopMultiplier = this.getLoopMultiplier(settings.loops);
     
-    // Pre-calculate video frame counts for each animation frame
-    const frameVideoFrameCounts = originalFrames.map(frame => 
-      this.calculateVideoFramesForDuration(frame.duration, settings.frameRate)
-    );
-    
-    const totalVideoFrames = frameVideoFrameCounts.reduce((sum, count) => sum + count, 0) * loopMultiplier;
+    // Each animation frame = exactly 1 video frame.
+    // The video fps controls playback speed:
+    // - Auto/project fps: plays at intended speed
+    // - Different fps: same frames, different playback speed
+    const totalVideoFrames = originalFrames.length * loopMultiplier;
     
     let globalVideoFrameIndex = 0;
     
-    // Generate frames for all loops
+    // Generate frames for all loops — 1 video frame per animation frame
     for (let loop = 0; loop < loopMultiplier; loop++) {
       for (let animFrameIndex = 0; animFrameIndex < originalFrames.length; animFrameIndex++) {
         const animationFrame = originalFrames[animFrameIndex];
-        const videoFrameCount = frameVideoFrameCounts[animFrameIndex];
         
         // Create high-resolution canvas for this animation frame
         const frameCanvas = this.createExportCanvas(
@@ -3676,7 +3756,7 @@ export class ExportRenderer {
           data.typography
         );
         
-        // Render the animation frame once
+        // Render the animation frame
         await this.renderFrame(
           frameCanvas.canvas,
           animationFrame.data,
@@ -3692,25 +3772,17 @@ export class ExportRenderer {
             scale: frameCanvas.scale
           }
         );
-        // Duplicate this canvas for the required number of video frames
-        for (let videoFrameIndex = 0; videoFrameIndex < videoFrameCount; videoFrameIndex++) {
-          // Clone the canvas for each video frame
-          const clonedCanvas = this.cloneCanvas(frameCanvas.canvas);
-          videoFrames.push(clonedCanvas);
-          
-          globalVideoFrameIndex++;
-          
-          // Update progress (spread across 20-50% range)
-          const progress = 20 + (globalVideoFrameIndex / totalVideoFrames) * 30;
-          this.updateProgress(
-            `Rendering video frame ${globalVideoFrameIndex}/${totalVideoFrames} (anim frame ${animFrameIndex + 1}/${originalFrames.length}, loop ${loop + 1}/${loopMultiplier})...`, 
-            progress
-          );
-        }
         
-        // Clean up the original canvas
-        frameCanvas.canvas.width = 0;
-        frameCanvas.canvas.height = 0;
+        // 1 video frame per animation frame
+        videoFrames.push(frameCanvas.canvas);
+        globalVideoFrameIndex++;
+        
+        // Update progress (spread across 20-50% range)
+        const progress = 20 + (globalVideoFrameIndex / totalVideoFrames) * 30;
+        this.updateProgress(
+          `Rendering video frame ${globalVideoFrameIndex}/${totalVideoFrames} (anim frame ${animFrameIndex + 1}/${originalFrames.length}, loop ${loop + 1}/${loopMultiplier})...`, 
+          progress
+        );
       }
     }
     
@@ -3718,31 +3790,34 @@ export class ExportRenderer {
   }
 
   /**
-   * Calculate how many video frames an animation frame should occupy based on its duration
+   * Deduplicate consecutive identical CLI frames by merging their durations.
+   * Compares content rows + color maps to detect identical frames.
+   * Used by Ink, OpenTUI, and BubbleTea exports.
    */
-  private calculateVideoFramesForDuration(durationMs: number, videoFrameRate: number): number {
-    // Convert duration to seconds, then multiply by frame rate
-    const durationSeconds = durationMs / 1000;
-    const videoFrameCount = Math.max(1, Math.round(durationSeconds * videoFrameRate));
-    return videoFrameCount;
-  }
+  private deduplicateCliFrames(
+    frames: Array<{ duration: number; content: string[]; fgColors: Record<string, string>; bgColors: Record<string, string> }>
+  ): typeof frames {
+    if (frames.length <= 1) return frames;
 
-  /**
-   * Clone a canvas element
-   */
-  private cloneCanvas(originalCanvas: HTMLCanvasElement): HTMLCanvasElement {
-    const clonedCanvas = document.createElement('canvas');
-    clonedCanvas.width = originalCanvas.width;
-    clonedCanvas.height = originalCanvas.height;
-    
-    const clonedCtx = clonedCanvas.getContext('2d');
-    const originalCtx = originalCanvas.getContext('2d');
-    
-    if (clonedCtx && originalCtx) {
-      clonedCtx.drawImage(originalCanvas, 0, 0);
+    const hashFrame = (f: typeof frames[0]): string => {
+      return f.content.join('\n') + '|' + JSON.stringify(f.fgColors) + '|' + JSON.stringify(f.bgColors);
+    };
+
+    const result: typeof frames = [];
+    let prevHash = '';
+
+    for (const frame of frames) {
+      const hash = hashFrame(frame);
+      if (result.length > 0 && hash === prevHash) {
+        // Identical to previous — extend duration
+        result[result.length - 1].duration += frame.duration;
+      } else {
+        result.push({ ...frame });
+        prevHash = hash;
+      }
     }
-    
-    return clonedCanvas;
+
+    return result;
   }
 
   /**
@@ -3773,7 +3848,7 @@ export class ExportRenderer {
         codec: 'V_VP9',
         width: frames[0].width,
         height: frames[0].height,
-        frameRate: settings.frameRate
+        frameRate: settings.frameRate as number
       }
     });
 
@@ -3812,7 +3887,7 @@ export class ExportRenderer {
         codec: 'vp09.00.10.08', // VP9 codec
         width: frames[0].width,
         height: frames[0].height,
-        framerate: settings.frameRate,
+        framerate: settings.frameRate as number,
         bitrate: this.getBitrateForQuality(settings.quality, frames[0].width, frames[0].height)
       });
 
@@ -3822,7 +3897,7 @@ export class ExportRenderer {
         
         // Create VideoFrame from canvas
         const frame = new VideoFrame(canvas, {
-          timestamp: (i * 1000000) / settings.frameRate // microseconds
+          timestamp: (i * 1000000) / (settings.frameRate as number) // microseconds
         });
         
         // Encode the frame

@@ -4,11 +4,14 @@ import { useToolStore } from '../stores/toolStore';
 import { usePaletteStore } from '../stores/paletteStore';
 import { useCharacterPaletteStore } from '../stores/characterPaletteStore';
 import { useProjectMetadataStore } from '../stores/projectMetadataStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import type { Cell, Tool } from '../types';
+import type { Layer, LayerId, ContentFrameId, PropertyTrackId, KeyframeId, LayerGroup, LayerGroupId, SessionDataV2 } from '../types/timeline';
 import { DEFAULT_FRAME_DURATION } from '../constants';
 import type { TypographySettings } from './canvasSizeConversion';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from '../types/palette';
 import { isColorPalette, isCharacterPalette } from '../types/palette';
+import { detectSessionVersion, migrateV1ToV2, validateAndRepairV2 } from './sessionMigration';
 
 type SessionFrameCells = Record<string, Cell>;
 
@@ -92,15 +95,42 @@ export class SessionImporter {
       reader.onload = (event) => {
         try {
           const content = event.target?.result as string;
-          const sessionData = JSON.parse(content) as unknown;
+          const rawData = JSON.parse(content) as unknown;
           
-          // Validate session data structure
-          if (!SessionImporter.validateSessionData(sessionData)) {
-            throw new Error('Invalid session file format');
+          // Detect session format version
+          const version = detectSessionVersion(rawData);
+          
+          if (version === '2.0.0') {
+            // V2: Validate, repair, and load layer data directly
+            const { data: repairedData, repairs } = validateAndRepairV2(rawData as SessionDataV2);
+            if (repairs.length > 0) {
+              console.warn(`Session import: ${repairs.length} repairs applied:`, repairs);
+            }
+            SessionImporter.restoreSessionDataV2(repairedData, typographyCallbacks);
+          } else if (version === '1.0.0') {
+            // V1: Migrate to v2 format and load into timeline
+            // All projects are forced into timeline mode (no legacy frame path)
+            console.log('Migrating v1 session to v2 timeline format...');
+            const migrated = migrateV1ToV2(rawData);
+            const { data: repairedData, repairs } = validateAndRepairV2(migrated);
+            if (repairs.length > 0) {
+              console.warn(`Session v1→v2 migration: ${repairs.length} repairs applied:`, repairs);
+            }
+            SessionImporter.restoreSessionDataV2(repairedData, typographyCallbacks);
+          } else {
+            // Unknown: Attempt v1→v2 migration as fallback
+            try {
+              const migrated = migrateV1ToV2(rawData);
+              const { data: repairedData, repairs } = validateAndRepairV2(migrated);
+              if (repairs.length > 0) {
+                console.warn(`Session migration: ${repairs.length} repairs applied:`, repairs);
+              }
+              SessionImporter.restoreSessionDataV2(repairedData, typographyCallbacks);
+              console.log('Session imported via v1→v2 migration fallback');
+            } catch {
+              throw new Error('Unknown session file format');
+            }
           }
-          
-          // Import the session data
-          SessionImporter.restoreSessionData(sessionData, typographyCallbacks);
           
           resolve();
         } catch (error) {
@@ -119,7 +149,9 @@ export class SessionImporter {
   /**
    * Validate session data structure
    */
-  private static validateSessionData(data: unknown): data is SessionImportData {
+  // @ts-ignore - Legacy v1 validator, preserved for reference. All imports now use v2 pipeline.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private static _validateSessionData(data: unknown): data is SessionImportData {
     try {
       if (typeof data !== 'object' || data === null) {
         return false;
@@ -211,7 +243,9 @@ export class SessionImporter {
   /**
    * Restore session data to application stores
    */
-  private static restoreSessionData(
+  // @ts-ignore - Legacy v1 restorer, preserved for reference. All imports now use restoreSessionDataV2.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private static _restoreSessionData(
     sessionData: SessionImportData, 
     typographyCallbacks?: {
       setFontSize: (size: number) => void;
@@ -372,6 +406,203 @@ export class SessionImporter {
       // Also trigger setCurrentFrame to ensure the frame synchronization system is in sync
       animationStore.setCurrentFrame(0);
     }, 50);
+  }
+
+  /**
+   * Restore session data from v2 format (layer-based).
+   * Loads layers into timelineStore, canvas settings into canvasStore,
+   * and tool/palette/typography state into their respective stores.
+   */
+  private static restoreSessionDataV2(
+    sessionData: SessionDataV2,
+    typographyCallbacks?: {
+      setFontSize: (size: number) => void;
+      setCharacterSpacing: (spacing: number) => void;
+      setLineSpacing: (spacing: number) => void;
+      setSelectedFontId?: (fontId: string) => void;
+    }
+  ): void {
+    const canvasStore = useCanvasStore.getState();
+    const toolStore = useToolStore.getState();
+    const paletteStore = usePaletteStore.getState();
+    const characterPaletteStore = useCharacterPaletteStore.getState();
+    const projectMetadataStore = useProjectMetadataStore.getState();
+    const timelineStore = useTimelineStore.getState();
+    const animationStore = useAnimationStore.getState();
+
+    // Restore project metadata
+    if (sessionData.name) {
+      projectMetadataStore.setProjectName(sessionData.name);
+    }
+    if (sessionData.description) {
+      projectMetadataStore.setProjectDescription(sessionData.description);
+    }
+
+    // Restore canvas settings
+    canvasStore.setCanvasSize(sessionData.canvas.width, sessionData.canvas.height);
+    canvasStore.setCanvasBackgroundColor(sessionData.canvas.canvasBackgroundColor);
+    if (sessionData.canvas.showGrid !== undefined) {
+      if (sessionData.canvas.showGrid !== canvasStore.showGrid) {
+        canvasStore.toggleGrid();
+      }
+    }
+
+    // Guard: block auto-save during session import to prevent race conditions.
+    // Must be set BEFORE clearCanvas() to prevent the auto-save subscription from
+    // scheduling saves during the import window.
+    animationStore.setImportingSession(true);
+    canvasStore.clearCanvas();
+
+    // Deserialize layers: convert Record<string, Cell> back to Map<string, Cell>
+    const layers: Layer[] = sessionData.layers.map((sessionLayer) => ({
+      id: sessionLayer.id as LayerId,
+      name: sessionLayer.name,
+      visible: sessionLayer.visible,
+      solo: sessionLayer.solo,
+      locked: sessionLayer.locked,
+      opacity: sessionLayer.opacity,
+      parentGroupId: sessionLayer.parentGroupId as LayerGroupId | undefined,
+      contentFrames: sessionLayer.contentFrames.map((cf) => ({
+        id: cf.id as ContentFrameId,
+        name: cf.name,
+        startFrame: cf.startFrame,
+        durationFrames: cf.durationFrames,
+        data: new Map(Object.entries(cf.data)) as Map<string, Cell>,
+        hidden: cf.hidden,
+        labelColor: cf.labelColor,
+      })),
+      propertyTracks: sessionLayer.propertyTracks.map((track) => ({
+        id: track.id as PropertyTrackId,
+        propertyPath: track.propertyPath as import('../types/timeline').PropertyPath,
+        loopKeyframes: track.loopKeyframes,
+        keyframes: track.keyframes.map((kf) => ({
+          id: kf.id as KeyframeId,
+          frame: kf.frame,
+          value: kf.value,
+          easing: kf.easing,
+        })),
+      })),
+      staticProperties: sessionLayer.staticProperties ?? {},
+      syncKeyframesToFrames: sessionLayer.syncKeyframesToFrames,
+    }));
+
+    // Deserialize layer groups
+    const layerGroups: LayerGroup[] = (sessionData.layerGroups ?? []).map((sessionGroup) => ({
+      id: sessionGroup.id as LayerGroupId,
+      name: sessionGroup.name,
+      childLayerIds: sessionGroup.childLayerIds.map((id) => id as LayerId),
+      visible: sessionGroup.visible,
+      solo: sessionGroup.solo,
+      locked: sessionGroup.locked,
+      collapsed: sessionGroup.collapsed,
+      propertyTracks: (sessionGroup.propertyTracks ?? []).map((track) => ({
+        id: track.id as PropertyTrackId,
+        propertyPath: track.propertyPath as import('../types/timeline').PropertyPath,
+        loopKeyframes: track.loopKeyframes,
+        keyframes: track.keyframes.map((kf) => ({
+          id: kf.id as KeyframeId,
+          frame: kf.frame,
+          value: kf.value,
+          easing: kf.easing,
+        })),
+      })),
+      staticProperties: sessionGroup.staticProperties ?? {},
+    }));
+
+    // Load layers and groups into timeline store.
+    timelineStore.loadFromSessionData(
+      layers,
+      {
+        frameRate: sessionData.timeline.frameRate,
+        durationFrames: sessionData.timeline.durationFrames,
+      },
+      {
+        looping: sessionData.timeline.looping,
+      },
+      layerGroups,
+    );
+
+    // Force activeLayerId change: null → layers[0].id
+    // This guarantees the layer-switch useEffect in useFrameSynchronization
+    // fires on EVERY load (first or repeat) because the layer ID always changes.
+    // The effect will load the active layer's content frame into canvasStore.
+    const activeId = layers.length > 0 ? layers[0].id : null;
+    timelineStore.setActiveLayer(null as unknown as LayerId);
+    // Defer the real activation so React sees the null → id transition
+    setTimeout(() => {
+      if (activeId) {
+        timelineStore.setActiveLayer(activeId);
+      }
+      animationStore.setImportingSession(false);
+    }, 0);
+
+    // Restore tool state
+    const tools = sessionData.tools as Record<string, unknown> | undefined;
+    if (tools) {
+      if (typeof tools.activeTool === 'string') {
+        toolStore.setActiveTool(tools.activeTool as Tool);
+      }
+      if (typeof tools.selectedColor === 'string') {
+        toolStore.setSelectedColor(tools.selectedColor);
+      }
+      if (typeof tools.selectedBgColor === 'string') {
+        toolStore.setSelectedBgColor(tools.selectedBgColor);
+      }
+      if (typeof tools.selectedCharacter === 'string') {
+        toolStore.setSelectedChar(tools.selectedCharacter);
+      }
+      if (typeof tools.rectangleFilled === 'boolean') {
+        toolStore.setRectangleFilled(tools.rectangleFilled);
+      }
+    }
+
+    // Restore palette data
+    const palettes = sessionData.palettes as Record<string, unknown> | undefined;
+    if (palettes) {
+      const customPalettes = palettes.customPalettes;
+      const activePaletteId = palettes.activePaletteId;
+      const recentColors = palettes.recentColors;
+      if (Array.isArray(customPalettes) && typeof activePaletteId === 'string') {
+        paletteStore.loadSessionPalettes({
+          customPalettes: customPalettes as ColorPalette[],
+          activePaletteId,
+          recentColors: Array.isArray(recentColors) ? recentColors as string[] : [],
+        });
+      }
+    }
+
+    const characterPalettes = sessionData.characterPalettes as Record<string, unknown> | undefined;
+    if (characterPalettes) {
+      const customPalettes = characterPalettes.customPalettes;
+      const activePaletteId = characterPalettes.activePaletteId;
+      if (Array.isArray(customPalettes) && typeof activePaletteId === 'string') {
+        characterPaletteStore.loadSessionCharacterPalettes({
+          customPalettes: customPalettes as CharacterPalette[],
+          activePaletteId,
+          mappingMethod: (characterPalettes.mappingMethod as CharacterMappingSettings['mappingMethod']) ?? 'luminance',
+          invertDensity: (characterPalettes.invertDensity as boolean) ?? false,
+          characterSpacing: (characterPalettes.characterSpacing as number) ?? 1,
+        });
+      }
+    }
+
+    // Restore typography settings
+    const typography = sessionData.typography as Record<string, unknown> | undefined;
+    if (typographyCallbacks && typography) {
+      if (typeof typography.fontSize === 'number') {
+        typographyCallbacks.setFontSize(typography.fontSize);
+      }
+      if (typeof typography.characterSpacing === 'number') {
+        typographyCallbacks.setCharacterSpacing(typography.characterSpacing);
+      }
+      if (typeof typography.lineSpacing === 'number') {
+        typographyCallbacks.setLineSpacing(typography.lineSpacing);
+      }
+      if (typographyCallbacks.setSelectedFontId) {
+        const fontId = (typography.selectedFontId as string) ?? 'auto';
+        typographyCallbacks.setSelectedFontId(fontId);
+      }
+    }
   }
 }
 

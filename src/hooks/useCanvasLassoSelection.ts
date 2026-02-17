@@ -2,10 +2,12 @@ import { useCallback, useRef } from 'react';
 import { useCanvasContext, useCanvasDimensions } from '../contexts/CanvasContext';
 import { useCanvasState } from './useCanvasState';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { clearOtherToolSelections, clearAllSelections } from './useSelectionSync';
+import { screenToLocal } from '../utils/layerTransformUtils';
+import { compositeLayersAtFrame } from '../utils/layerCompositing';
 import { getCellsInPolygon, smoothPolygonPath } from '../utils/polygon';
 import { unionSelectionMasks, subtractSelectionMask } from '../utils/selectionUtils';
 import type { Cell } from '../types';
@@ -27,18 +29,20 @@ export const useCanvasLassoSelection = () => {
     setJustCommittedMove,
   } = useCanvasState();
   
-  const { width, height, cells, getCell } = useCanvasStore();
-  const { currentFrameIndex } = useAnimationStore();
-  const { 
-    lassoSelection, 
-    startLassoSelection,
-    addLassoPoint,
-    updateLassoSelectedCells,
-    finalizeLassoSelection,
-    clearLassoSelection,
-    pushCanvasHistory,
-    setLassoSelectionFromMask
-  } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const startLassoSelection = useToolStore((s) => s.startLassoSelection);
+  const addLassoPoint = useToolStore((s) => s.addLassoPoint);
+  const updateLassoSelectedCells = useToolStore((s) => s.updateLassoSelectedCells);
+  const finalizeLassoSelection = useToolStore((s) => s.finalizeLassoSelection);
+  const clearLassoSelection = useToolStore((s) => s.clearLassoSelection);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const setLassoSelectionFromMask = useToolStore((s) => s.setLassoSelectionFromMask);
 
   const selectionModifierRef = useRef<'replace' | 'add' | 'subtract'>('replace');
   const baseSelectionMaskRef = useRef<Set<string>>(new Set());
@@ -232,8 +236,9 @@ export const useCanvasLassoSelection = () => {
     };
 
     // If there's an uncommitted move and clicking outside selection, commit it first
-    if (moveState && freshLassoSelection.active && !isPointInFreshSelection(x, y) && modifier === 'replace') {
+    if (!didCommitMove && moveState && freshLassoSelection.active && !isPointInFreshSelection(x, y) && modifier === 'replace') {
       commitMove();
+      didCommitMove = true;
       clearAllSelections();
       setJustCommittedMove(true);
       resetSelectionGesture();
@@ -263,17 +268,39 @@ export const useCanvasLassoSelection = () => {
         const originalData = new Map<string, Cell>();
         const originalPositions = new Set<string>();
         
-        // Use global selection cells for cross-tool selection support (fresh state after potential commitMove)
         const selectionCells = freshGlobalSelection.isActive 
           ? freshGlobalSelection.selectedCells 
           : freshLassoSelection.selectedCells;
         
+        // When "All Layers" is on, read from composited view for correct move preview
+        const { selectionAffectsAllLayers: allLayers } = useToolStore.getState();
+        let compositedForMove: Map<string, Cell> | null = null;
+        if (allLayers) {
+          const tl = useTimelineStore.getState();
+          if (tl.layers.length > 0) {
+            const w = useCanvasStore.getState().width;
+            const h = useCanvasStore.getState().height;
+            compositedForMove = compositeLayersAtFrame(
+              tl.layers, tl.view.currentFrame,
+              w, h, undefined, false, tl.layerGroups,
+            );
+          }
+        }
+        
         selectionCells.forEach((cellKey) => {
-          originalPositions.add(cellKey);
           const [cx, cy] = cellKey.split(',').map(Number);
-          const cell = getCell(cx, cy);
+          let cell: Cell | undefined;
+          if (compositedForMove) {
+            cell = compositedForMove.get(cellKey);
+          } else {
+            const local = screenToLocal(cx, cy);
+            cell = getCell(local.x, local.y);
+          }
           if (cell && cell.char !== ' ') {
             originalData.set(cellKey, cell);
+            originalPositions.add(cellKey);
+          } else if (compositedForMove) {
+            originalPositions.add(cellKey);
           }
         });
         

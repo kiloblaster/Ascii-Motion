@@ -1,35 +1,41 @@
 import { useCallback } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { calculateBrushCells } from '../utils/brushUtils';
 import { useSelectionStore } from '../stores/selectionStore';
 import { isCellDrawableWithState, constrainCellsToSelectionWithState } from '../utils/selectionConstraint';
+import { isLayerEditable } from '../utils/layerCompositing';
+import { screenToLocal } from '../utils/layerTransformUtils';
+import { toast } from 'sonner';
 import type { Cell } from '../types';
 
 /**
  * Custom hook for handling canvas drawing operations
  */
 export const useDrawingTool = () => {
-  const { setCell, clearCell, getCell, fillArea } = useCanvasStore();
-  const { 
-    activeTool, 
-    selectedChar, 
-    selectedColor, 
-    selectedBgColor,
-    brushSettings,
-    rectangleFilled,
-    paintBucketContiguous,
-    pickFromCell,
-    pencilLastPosition,
-    setPencilLastPosition,
-    toolAffectsChar,
-    toolAffectsColor,
-    toolAffectsBgColor,
-    fillMatchChar,
-    fillMatchColor,
-    fillMatchBgColor
-  } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const setCell = useCanvasStore((s) => s.setCell);
+  const clearCell = useCanvasStore((s) => s.clearCell);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const fillArea = useCanvasStore((s) => s.fillArea);
+  const activeTool = useToolStore((s) => s.activeTool);
+  const selectedChar = useToolStore((s) => s.selectedChar);
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
+  const brushSettings = useToolStore((s) => s.brushSettings);
+  const rectangleFilled = useToolStore((s) => s.rectangleFilled);
+  const paintBucketContiguous = useToolStore((s) => s.paintBucketContiguous);
+  const pickFromCell = useToolStore((s) => s.pickFromCell);
+  const pencilLastPosition = useToolStore((s) => s.pencilLastPosition);
+  const setPencilLastPosition = useToolStore((s) => s.setPencilLastPosition);
+  const toolAffectsChar = useToolStore((s) => s.toolAffectsChar);
+  const toolAffectsColor = useToolStore((s) => s.toolAffectsColor);
+  const toolAffectsBgColor = useToolStore((s) => s.toolAffectsBgColor);
+  const fillMatchChar = useToolStore((s) => s.fillMatchChar);
+  const fillMatchColor = useToolStore((s) => s.fillMatchColor);
+  const fillMatchBgColor = useToolStore((s) => s.fillMatchBgColor);
   const { fontMetrics } = useCanvasContext();
 
   // Helper function to create a cell respecting the tool toggles
@@ -57,6 +63,30 @@ export const useDrawingTool = () => {
       bgColor: selectedBgColor
     };
   }, [selectedChar, selectedColor, selectedBgColor]);
+
+  /**
+   * Check if drawing is allowed on the active layer.
+   * Returns false and shows a toast if the layer is locked.
+   * Eyedropper tool is always allowed (read-only).
+   */
+  const checkActiveLayerEditable = useCallback((tool?: string): boolean => {
+    const activeLayer = useTimelineStore.getState().layers.find(
+      (l) => l.id === useTimelineStore.getState().view.activeLayerId
+    );
+    // If no layers loaded (v1 mode), allow drawing
+    if (!activeLayer) return true;
+    // Eyedropper is read-only, always allowed
+    if (tool === 'eyedropper') return true;
+    if (!isLayerEditable(activeLayer)) {
+      if (activeLayer.locked) {
+        toast.info('Layer is locked', { duration: 2000 });
+      } else if (!activeLayer.visible) {
+        toast.info('Layer is hidden', { duration: 2000 });
+      }
+      return false;
+    }
+    return true;
+  }, []);
 
   // Bresenham line algorithm for drawing lines between two points
   const getLinePoints = useCallback((x0: number, y0: number, x1: number, y1: number) => {
@@ -147,32 +177,43 @@ export const useDrawingTool = () => {
 
   const drawAtPosition = useCallback((x: number, y: number, isShiftClick = false, toolOverride?: string) => {
     const toolToUse = toolOverride || activeTool;
+
+    // Guard: check if active layer allows editing
+    if (!checkActiveLayerEditable(toolToUse)) return;
+
+    // Apply inverse layer transform so drawing lands at the visual cursor position.
+    // The compositing renderer applies forward transforms when displaying, so we
+    // need to undo that transform when writing to get visual alignment.
+    // screenToLocal accounts for both layer and group transforms.
+    const local = screenToLocal(x, y);
+    const lx = local.x, ly = local.y;
+
     switch (toolToUse) {
       case 'pencil': {
         const brushTool: 'pencil' | 'eraser' = 'pencil';
         if (isShiftClick && pencilLastPosition) {
-          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, x, y);
+          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, lx, ly);
         } else {
-          applyBrushStroke(brushTool, x, y);
+          applyBrushStroke(brushTool, lx, ly);
         }
         
         // Update position for potential shift+click line drawing
-        setPencilLastPosition({ x, y });
+        setPencilLastPosition({ x: lx, y: ly });
         break;
       }
       case 'eraser': {
         const brushTool: 'pencil' | 'eraser' = 'eraser';
         if (isShiftClick && pencilLastPosition) {
-          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, x, y);
+          applyBrushLine(brushTool, pencilLastPosition.x, pencilLastPosition.y, lx, ly);
         } else {
-          applyBrushStroke(brushTool, x, y);
+          applyBrushStroke(brushTool, lx, ly);
         }
         // Update last position for eraser too
-        setPencilLastPosition({ x, y });
+        setPencilLastPosition({ x: lx, y: ly });
         break;
       }
       case 'eyedropper': {
-        const existingCell = getCell(x, y);
+        const existingCell = getCell(lx, ly);
         if (existingCell) {
           pickFromCell(existingCell.char, existingCell.color, existingCell.bgColor);
         }
@@ -185,8 +226,8 @@ export const useDrawingTool = () => {
           bgColor: selectedBgColor
         };
         fillArea(
-          x, 
-          y, 
+          lx, 
+          ly, 
           newCell, 
           paintBucketContiguous, 
           { char: fillMatchChar, color: fillMatchColor, bgColor: fillMatchBgColor },
@@ -213,14 +254,23 @@ export const useDrawingTool = () => {
     selectedBgColor,
     toolAffectsChar,
     toolAffectsColor,
-    toolAffectsBgColor
+    toolAffectsBgColor,
+    checkActiveLayerEditable
   ]);
 
   const drawRectangle = useCallback((startX: number, startY: number, endX: number, endY: number) => {
-    const minX = Math.min(startX, endX);
-    const maxX = Math.max(startX, endX);
-    const minY = Math.min(startY, endY);
-    const maxY = Math.max(startY, endY);
+    // Guard: check if active layer allows editing
+    if (!checkActiveLayerEditable()) return;
+
+    // Inverse layer + group transform for both corners
+    const ls = screenToLocal(startX, startY);
+    const le = screenToLocal(endX, endY);
+    const sx = ls.x, sy = ls.y, ex = le.x, ey = le.y;
+
+    const minX = Math.min(sx, ex);
+    const maxX = Math.max(sx, ex);
+    const minY = Math.min(sy, ey);
+    const maxY = Math.max(sy, ey);
     
     // Get selection state once for efficiency
     const { isActive, selectedCells } = useSelectionStore.getState();
@@ -243,7 +293,7 @@ export const useDrawingTool = () => {
         }
       }
     }
-  }, [rectangleFilled, setCell, createCellWithAllAttributes]);
+  }, [rectangleFilled, setCell, createCellWithAllAttributes, checkActiveLayerEditable]);
 
   // Helper function to get ellipse points using a simpler approach
   const getEllipsePoints = useCallback((centerX: number, centerY: number, radiusX: number, radiusY: number, filled: boolean = false) => {
@@ -296,10 +346,18 @@ export const useDrawingTool = () => {
   }, []);
 
   const drawEllipse = useCallback((startX: number, startY: number, endX: number, endY: number) => {
-    const centerX = (startX + endX) / 2;
-    const centerY = (startY + endY) / 2;
-    const radiusX = Math.abs(endX - startX) / 2;
-    const radiusY = Math.abs(endY - startY) / 2;
+    // Guard: check if active layer allows editing
+    if (!checkActiveLayerEditable()) return;
+
+    // Inverse layer + group transform for both corners
+    const ls = screenToLocal(startX, startY);
+    const le = screenToLocal(endX, endY);
+    const sx = ls.x, sy = ls.y, ex = le.x, ey = le.y;
+
+    const centerX = (sx + ex) / 2;
+    const centerY = (sy + ey) / 2;
+    const radiusX = Math.abs(ex - sx) / 2;
+    const radiusY = Math.abs(ey - sy) / 2;
 
     const rawPoints = getEllipsePoints(centerX, centerY, radiusX, radiusY, rectangleFilled);
     
@@ -309,12 +367,10 @@ export const useDrawingTool = () => {
     
     // Draw all the ellipse points
     points.forEach(({ x, y }) => {
-      if (x >= 0 && y >= 0) { // Basic bounds checking
-        const newCell = createCellWithAllAttributes();
-        setCell(x, y, newCell);
-      }
+      const newCell = createCellWithAllAttributes();
+      setCell(x, y, newCell);
     });
-  }, [rectangleFilled, setCell, getEllipsePoints, createCellWithAllAttributes]);
+  }, [rectangleFilled, setCell, getEllipsePoints, createCellWithAllAttributes, checkActiveLayerEditable]);
 
   return {
     drawAtPosition,
@@ -325,6 +381,7 @@ export const useDrawingTool = () => {
     eraseBrushLine, // Export for eraser gap-filling
     getEllipsePoints, // Export for preview rendering
     getLinePoints, // Export for line preview rendering
+    checkActiveLayerEditable, // Export for locked layer checks
     activeTool
   };
 };

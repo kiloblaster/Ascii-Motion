@@ -2,8 +2,12 @@
  * ASCII Motion - PREMIUM FEATURE
  * Silent Save Handler
  * 
- * Handles silent saves for projects that have already been saved to cloud
- * This component must be rendered inside CanvasProvider to access useExportDataCollector
+ * Handles silent saves for projects that have already been saved to cloud.
+ * 
+ * PERF FIX: Previously called useExportDataCollector() on every render, which
+ * eagerly composited ALL timeline frames via compositeLayersAtFrame() — the
+ * #1 performance bottleneck (71ms/frame × 90 frames = 357ms per mouse move).
+ * Now collects export data lazily only when triggerSilentSave fires.
  * 
  * @premium This component requires authentication and uses premium cloud storage features
  */
@@ -14,7 +18,8 @@ import { CloudUpload } from 'lucide-react';
 import { useCloudDialogState } from '../../hooks/useCloudDialogState';
 import { useCloudProjectActions } from '../../hooks/useCloudProjectActions';
 import { useProjectMetadataStore } from '../../stores/projectMetadataStore';
-import { useExportDataCollector } from '../../utils/exportDataCollector';
+import { ExportDataCollector } from '../../utils/exportDataCollector';
+import type { ExportDataBundle } from '../../types/export';
 import { useAuth } from '@ascii-motion/premium';
 import { PublishedProjectSaveWarningDialog } from './PublishedProjectSaveWarningDialog';
 
@@ -23,10 +28,11 @@ export function SilentSaveHandler() {
   const { triggerSilentSave, setTriggerSilentSave } = useCloudDialogState();
   const { handleSaveToCloud, checkIfPublished } = useCloudProjectActions();
   const { projectName, projectDescription, currentProjectId } = useProjectMetadataStore();
-  const exportData = useExportDataCollector();
+  // PERF FIX: Do NOT call useExportDataCollector() here — it eagerly composites
+  // ALL frames on every render. Instead, collect data lazily when save is triggered.
 
   const [showPublishWarning, setShowPublishWarning] = useState(false);
-  const [pendingSaveData, setPendingSaveData] = useState<typeof exportData | null>(null);
+  const [pendingSaveData, setPendingSaveData] = useState<ExportDataBundle | null>(null);
 
   useEffect(() => {
     if (!triggerSilentSave || !user || !currentProjectId) {
@@ -35,6 +41,9 @@ export function SilentSaveHandler() {
 
     // Reset the flag immediately to prevent duplicate saves
     setTriggerSilentSave(false);
+
+    // Collect export data on-demand (lazy) instead of on every render
+    const exportData = ExportDataCollector.collect();
 
     const performSilentSave = async () => {
       try {
@@ -72,7 +81,7 @@ export function SilentSaveHandler() {
     };
 
     performSilentSave();
-  }, [triggerSilentSave, user, currentProjectId, handleSaveToCloud, checkIfPublished, exportData, projectName, projectDescription, setTriggerSilentSave]);
+  }, [triggerSilentSave, user, currentProjectId, handleSaveToCloud, checkIfPublished, projectName, projectDescription, setTriggerSilentSave]);
 
   const handleConfirmSave = async () => {
     setShowPublishWarning(false);

@@ -12,6 +12,7 @@ import { Video, Loader2, Play, Settings } from 'lucide-react';
 import { useExportStore } from '../../stores/exportStore';
 import { useExportDataCollector } from '../../utils/exportDataCollector';
 import { useProjectMetadataStore } from '../../stores/projectMetadataStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { ExportRenderer } from '../../utils/exportRenderer';
 import { calculateExportPixelDimensions, formatPixelDimensions } from '../../utils/exportPixelCalculator';
 import type { VideoExportSettings } from '../../types/export';
@@ -25,12 +26,13 @@ export const VideoExportDialog: React.FC = () => {
   const activeFormat = useExportStore(state => state.activeFormat);
   const setShowExportModal = useExportStore(state => state.setShowExportModal);
   
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'mp4';
+  const exportData = useExportDataCollector(isOpen);
   const projectName = useProjectMetadataStore((state) => state.projectName);
   
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>({
     sizeMultiplier: 2,
-    frameRate: 12,
+    frameRate: 'auto',
     frameRange: 'all',
     quality: 'high',
     crf: 24,
@@ -42,8 +44,6 @@ export const VideoExportDialog: React.FC = () => {
   const [filename, setFilename] = useState(projectName || 'ascii-motion-video');
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<{ message: string; progress: number } | null>(null);
-
-  const isOpen = showExportModal && activeFormat === 'mp4';
 
   // Sync filename with project name when dialog opens
   useEffect(() => {
@@ -110,9 +110,15 @@ export const VideoExportDialog: React.FC = () => {
     setVideoSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  // Project frame rate from timeline
+  const projectFrameRate = useTimelineStore(state => state.config.frameRate);
+  
+  // Resolve effective frame rate (auto = project fps)
+  const effectiveFrameRate = videoSettings.frameRate === 'auto' ? projectFrameRate : videoSettings.frameRate;
+
   // Calculate estimated duration and file size
   const frameCount = exportData?.frames.length || 1;
-  const duration = frameCount / videoSettings.frameRate;
+  const duration = frameCount / effectiveFrameRate;
   const estimatedSize = Math.round((frameCount * videoSettings.sizeMultiplier * 50) / 1024); // Rough estimate in KB
 
   return (
@@ -246,14 +252,15 @@ export const VideoExportDialog: React.FC = () => {
                 <div className="space-y-2">
                   <Label htmlFor="frameRate">Frame Rate (FPS)</Label>
                   <Select
-                    value={videoSettings.frameRate.toString()}
-                    onValueChange={(value) => handleSettingChange('frameRate', parseInt(value))}
+                    value={videoSettings.frameRate === 'auto' ? 'auto' : videoSettings.frameRate.toString()}
+                    onValueChange={(value) => handleSettingChange('frameRate', value === 'auto' ? 'auto' : parseInt(value))}
                     disabled={isExporting}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="auto">Auto ({projectFrameRate} FPS)</SelectItem>
                       <SelectItem value="8">8 FPS</SelectItem>
                       <SelectItem value="12">12 FPS</SelectItem>
                       <SelectItem value="15">15 FPS</SelectItem>

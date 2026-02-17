@@ -1,10 +1,11 @@
 import { useCallback } from 'react';
 import { useCanvasContext, useCanvasDimensions } from '../contexts/CanvasContext';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
 import { useToolStore } from '../stores/toolStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useDrawingTool } from './useDrawingTool';
 import { calculateBrushCells } from '../utils/brushUtils';
+import { screenToLocal } from '../utils/layerTransformUtils';
 
 /**
  * Hook for handling drag and drop operations on the canvas
@@ -13,20 +14,21 @@ import { calculateBrushCells } from '../utils/brushUtils';
 export const useCanvasDragAndDrop = () => {
   const { canvasRef, isDrawing, setIsDrawing, setMouseButtonDown, shiftKeyDown, cellWidth, cellHeight, fontMetrics } = useCanvasContext();
   const { getGridCoordinates } = useCanvasDimensions();
-  const { width, height, cells } = useCanvasStore();
-  const { currentFrameIndex } = useAnimationStore();
-  const { 
-    shapePreview,
-    startShapePreview,
-    updateShapePreview,
-    clearShapePreview,
-    pushCanvasHistory,
-    finalizeCanvasHistory,
-    pencilLastPosition,
-    setLinePreview,
-    clearLinePreview,
-    getBrushSettings
-  } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
+  const shapePreview = useToolStore((s) => s.shapePreview);
+  const startShapePreview = useToolStore((s) => s.startShapePreview);
+  const updateShapePreview = useToolStore((s) => s.updateShapePreview);
+  const clearShapePreview = useToolStore((s) => s.clearShapePreview);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const finalizeCanvasHistory = useToolStore((s) => s.finalizeCanvasHistory);
+  const pencilLastPosition = useToolStore((s) => s.pencilLastPosition);
+  const setLinePreview = useToolStore((s) => s.setLinePreview);
+  const clearLinePreview = useToolStore((s) => s.clearLinePreview);
+  const getBrushSettings = useToolStore((s) => s.getBrushSettings);
   const { drawAtPosition, drawRectangle, drawEllipse, drawBrushLine, eraseBrushLine, activeTool } = useDrawingTool();
 
   // Helper function to apply aspect ratio constraints when shift is held
@@ -135,17 +137,18 @@ export const useCanvasDragAndDrop = () => {
       if (pencilLastPosition && 
           (Math.abs(x - pencilLastPosition.x) > 1 || Math.abs(y - pencilLastPosition.y) > 1)) {
         // Large distance during drag - fill the gap with a line
+        // Convert current position to local space to match pencilLastPosition
+        // (which is stored in local space by drawAtPosition)
+        const local = screenToLocal(x, y);
         if (tool === 'pencil') {
-          // Use brush-aware gap-filling for pencil to respect brush settings
-          drawBrushLine(pencilLastPosition.x, pencilLastPosition.y, x, y);
+          drawBrushLine(pencilLastPosition.x, pencilLastPosition.y, local.x, local.y);
         } else if (tool === 'eraser') {
-          // Use brush-aware gap-filling for eraser to respect brush size/shape
-          eraseBrushLine(pencilLastPosition.x, pencilLastPosition.y, x, y);
+          eraseBrushLine(pencilLastPosition.x, pencilLastPosition.y, local.x, local.y);
         }
         
-        // Update position after gap-filling
+        // Update position after gap-filling (in local space)
         const { setPencilLastPosition } = useToolStore.getState();
-        setPencilLastPosition({ x, y });
+        setPencilLastPosition({ x: local.x, y: local.y });
       } else {
         // Normal drag drawing - use regular drawing function
   handleDrawing(x, y, false, toolOverride); // Continuous stroke

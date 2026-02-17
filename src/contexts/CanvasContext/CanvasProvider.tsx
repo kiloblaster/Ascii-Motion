@@ -54,57 +54,79 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
   const [selectionMode, setSelectionMode] = useState<'none' | 'dragging' | 'moving'>('none');
   const [pendingSelectionStart, setPendingSelectionStart] = useState<{ x: number; y: number } | null>(null);
   const [justCommittedMove, setJustCommittedMove] = useState(false);
-
-  const [hoveredCell, setHoveredCell] = useState<{ x: number; y: number } | null>(null);
   
-  // Optimized setter that only updates if coordinates actually changed
+  // hoveredCell is ref-based (see hoveredCellRef below) — no React state needed.
+  // The context value uses null as a stable placeholder since consumers read from the ref directly.
+  
+  // Ref-based hoveredCell for zero-latency rendering — bypasses React state entirely.
+  // PERF FIX: hoveredCell was previously a React state that changed on every mouse move,
+  // causing CanvasProvider to re-render and ALL context consumers to re-render.
+  // Now it's ref-based: writes go to the ref, and a direct render callback fires
+  // without React involvement. Only MouseCoordinates.tsx needs the old state pattern,
+  // and it subscribes via registerHoveredCellRender instead.
+  const hoveredCellRef = useRef<{ x: number; y: number } | null>(null);
+  const hoveredCellCallbacksRef = useRef<Set<() => void>>(new Set());
+
+  const registerHoveredCellRender = useCallback((cb: (() => void) | null) => {
+    if (cb) hoveredCellCallbacksRef.current.add(cb);
+    // Return cleanup: caller should call the returned function to unregister
+    return () => { if (cb) hoveredCellCallbacksRef.current.delete(cb); };
+  }, []);
+  
+  // Optimized setter: writes to ref + calls direct render callbacks, skips React state
   const setHoveredCellOptimized = useCallback((cell: { x: number; y: number } | null) => {
-    setHoveredCell((prev) => {
-      // If both are null, no change
-      if (!prev && !cell) return prev;
-      // If one is null but not the other, update
-      if (!prev || !cell) return cell;
-      // If coordinates haven't changed, return previous reference to prevent re-renders
-      if (prev.x === cell.x && prev.y === cell.y) return prev;
-      // Coordinates changed, update
-      return cell;
-    });
+    const prev = hoveredCellRef.current;
+    if (!prev && !cell) return;
+    if (!prev || !cell) {
+      hoveredCellRef.current = cell;
+      hoveredCellCallbacksRef.current.forEach(fn => fn());
+      return;
+    }
+    if (prev.x === cell.x && prev.y === cell.y) return;
+    hoveredCellRef.current = cell;
+    hoveredCellCallbacksRef.current.forEach(fn => fn());
   }, []);
 
-  const [hoverPreview, setHoverPreview] = useState<CanvasContextValue['hoverPreview']>({
+  const [hoverPreview, _setHoverPreview] = useState<CanvasContextValue['hoverPreview']>({
     active: false,
     mode: 'none',
     cells: [],
   });
   
-  // Optimized setter that only updates if preview actually changed
+  // Ref-based hover preview for zero-latency rendering
+  const hoverPreviewRef = useRef<CanvasContextValue['hoverPreview']>({
+    active: false,
+    mode: 'none',
+    cells: [],
+  });
+  const hoverRenderCallbackRef = useRef<(() => void) | null>(null);
+  
+  const registerHoverRender = useCallback((cb: (() => void) | null) => {
+    hoverRenderCallbackRef.current = cb;
+  }, []);
+  
+  // Optimized setter: writes to ref + calls direct render, skips React state entirely
   const setHoverPreviewOptimized = useCallback((preview: CanvasContextValue['hoverPreview']) => {
-    setHoverPreview((prev) => {
-      // If active state changed, always update
-      if (prev.active !== preview.active) return preview;
-      
-      // If mode changed, always update
-      if (prev.mode !== preview.mode) return preview;
-      
-      // If both inactive, no need to update
-      if (!prev.active && !preview.active) return prev;
-      
-      // Check if cells array actually changed (length or content)
-      if (prev.cells.length !== preview.cells.length) return preview;
-      
-      // For active previews, check if cell coordinates changed
-      if (prev.active && preview.active && prev.cells.length > 0 && preview.cells.length > 0) {
-        // Quick check: compare first and last cell only (optimization)
-        const firstChanged = prev.cells[0].x !== preview.cells[0].x || prev.cells[0].y !== preview.cells[0].y;
-        const lastChanged = prev.cells[prev.cells.length - 1].x !== preview.cells[preview.cells.length - 1].x || 
-                           prev.cells[prev.cells.length - 1].y !== preview.cells[preview.cells.length - 1].y;
-        
-        if (firstChanged || lastChanged) return preview;
+    const prev = hoverPreviewRef.current;
+    
+    // Quick check: no meaningful change?
+    if (prev.active === preview.active && prev.mode === preview.mode) {
+      if (!prev.active && !preview.active) return;
+      if (prev.cells.length === preview.cells.length && prev.cells.length > 0) {
+        const firstSame = prev.cells[0].x === preview.cells[0].x && prev.cells[0].y === preview.cells[0].y;
+        const lastSame = prev.cells[prev.cells.length - 1].x === preview.cells[preview.cells.length - 1].x &&
+                         prev.cells[prev.cells.length - 1].y === preview.cells[preview.cells.length - 1].y;
+        if (firstSame && lastSame) return;
       }
-      
-      // No meaningful change, return previous reference
-      return prev;
-    });
+    }
+    
+    // Write to ref (immediate, no React)
+    hoverPreviewRef.current = preview;
+    
+    // Call direct render callback (bypasses React render cycle entirely)
+    if (hoverRenderCallbackRef.current) {
+      hoverRenderCallbackRef.current();
+    }
   }, []);
 
   const [moveState, setMoveState] = useState<CanvasContextValue['moveState']>(null);
@@ -186,7 +208,10 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     detectFont();
   }, [selectedFontId]);
 
-  const contextValue: CanvasContextValue = {
+  // PERF FIX: Memoize context value to prevent cascading re-renders.
+  // Without this, every CanvasProvider re-render creates a new object reference,
+  // which forces ALL context consumers to re-render even if no values changed.
+  const contextValue: CanvasContextValue = useMemo(() => ({
     cellSize,
     zoom,
     panOffset,
@@ -209,7 +234,7 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     selectionMode,
     pendingSelectionStart,
     justCommittedMove,
-    hoveredCell,
+    hoveredCell: null, // always null — consumers read from hoveredCellRef instead
     hoverPreview,
     moveState,
     pasteMode,
@@ -230,7 +255,11 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     setPendingSelectionStart,
     setJustCommittedMove,
     setHoveredCell: setHoveredCellOptimized,
+    hoveredCellRef,
+    registerHoveredCellRender,
     setHoverPreview: setHoverPreviewOptimized,
+    hoverPreviewRef,
+    registerHoverRender,
     setMoveState,
     startPasteMode,
     updatePastePosition,
@@ -240,7 +269,23 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     commitPaste,
     setSelectionPreview,
     canvasRef,
-  };
+  }), [
+    cellSize, zoom, panOffset, characterSpacing, lineSpacing,
+    selectedFontId, actualFont, isFontDetecting, isFontLoading, fontLoadError,
+    fontMetrics, cellWidth, cellHeight,
+    isDrawing, mouseButtonDown, shiftKeyDown, altKeyDown, ctrlKeyDown,
+    selectionMode, pendingSelectionStart, justCommittedMove,
+    hoverPreview, moveState, pasteMode, selectionPreviewState,
+    // All setters are stable useCallback refs — they don't change
+    setCellSize, setZoom, setPanOffset, setCharacterSpacing, setLineSpacing,
+    setSelectedFontId, setIsDrawing, setMouseButtonDown,
+    setShiftKeyDown, setAltKeyDown, setCtrlKeyDown,
+    setSelectionMode, setPendingSelectionStart, setJustCommittedMove,
+    setHoveredCellOptimized, setHoverPreviewOptimized,
+    setMoveState,
+    startPasteMode, updatePastePosition, startPasteDrag, stopPasteDrag,
+    cancelPasteMode, commitPaste, setSelectionPreview,
+  ]);
 
   return <CanvasContext.Provider value={contextValue}>{children}</CanvasContext.Provider>;
 };

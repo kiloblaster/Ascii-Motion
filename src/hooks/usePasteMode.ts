@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useToolStore } from '../stores/toolStore';
 import { useCanvasStore } from '../stores/canvasStore';
+import { transformCellMapToLocal } from '../utils/layerTransformUtils';
 import type { Cell } from '@/types';
 
 export interface PastePreview {
@@ -224,17 +225,20 @@ export const usePasteMode = () => {
     const { data, position } = pasteMode.preview;
     const pastedData = new Map<string, Cell>();
 
-    // Transform clipboard data to absolute positions
+    // Transform clipboard data to absolute positions, then to local space
     data.forEach((cell, relativeKey) => {
       const [relX, relY] = relativeKey.split(',').map(Number);
       const absoluteKey = `${position.x + relX},${position.y + relY}`;
       pastedData.set(absoluteKey, cell);
     });
 
+    // Inverse-transform to layer-local space for canvas store
+    const localPastedData = transformCellMapToLocal(pastedData);
+
     // Clear paste mode
     cancelPasteMode();
 
-    return pastedData;
+    return localPastedData;
   }, [pasteMode, cancelPasteMode]);
 
   /**

@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useCanvasState } from './useCanvasState';
 import { useMemoizedGrid } from './useMemoizedGrid';
 import { useDrawingTool } from './useDrawingTool';
+import { useCompositedCanvas } from './useCompositedCanvas';
 import { useOnionSkinRenderer } from './useOnionSkinRenderer';
 import { measureCanvasRender, finishCanvasRender } from '../utils/performance';
 import { 
@@ -75,19 +76,33 @@ export const useCanvasRenderer = () => {
     getTotalOffset,
   } = useCanvasState();
 
-  const { 
-    width, 
-    height, 
-    canvasBackgroundColor,
-    showGrid,
-    getCell
-  } = useCanvasStore();
+  // PERF FIX: Targeted selectors for canvasStore — broad subscription caused full
+  // canvas redraw on any store change (e.g., background color when only cells changed).
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const canvasBackgroundColor = useCanvasStore((s) => s.canvasBackgroundColor);
+  const showGrid = useCanvasStore((s) => s.showGrid);
+  const getCell = useCanvasStore((s) => s.getCell);
 
-  const { activeTool, rectangleFilled, lassoSelection, magicWandSelection, textToolState, linePreview } = useToolStore();
-  const { previewData, isPreviewActive } = usePreviewStore();
-  const { isPreviewActive: isEffectPreviewActive } = useEffectsStore();
-  const { isPreviewActive: isTimeEffectPreviewActive } = useTimeEffectsStore();
-  const { previewOrigin, previewDimensions } = useAsciiTypeStore();
+  // Layer compositing: provides composited cells from all visible layers
+  const { getCompositedCell, compositedCells, isLayerMode } = useCompositedCanvas();
+  // Use composited cell getter when in layer mode, otherwise use canvasStore directly
+  const getCellForRender = isLayerMode ? getCompositedCell : getCell;
+
+  // PERF FIX: Targeted selectors for toolStore — broad subscription caused full
+  // canvas redraw when unrelated tool properties changed (brush size, fill mode, etc.).
+  const activeTool = useToolStore((s) => s.activeTool);
+  const rectangleFilled = useToolStore((s) => s.rectangleFilled);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const textToolState = useToolStore((s) => s.textToolState);
+  const linePreview = useToolStore((s) => s.linePreview);
+  const previewData = usePreviewStore((s) => s.previewData);
+  const isPreviewActive = usePreviewStore((s) => s.isPreviewActive);
+  const isEffectPreviewActive = useEffectsStore((s) => s.isPreviewActive);
+  const isTimeEffectPreviewActive = useTimeEffectsStore((s) => s.isPreviewActive);
+  const previewOrigin = useAsciiTypeStore((s) => s.previewOrigin);
+  const previewDimensions = useAsciiTypeStore((s) => s.previewDimensions);
   
 
   const { getEllipsePoints } = useDrawingTool();
@@ -252,9 +267,16 @@ export const useCanvasRenderer = () => {
     }
 
     // Draw static cells (excluding cells being moved)
-    // Skip drawing original cells if time effects preview OR effects preview is active (preview will render all cells)
-    if (!isTimeEffectPreviewActive && !isEffectPreviewActive) {
-      for (let y = 0; y < canvasConfig.height; y++) {
+    const isEffectPreviewMode = isTimeEffectPreviewActive || isEffectPreviewActive;
+    // During effects preview, the preview data contains the full composited result
+    // (all layers composited with the effect applied). Skip the normal cell-drawing
+    // pass entirely and let the preview pass handle all rendering to avoid
+    // unaffected cells (e.g. scatter source positions) bleeding through.
+    const skipBaseRenderForEffectPreview = isEffectPreviewMode && isPreviewActive && previewData.size > 0;
+    
+    if (!skipBaseRenderForEffectPreview) {
+    // Draw all static cells
+    for (let y = 0; y < canvasConfig.height; y++) {
         for (let x = 0; x < canvasConfig.width; x++) {
           const key = `${x},${y}`;
           
@@ -266,15 +288,29 @@ export const useCanvasRenderer = () => {
               bgColor: drawingStyles.defaultBgColor 
             });
           } else {
-            const cell = getCell(x, y);
+            const cell = getCellForRender(x, y);
             if (cell) {
               drawCell(ctx, x, y, cell);
             }
           }
         }
       }
-    }
 
+      // Second pass: draw cells outside the canvas grid bounds (unbounded layer content)
+      // Only in layer mode — legacy mode has no content outside bounds
+      if (isLayerMode) {
+        const w = canvasConfig.width;
+        const h = canvasConfig.height;
+        for (const [key, cell] of compositedCells) {
+          const [cx, cy] = key.split(',').map(Number);
+          // Skip cells already drawn in the grid loop above
+          if (cx >= 0 && cx < w && cy >= 0 && cy < h) continue;
+          // Skip cells being moved
+          if (movingCells.has(key)) continue;
+          drawCell(ctx, cx, cy, cell);
+        }
+      }
+    } // end skipBaseRenderForEffectPreview
     // Draw moved cells at their new positions
     if (overlayState.moveState && overlayState.moveState.originalData.size > 0) {
       const totalOffset = getTotalOffset(overlayState.moveState);
@@ -283,10 +319,7 @@ export const useCanvasRenderer = () => {
         const newX = origX + totalOffset.x;
         const newY = origY + totalOffset.y;
         
-        // Only draw if within bounds
-        if (newX >= 0 && newX < canvasConfig.width && newY >= 0 && newY < canvasConfig.height) {
-          drawCell(ctx, newX, newY, cell);
-        }
+        drawCell(ctx, newX, newY, cell);
       });
     }
 
@@ -484,31 +517,17 @@ export const useCanvasRenderer = () => {
       const previewAlpha = isEffectsPreview ? 1.0 : 0.8; // Effects: full opacity, others: semi-transparent
       
       if (isEffectsPreview) {
-        // For effects previews, render the ENTIRE canvas using preview data
-        // This ensures we show empty cells where content was removed (like scatter effect)
+        // For effects previews, render preview cells on top of the dimmed layers
+        // (other layers are already drawn at 50% opacity above)
         ctx.save();
         ctx.globalAlpha = previewAlpha;
         
-        for (let y = 0; y < canvasConfig.height; y++) {
-          for (let x = 0; x < canvasConfig.width; x++) {
-            const key = `${x},${y}`;
-            const previewCell = previewData.get(key);
-            
-            if (previewCell) {
-              // Draw the preview cell
-              drawCell(ctx, x, y, previewCell);
-            } else {
-              // Draw empty cell with canvas background (shows where cells were removed)
-              const pixelX = Math.round(x * effectiveCellWidth + panOffset.x);
-              const pixelY = Math.round(y * effectiveCellHeight + panOffset.y);
-              const cellWidth = Math.round(effectiveCellWidth);
-              const cellHeight = Math.round(effectiveCellHeight);
-              
-              ctx.fillStyle = canvasBackgroundColor;
-              ctx.fillRect(pixelX, pixelY, cellWidth, cellHeight);
-            }
+        previewData.forEach((cell, key) => {
+          const [x, y] = key.split(',').map(Number);
+          if (x >= 0 && x < canvasConfig.width && y >= 0 && y < canvasConfig.height) {
+            drawCell(ctx, x, y, cell);
           }
-        }
+        });
         
         ctx.restore();
       } else {
@@ -569,6 +588,9 @@ export const useCanvasRenderer = () => {
     overlayState,
   // Keep these individual dependencies for now
   getCell,
+  getCellForRender,
+  compositedCells,
+  isLayerMode,
   drawCell,
   drawGridBackground,
     getTotalOffset,

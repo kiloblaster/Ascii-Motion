@@ -14,6 +14,7 @@ export { FlipVerticalTool, FlipVerticalToolStatus } from './FlipVerticalTool';
 export { AsciiTypeTool, AsciiTypeToolStatus } from './AsciiTypeTool';
 export { AsciiBoxTool, AsciiBoxToolStatus } from './AsciiBoxTool';
 export { BezierShapeTool, BezierShapeToolStatus } from './BezierShapeTool';
+export { LayerTransformTool, LayerTransformToolStatus } from './LayerTransformTool';
 
 // Tool Types
 export type ToolComponent = 
@@ -29,4 +30,5 @@ export type ToolComponent =
   | 'GradientFillTool'
   | 'FlipHorizontalTool'
   | 'FlipVerticalTool'
-  | 'AsciiTypeTool';
+  | 'AsciiTypeTool'
+  | 'LayerTransformTool';

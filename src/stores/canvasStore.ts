@@ -4,11 +4,18 @@ import { createCellKey } from '../types';
 import { DEFAULT_CANVAS_SIZES } from '../constants';
 import { useSelectionStore } from './selectionStore';
 import { isCellDrawableWithState } from '../utils/selectionConstraint';
+import type { LayerId } from '../types/timeline';
 
 interface CanvasState extends Canvas {
   // Canvas display settings
   canvasBackgroundColor: string;
   showGrid: boolean;
+  
+  // Layer sync state
+  /** The layer currently being edited. Canvas cells represent this layer's active content frame. */
+  activeLayerId: LayerId | null;
+  /** Whether the canvas has unsaved changes not yet synced to the timeline store. */
+  isDirty: boolean;
   
   // Actions
   setCanvasSize: (width: number, height: number) => void;
@@ -20,6 +27,10 @@ interface CanvasState extends Canvas {
   clearCanvas: () => void;
   fillArea: (x: number, y: number, cell: Cell, contiguous?: boolean, matchCriteria?: { char: boolean; color: boolean; bgColor: boolean }, affectsCriteria?: { char: boolean; color: boolean; bgColor: boolean }) => void;
   setCanvasData: (cells: Map<string, Cell>) => void;
+  
+  // Layer sync actions
+  setActiveLayerId: (layerId: LayerId | null) => void;
+  setDirty: (dirty: boolean) => void;
   
   // Computed values
   getCellCount: () => number;
@@ -33,6 +44,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   cells: new Map<string, Cell>(),
   canvasBackgroundColor: '#000000',
   showGrid: true,
+  activeLayerId: null,
+  isDirty: false,
 
   // Actions
   setCanvasSize: (width: number, height: number) => {
@@ -67,9 +80,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   setCell: (x: number, y: number, cell: Cell) => {
-    const { width, height } = get();
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
-    
     set((state) => {
       const newCells = new Map(state.cells);
       const key = createCellKey(x, y);
@@ -81,7 +91,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         newCells.set(key, { ...cell });
       }
       
-      return { cells: newCells };
+      return { cells: newCells, isDirty: true };
     });
   },
 
@@ -103,12 +113,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     set((state) => {
       const newCells = new Map(state.cells);
       newCells.delete(createCellKey(x, y));
-      return { cells: newCells };
+      return { cells: newCells, isDirty: true };
     });
   },
 
   clearCanvas: () => {
-    set({ cells: new Map() });
+    set({ cells: new Map(), isDirty: true });
   },
 
   fillArea: (startX: number, startY: number, newCell: Cell, contiguous: boolean = true, matchCriteria?: { char: boolean; color: boolean; bgColor: boolean }, affectsCriteria?: { char: boolean; color: boolean; bgColor: boolean }) => {
@@ -121,7 +131,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const affectsBgColor = affectsCriteria?.bgColor ?? true;
     
     if (!fillMatchChar && !fillMatchColor && !fillMatchBgColor) return; // nothing to match
-    if (startX < 0 || startX >= width || startY < 0 || startY >= height) return;
 
     const targetCell = getCell(startX, startY);
     if (!targetCell) return;
@@ -198,45 +207,54 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         ];
 
         for (const adj of adjacent) {
-          if (adj.x >= 0 && adj.x < width && adj.y >= 0 && adj.y < height) {
-            const adjKey = createCellKey(adj.x, adj.y);
-            if (!visited.has(adjKey)) {
+          const adjKey = createCellKey(adj.x, adj.y);
+          if (!visited.has(adjKey)) {
+            // Only expand to cells within canvas bounds OR cells that have content
+            // This prevents infinite BFS through empty space outside bounds
+            const inBounds = adj.x >= 0 && adj.x < width && adj.y >= 0 && adj.y < height;
+            const hasContent = newCells.has(adjKey);
+            if (inBounds || hasContent) {
               toFill.push(adj);
             }
           }
         }
       }
     } else {
-      // Non-contiguous fill - replace ALL matching cells on canvas (within selection if active)
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          // Check selection constraint - skip cells outside selection
-          if (!isCellDrawableWithState(x, y, selectionActive, selectionCells)) continue;
-          
-          const currentCell = getCell(x, y);
-          if (currentCell && matchesTarget(currentCell)) {
-            
-            const key = createCellKey(x, y);
-            
-            // Create cell respecting affects criteria
-            const affectedCell = createAffectedCell(currentCell);
-            
-            // Set the new cell
-            if (affectedCell.char === ' ' && affectedCell.color === '#FFFFFF' && affectedCell.bgColor === get().canvasBackgroundColor) {
-              newCells.delete(key);
-            } else {
-              newCells.set(key, affectedCell);
-            }
+      // Non-contiguous fill - replace ALL matching cells in the Map (within selection if active)
+      for (const [key, currentCell] of newCells) {
+        const [x, y] = key.split(',').map(Number);
+        // Check selection constraint - skip cells outside selection
+        if (!isCellDrawableWithState(x, y, selectionActive, selectionCells)) continue;
+
+        if (matchesTarget(currentCell)) {
+          // Create cell respecting affects criteria
+          const affectedCell = createAffectedCell(currentCell);
+
+          // Set the new cell
+          if (affectedCell.char === ' ' && affectedCell.color === '#FFFFFF' && affectedCell.bgColor === get().canvasBackgroundColor) {
+            newCells.delete(key);
+          } else {
+            newCells.set(key, affectedCell);
           }
         }
       }
     }
 
-    set({ cells: newCells });
+    set({ cells: newCells, isDirty: true });
   },
 
   setCanvasData: (cells: Map<string, Cell>) => {
     set({ cells: new Map(cells) });
+    // Note: setCanvasData does NOT mark dirty — it's used for sync-in (loading from timeline)
+  },
+
+  // Layer sync actions
+  setActiveLayerId: (layerId: LayerId | null) => {
+    set({ activeLayerId: layerId });
+  },
+
+  setDirty: (dirty: boolean) => {
+    set({ isDirty: dirty });
   },
 
   // Computed values

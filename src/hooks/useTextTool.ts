@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useToolStore } from '../stores/toolStore';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
+import { screenToLocal } from '../utils/layerTransformUtils';
 
 /**
  * Text Tool Hook - Handles text input functionality
@@ -16,10 +17,24 @@ import { useAnimationStore } from '../stores/animationStore';
  * - Clipboard paste support with overwrite behavior
  */
 export const useTextTool = () => {
-  const { textToolState, startTyping, stopTyping, setCursorPosition, setCursorVisible, setTextBuffer, commitWord, pushCanvasHistory, finalizeCanvasHistory } = useToolStore();
-  const { width, height, setCell, getCell, cells } = useCanvasStore();
-  const { currentFrameIndex } = useAnimationStore();
-  const { selectedColor, selectedBgColor } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useToolStore()/useCanvasStore().
+  const textToolState = useToolStore((s) => s.textToolState);
+  const startTyping = useToolStore((s) => s.startTyping);
+  const stopTyping = useToolStore((s) => s.stopTyping);
+  const setCursorPosition = useToolStore((s) => s.setCursorPosition);
+  const setCursorVisible = useToolStore((s) => s.setCursorVisible);
+  const setTextBuffer = useToolStore((s) => s.setTextBuffer);
+  const commitWord = useToolStore((s) => s.commitWord);
+  const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
+  const finalizeCanvasHistory = useToolStore((s) => s.finalizeCanvasHistory);
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const setCell = useCanvasStore((s) => s.setCell);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const cells = useCanvasStore((s) => s.cells);
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
   
   const blinkTimerRef = useRef<NodeJS.Timeout | null>(null);
   const wordBoundaryChars = useRef(new Set([' ', '\t', '\n', '.', ',', ';', ':', '!', '?', '"', "'", '(', ')', '[', ']', '{', '}', '<', '>', '/', '\\', '|', '@', '#', '$', '%', '^', '&', '*', '+', '=', '-', '_', '~', '`']));
@@ -111,6 +126,7 @@ export const useTextTool = () => {
     if (!textToolState.cursorPosition) return;
 
     const { x, y } = textToolState.cursorPosition;
+    const local = screenToLocal(x, y);
     
     // Check if character causes word boundary - commit current word if so
     if (isWordBoundary(char)) {
@@ -119,7 +135,7 @@ export const useTextTool = () => {
 
     // Insert character using selected colors
     const newCell = createTextCellWithAllAttributes(char);
-    setCell(x, y, newCell);
+    setCell(local.x, local.y, newCell);
 
     // Add to text buffer for undo batching
     setTextBuffer(textToolState.textBuffer + char);
@@ -169,7 +185,8 @@ export const useTextTool = () => {
     }
 
     // Get the character we're about to delete
-    const cellToDelete = getCell(targetX, targetY);
+    const localDel = screenToLocal(targetX, targetY);
+    const cellToDelete = getCell(localDel.x, localDel.y);
     
     // If deleting a word boundary character, commit current word
     if (cellToDelete && isWordBoundary(cellToDelete.char)) {
@@ -178,7 +195,7 @@ export const useTextTool = () => {
 
     // Clear the cell
     const newCell = createTextCellWithAllAttributes(' ');
-    setCell(targetX, targetY, newCell);
+    setCell(localDel.x, localDel.y, newCell);
 
     // Move cursor to deleted position
     setCursorPosition(targetX, targetY);
@@ -216,8 +233,9 @@ export const useTextTool = () => {
         } else {
           // Insert character if within bounds
           if (currentX < width && currentY < height) {
+            const localPaste = screenToLocal(currentX, currentY);
             const newCell = createTextCellWithAllAttributes(char);
-            setCell(currentX, currentY, newCell);
+            setCell(localPaste.x, localPaste.y, newCell);
             currentX++;
           }
           // Continue processing even if beyond width (content extends beyond canvas)

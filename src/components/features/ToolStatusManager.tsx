@@ -22,6 +22,7 @@ import {
   AsciiTypeToolStatus,
   AsciiBoxToolStatus,
   BezierShapeToolStatus,
+  LayerTransformToolStatus,
 } from '../tools';
 import { MouseCoordinates } from '../common/MouseCoordinates';
 
@@ -30,7 +31,7 @@ import { MouseCoordinates } from '../common/MouseCoordinates';
  * Renders the appropriate tool status component based on the active tool
  * Always displays mouse coordinates at the end
  */
-export const ToolStatusManager: React.FC = () => {
+export const ToolStatusManager: React.FC = React.memo(() => {
   const { activeTool } = useToolStore();
   const { altKeyDown, ctrlKeyDown } = useCanvasContext();
   const { layout } = useLayoutState();
@@ -95,6 +96,8 @@ export const ToolStatusManager: React.FC = () => {
         return <FlipHorizontalToolStatus />;
       case 'flipvertical':
         return <FlipVerticalToolStatus />;
+      case 'layertransform':
+        return <LayerTransformToolStatus />;
       default:
         return <span className="text-muted-foreground">No tool selected</span>;
     }
@@ -109,4 +112,6 @@ export const ToolStatusManager: React.FC = () => {
       <MouseCoordinates />
     </div>
   );
-};
+});
+
+ToolStatusManager.displayName = 'ToolStatusManager';

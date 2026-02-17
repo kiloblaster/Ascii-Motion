@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { useToolStore } from '../../stores/toolStore';
 import { useCanvasStore } from '../../stores/canvasStore';
-import { useAnimationStore } from '../../stores/animationStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
 import { useCanvasState } from '../../hooks/useCanvasState';
 import { useCanvasMouseHandlers } from '../../hooks/useCanvasMouseHandlers';
@@ -11,7 +11,7 @@ import { useBezierStore } from '../../stores/bezierStore';
 import { useHoverPreview } from '../../hooks/useHoverPreview';
 import { ToolManager } from './ToolManager';
 import { ToolStatusManager } from './ToolStatusManager';
-import { CanvasActionButtons } from './CanvasActionButtons';
+import { ZoomControls } from './ZoomControls';
 import { CanvasOverlay } from './CanvasOverlay';
 import { PlaybackStatusBar } from './PlaybackStatusBar';
 import type { Tool } from '../../types';
@@ -25,8 +25,13 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
   const { canvasRef, setMouseButtonDown, setShiftKeyDown, setAltKeyDown, altKeyDown, setCtrlKeyDown, ctrlKeyDown, cellWidth, cellHeight, zoom, panOffset } = useCanvasContext();
   
   // Get active tool and tool behavior
-  const { activeTool, textToolState, isPlaybackMode } = useToolStore();
-  const { isPlaying } = useAnimationStore();
+  // PERF FIX: Use targeted selectors instead of broad useToolStore().
+  // Previously had TWO broad useToolStore() calls causing entire grid re-render
+  // on any tool state change (brush size, color, fill mode, etc.).
+  const activeTool = useToolStore((s) => s.activeTool);
+  const textToolState = useToolStore((s) => s.textToolState);
+  const isPlaybackMode = useToolStore((s) => s.isPlaybackMode);
+  const isPlaying = useTimelineStore((s) => s.view.isPlaying);
   const { getToolCursor } = useToolBehavior();
   
   // Track previous tool for cleanup on tool changes
@@ -70,14 +75,13 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
   // Enable hover preview for tools (brush outline, etc.)
   useHoverPreview();
 
-  const { 
-    selection, 
-    lassoSelection, 
-    magicWandSelection, 
-    clearSelection, 
-    clearLassoSelection, 
-    clearMagicWandSelection 
-  } = useToolStore();
+  // PERF FIX: Use targeted selectors instead of second broad useToolStore() call.
+  const selection = useToolStore((s) => s.selection);
+  const lassoSelection = useToolStore((s) => s.lassoSelection);
+  const magicWandSelection = useToolStore((s) => s.magicWandSelection);
+  const clearSelection = useToolStore((s) => s.clearSelection);
+  const clearLassoSelection = useToolStore((s) => s.clearLassoSelection);
+  const clearMagicWandSelection = useToolStore((s) => s.clearMagicWandSelection);
 
   // Handle arrow movement for rectangular selection
   const handleRectangularSelectionArrowMovement = useCallback((arrowOffset: { x: number; y: number }) => {
@@ -441,9 +445,9 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
         <CanvasOverlay />
       </div>
       
-      {/* Action buttons and status info positioned outside canvas */}
+      {/* Zoom controls and status info positioned outside canvas */}
       <div className="mt-2 mb-2 flex justify-between items-center gap-4">
-        <CanvasActionButtons />
+        <ZoomControls />
         {isPlaying ? <PlaybackStatusBar /> : <ToolStatusManager />}
       </div>
     </div>

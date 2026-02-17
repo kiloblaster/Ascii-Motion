@@ -13,6 +13,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useAsciiTypeTool } from './useAsciiTypeTool';
 import { useAsciiTypeStore } from '../stores/asciiTypeStore';
 import { useAsciiBoxTool } from './useAsciiBoxTool';
+import { layerTransformHandlersRef } from './useLayerTransformTool';
 import type { Tool } from '../types';
 
 export interface MouseHandlers {
@@ -28,11 +29,22 @@ export interface MouseHandlers {
  * Routes mouse events to appropriate tool handlers
  */
 export const useCanvasMouseHandlers = (): MouseHandlers => {
-  const { activeTool, clearSelection: clearCanvasSelection, clearLassoSelection, isPlaybackMode } = useToolStore();
+  // PERF FIX: Use targeted selectors instead of broad useToolStore()/useCanvasStore().
+  // Previously: `const { activeTool, clearSelection, ... } = useToolStore();`
+  // Broad subscriptions caused re-renders on ANY store field change.
+  const activeTool = useToolStore((s) => s.activeTool);
+  const clearCanvasSelection = useToolStore((s) => s.clearSelection);
+  const clearLassoSelection = useToolStore((s) => s.clearLassoSelection);
+  const isPlaybackMode = useToolStore((s) => s.isPlaybackMode);
   const clearTimelineSelection = useAnimationStore((state) => state.clearSelection);
   const { canvasRef, altKeyDown, ctrlKeyDown, setIsDrawing, setMouseButtonDown, setHoveredCell, pasteMode, updatePastePosition, startPasteDrag, stopPasteDrag, cancelPasteMode, commitPaste } = useCanvasContext();
   const { getGridCoordinates } = useCanvasDimensions();
-  const { width, height, cells, setCanvasData } = useCanvasStore();
+  // PERF FIX: Targeted selectors for canvasStore — `cells` changes on every draw stroke;
+  // broad subscription would cascade through all useCallback deps even for unrelated fields.
+  const width = useCanvasStore((s) => s.width);
+  const height = useCanvasStore((s) => s.height);
+  const cells = useCanvasStore((s) => s.cells);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
   const { moveState, commitMove, isPointInEffectiveSelection, selectionMode } = useCanvasState();
   
   // Throttle hover updates to reduce re-renders - only update if cell actually changed
@@ -46,6 +58,9 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
   const textToolHandlers = useTextTool();
   const gradientFillHandlers = useGradientFillTool();
   const asciiBoxHandlers = useAsciiBoxTool();
+  // PERF FIX: Don't call useLayerTransformTool() here — it adds ~49 React hooks
+  // to every CanvasGrid render even when the tool isn't active. Instead, read
+  // from a shared ref that LayerTransformOverlay populates when mounted.
   const {
     previewGrid: asciiPreviewGrid,
     previewDimensions: asciiPreviewDimensions,
@@ -69,7 +84,7 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     effectiveTool = 'eyedropper';
   }
 
-  // Utility to get grid coordinates from mouse event
+  // Utility to get grid coordinates from mouse event (screen-space)
   const getGridCoordinatesFromEvent = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -241,6 +256,11 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         asciiBoxHandlers.handleCanvasClick(boxCoords.x, boxCoords.y);
         break;
       }
+      case 'layertransform': {
+        const transformCoords = getGridCoordinatesFromEvent(event);
+        layerTransformHandlersRef.current.handleMouseDown(transformCoords.x, transformCoords.y);
+        break;
+      }
       case 'asciitype': {
         if (!asciiPreviewGrid || !asciiPreviewDimensions) {
           break;
@@ -377,6 +397,11 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         asciiBoxHandlers.handleEraseDrag(boxCoords.x, boxCoords.y);
         break;
       }
+      case 'layertransform': {
+        const transformCoords = getGridCoordinatesFromEvent(event);
+        layerTransformHandlersRef.current.handleMouseMove(transformCoords.x, transformCoords.y);
+        break;
+      }
       case 'asciitype':
         // Handle drag movement if actively dragging
         if (asciiDragState) {
@@ -450,6 +475,9 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         break;
       case 'asciibox':
         asciiBoxHandlers.handleMouseUp();
+        break;
+      case 'layertransform':
+        layerTransformHandlersRef.current.handleMouseUp();
         break;
       case 'asciitype':
         // End drag if we're dragging

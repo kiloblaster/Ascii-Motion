@@ -35,6 +35,7 @@ import { useCanvasStore } from '../../stores/canvasStore';
 import { useAnimationStore } from '../../stores/animationStore';
 import { usePreviewStore } from '../../stores/previewStore';
 import { useToolStore } from '../../stores/toolStore';
+import { transformCellMapToLocal } from '../../utils/layerTransformUtils';
 import { cn } from '../../lib/utils';
 import { Loader2, Sparkles, Type, X } from 'lucide-react';
 
@@ -208,13 +209,12 @@ export function AsciiTypePanel() {
     const nextCells = new Map(canvasCells);
     let applied = false;
 
+    // Build a map of cells to apply, then transform to local space
+    const cellsToApply = new Map<string, import('../../types').Cell>();
     previewCanvasCells.forEach(({ cell, skipApply }, key) => {
-      if (skipApply) {
-        return;
-      }
-
+      if (skipApply) return;
       applied = true;
-      nextCells.set(key, { ...cell });
+      cellsToApply.set(key, { ...cell });
     });
 
     if (!applied) {
@@ -222,6 +222,11 @@ export function AsciiTypePanel() {
       clearPreviewOverlay();
       return;
     }
+
+    const transformedCells = transformCellMapToLocal(cellsToApply);
+    transformedCells.forEach((cell, key) => {
+      nextCells.set(key, cell);
+    });
 
     // Push history with PREVIOUS state (for undo)
     pushCanvasHistory(previousCanvasData, currentFrameIndex, 'ASCII Type apply');

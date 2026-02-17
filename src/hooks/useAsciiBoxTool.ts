@@ -2,8 +2,9 @@ import { useCallback, useEffect } from 'react';
 import { useAsciiBoxStore } from '../stores/asciiBoxStore';
 import { useToolStore } from '../stores/toolStore';
 import { useCanvasStore } from '../stores/canvasStore';
-import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
+import { transformCellMapToLocal } from '../utils/layerTransformUtils';
 import { BOX_DRAWING_STYLES } from '../constants/boxDrawingStyles';
 import {
   generateBoxRectangle,
@@ -49,24 +50,21 @@ export const useAsciiBoxTool = () => {
     reset
   } = useAsciiBoxStore();
   
-  const { 
-    activeTool,
-    selectedColor,
-    selectedBgColor,
-    setActiveTool,
-    pushToHistory,
-    setLinePreview,
-    clearLinePreview
-  } = useToolStore();
+  // PERF FIX: Targeted selectors instead of broad useToolStore()/useCanvasStore().
+  const activeTool = useToolStore((s) => s.activeTool);
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
+  const setActiveTool = useToolStore((s) => s.setActiveTool);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
+  const setLinePreview = useToolStore((s) => s.setLinePreview);
+  const clearLinePreview = useToolStore((s) => s.clearLinePreview);
   
-  const {
-    cells,
-    setCanvasData
-  } = useCanvasStore();
+  const cells = useCanvasStore((s) => s.cells);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
   
   const { shiftKeyDown } = useCanvasContext();
   
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   
   // Get current style definition
   const currentStyle = BOX_DRAWING_STYLES.find(s => s.id === selectedStyleId) 
@@ -479,9 +477,10 @@ export const useAsciiBoxTool = () => {
     // Store original for undo
     const originalCells = new Map(cells);
     
-    // Apply preview to canvas
+    // Apply preview to canvas (inverse-transform for layer alignment)
+    const transformedPreview = transformCellMapToLocal(previewData);
     const newCells = new Map(cells);
-    previewData.forEach((cell, key) => {
+    transformedPreview.forEach((cell, key) => {
       newCells.set(key, { ...cell });
     });
     

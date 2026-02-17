@@ -8,6 +8,7 @@
  */
 
 import { useSelectionStore } from '../stores/selectionStore';
+import { localToScreen } from './layerTransformUtils';
 import type { Cell } from '../types';
 
 /**
@@ -23,8 +24,10 @@ export function isCellDrawable(x: number, y: number): boolean {
   // If no selection, all cells are drawable
   if (!isActive) return true;
   
-  // If selection exists, only selected cells are drawable
-  return isCellSelected(x, y);
+  // Drawing coords are in local space; selection mask is in screen space.
+  // Forward-transform to screen space for the membership check.
+  const screen = localToScreen(x, y);
+  return isCellSelected(screen.x, screen.y);
 }
 
 /**
@@ -44,7 +47,9 @@ export function isCellDrawableWithState(
   selectedCells: Set<string>
 ): boolean {
   if (!isSelectionActive) return true;
-  return selectedCells.has(`${x},${y}`);
+  // Forward-transform local coords to screen space for selection check
+  const screen = localToScreen(x, y);
+  return selectedCells.has(`${screen.x},${screen.y}`);
 }
 
 /**
@@ -60,7 +65,10 @@ export function constrainCellsToSelection(
   
   if (!isActive) return cells;
   
-  return cells.filter(({ x, y }) => selectedCells.has(`${x},${y}`));
+  return cells.filter(({ x, y }) => {
+    const screen = localToScreen(x, y);
+    return selectedCells.has(`${screen.x},${screen.y}`);
+  });
 }
 
 /**
@@ -79,7 +87,10 @@ export function constrainCellsToSelectionWithState(
 ): Array<{ x: number; y: number }> {
   if (!isSelectionActive) return cells;
   
-  return cells.filter(({ x, y }) => selectedCells.has(`${x},${y}`));
+  return cells.filter(({ x, y }) => {
+    const screen = localToScreen(x, y);
+    return selectedCells.has(`${screen.x},${screen.y}`);
+  });
 }
 
 /**
@@ -97,7 +108,9 @@ export function constrainCellMapToSelection(
   
   const constrained = new Map<string, Cell>();
   cells.forEach((cell, key) => {
-    if (selectedCells.has(key)) {
+    const [x, y] = key.split(',').map(Number);
+    const screen = localToScreen(x, y);
+    if (selectedCells.has(`${screen.x},${screen.y}`)) {
       constrained.set(key, cell);
     }
   });

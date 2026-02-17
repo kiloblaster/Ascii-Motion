@@ -24,6 +24,7 @@ import { MobileDialog } from './components/features/MobileDialog'
 import { BrushSizePreviewOverlay } from './components/features/BrushSizePreviewOverlay'
 import { PublishToGalleryDialogWrapper } from './components/features/PublishToGalleryDialogWrapper'
 import { PerformanceOverlay } from './components/common/PerformanceOverlay'
+import { ActiveLayerIndicator } from './components/features/ActiveLayerIndicator'
 import { EditorPage } from './pages/EditorPage'
 import { CommunityPage } from './pages/CommunityPage'
 import { useAdminProjectLoader } from './hooks/useAdminProjectLoader'
@@ -282,9 +283,10 @@ function AppContent() {
                     />
                   </div>
                   
-                  {/* Center - Project name editor */}
-                  <div className="flex-1 flex justify-center">
+                  {/* Center - Project name editor + Active layer indicator */}
+                  <div className="flex-1 flex justify-center items-center">
                     <InlineProjectNameEditor />
+                    <ActiveLayerIndicator />
                   </div>
                   
                   {/* Right side - Export/Import + Theme toggle + Account */}

@@ -65,7 +65,7 @@ import {
   X,
   AlertTriangle,
 } from 'lucide-react';
-import { ProjectCanvasPreview } from './ProjectCanvasPreview';
+import { ProjectCanvasPreview, getProjectFrameCount } from './ProjectCanvasPreview';
 import { UpgradeToProDialog } from './UpgradeToProDialog';
 import type { UserProfile } from '@ascii-motion/premium';
 
@@ -512,7 +512,7 @@ export function ProjectsDialog({
                               )}
                             </div>
                             <CardDescription>
-                              {project.sessionData?.animation?.frames?.length ?? 0} frame{(project.sessionData?.animation?.frames?.length ?? 0) !== 1 ? 's' : ''}
+                              {getProjectFrameCount(project.sessionData)} frame{getProjectFrameCount(project.sessionData) !== 1 ? 's' : ''}
                             </CardDescription>
                           </div>
                           <DropdownMenu>
@@ -667,7 +667,7 @@ export function ProjectsDialog({
                                     )}
                                   </div>
                                   <CardDescription>
-                                    {project.sessionData?.animation?.frames?.length ?? 0} frame{(project.sessionData?.animation?.frames?.length ?? 0) !== 1 ? 's' : ''}
+                                    {getProjectFrameCount(project.sessionData)} frame{getProjectFrameCount(project.sessionData) !== 1 ? 's' : ''}
                                   </CardDescription>
                                 </div>
                               </div>

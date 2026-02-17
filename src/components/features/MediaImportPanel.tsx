@@ -66,6 +66,7 @@ import { usePreviewStore } from '../../stores/previewStore';
 import { useCharacterPaletteStore } from '../../stores/characterPaletteStore';
 import { usePaletteStore } from '../../stores/paletteStore';
 import { useToolStore } from '../../stores/toolStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { CharacterMappingSection } from './CharacterMappingSection';
 import { TextColorMappingSection } from './TextColorMappingSection';
 import { BackgroundColorMappingSection } from './BackgroundColorMappingSection';
@@ -207,6 +208,11 @@ export function MediaImportPanel() {
   const [dragActive, setDragActive] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [originalImageAspectRatio, setOriginalImageAspectRatio] = useState<number | null>(null);
+  const [detectedVideoFps, setDetectedVideoFps] = useState<number | null>(null);
+  const [frameRateMode, setFrameRateMode] = useState<'match_video' | 'keep_project'>('match_video');
+  
+  // Project frame rate from timeline store
+  const projectFrameRate = useTimelineStore(state => state.config.frameRate);
   
   // Use persistent UI state from store
   const { 
@@ -216,7 +222,7 @@ export function MediaImportPanel() {
     positionSectionOpen 
   } = uiState;
   
-  const setImportMode = useCallback((mode: 'overwrite' | 'append') => {
+  const setImportMode = useCallback((mode: 'overwrite' | 'append' | 'new_layer') => {
     updateUIState({ importMode: mode });
   }, [updateUIState]);
   const setLivePreviewEnabled = useCallback((enabled: boolean) => {
@@ -547,6 +553,12 @@ export function MediaImportPanel() {
         if (result.success) {
           setProcessedFrames(result.frames);
           setError(null);
+          // Capture detected video frame rate
+          if (selectedFile.type === 'video' && result.metadata?.frameRate) {
+            setDetectedVideoFps(Math.round(result.metadata.frameRate * 100) / 100);
+          } else {
+            setDetectedVideoFps(null);
+          }
         } else {
           setError(result.error || 'Unknown processing error');
         }
@@ -667,6 +679,13 @@ export function MediaImportPanel() {
       endPreview();
     }
   }, [isOpen, isPreviewActive, endPreview]);
+
+  // Reset live preview to enabled when panel opens
+  useEffect(() => {
+    if (isOpen) {
+      setLivePreviewEnabled(true);
+    }
+  }, [isOpen, setLivePreviewEnabled]);
 
   // End preview when modal closes
   useEffect(() => {
@@ -817,8 +836,8 @@ export function MediaImportPanel() {
     try {
       const conversionSettings = createConversionSettings();
 
-      if (previewFrames.length === 1) {
-        // Single image - always replace current frame
+      if (previewFrames.length === 1 && importMode !== 'new_layer') {
+        // Single image - replace current frame on active layer
         // Save current state for undo
         const previousCanvasData = new Map(cells);
         
@@ -889,8 +908,79 @@ export function MediaImportPanel() {
           });
         }
         
+        // Update project frame rate to match video if requested
+        const shouldMatchVideoFps = frameRateMode === 'match_video' && detectedVideoFps && detectedVideoFps !== projectFrameRate && selectedFile?.type === 'video';
+        const previousProjectFps = projectFrameRate;
+        if (shouldMatchVideoFps) {
+          const tl = useTimelineStore.getState();
+          tl.setFrameRate(Math.round(detectedVideoFps), false);
+        }
+        
         // Apply import mode
-        if (importMode === 'overwrite') {
+        if (importMode === 'new_layer') {
+          // New Layer mode - create a new layer with imported frames
+          const tl = useTimelineStore.getState();
+          const previousActiveLayerId = tl.view.activeLayerId;
+          const fileName = selectedFile?.name || 'Imported Media';
+          // Strip extension for layer name
+          const layerName = fileName.replace(/\.[^.]+$/, '');
+          
+          const newLayerId = tl.addLayer(layerName);
+          if (!newLayerId) {
+            setError('Cannot add layer — layer limit reached. Upgrade to Pro for unlimited layers.');
+            return;
+          }
+          
+          // Remove the default empty content frame that addLayer creates
+          const newLayer = useTimelineStore.getState().layers.find(l => l.id === newLayerId);
+          if (newLayer) {
+            for (const cf of [...newLayer.contentFrames]) {
+              tl.removeContentFrame(newLayerId, cf.id);
+            }
+          }
+          
+          // Add each imported frame as a content frame on the new layer
+          const fps = tl.config.frameRate;
+          let startFrame = 0;
+          for (const frame of frameData) {
+            const durationFrames = Math.max(1, Math.round(frame.duration / (1000 / fps)));
+            tl.addContentFrame(newLayerId, startFrame, durationFrames, frame.data);
+            startFrame += durationFrames;
+          }
+          
+          // Auto-extend timeline if needed
+          if (startFrame > tl.config.durationFrames) {
+            tl.setDuration(startFrame);
+          }
+          
+          // Navigate to frame 0 so the layer-switch sync loads the new layer's content
+          tl.goToFrame(0);
+          
+          // Record history (undo = remove layer, redo = re-create from snapshot)
+          const historyAction: ImportMediaHistoryAction = {
+            type: 'import_media',
+            timestamp: Date.now(),
+            description: `Import ${previewFrames.length} frames from ${selectedFile?.name || 'media'} as new layer`,
+            data: {
+              mode: 'new_layer',
+              importedFrameCount: previewFrames.length,
+              layerId: newLayerId as string,
+              layerName,
+              previousActiveLayerId: previousActiveLayerId as string | undefined,
+              layerSnapshot: JSON.parse(JSON.stringify(
+                useTimelineStore.getState().layers.find(l => l.id === newLayerId),
+                (_key, value) => value instanceof Map ? Object.fromEntries(value) : value
+              )),
+              ...(shouldMatchVideoFps ? {
+                previousProjectFps: previousProjectFps,
+                newProjectFps: Math.round(detectedVideoFps),
+              } : {}),
+            }
+          };
+          pushToHistory(historyAction);
+          
+          setLivePreviewEnabled(false);
+        } else if (importMode === 'overwrite') {
           // Overwrite mode - replace frames starting from current position
           importFramesOverwrite(frameData, currentFrameIndex);
           // Manually update canvas with first imported frame data after store update
@@ -904,25 +994,31 @@ export function MediaImportPanel() {
           // Canvas will be updated by the animation store when it changes current frame
         }
         
-        // Get new frames state after import
-        const newFrames = cloneFrames(useAnimationStore.getState().frames);
-        const newCurrentFrame = useAnimationStore.getState().currentFrameIndex;
-        
-        // Record history
-        const historyAction: ImportMediaHistoryAction = {
-          type: 'import_media',
-          timestamp: Date.now(),
-          description: `Import ${previewFrames.length} frames from ${selectedFile?.name || 'video'}`,
-          data: {
-            mode: importMode,
-            previousFrames,
-            previousCurrentFrame,
-            newFrames,
-            newCurrentFrame,
-            importedFrameCount: previewFrames.length
-          }
-        };
-        pushToHistory(historyAction);
+        // Record history for overwrite/append modes (new_layer records its own above)
+        if (importMode !== 'new_layer') {
+          // Get new frames state after import
+          const newFrames = cloneFrames(useAnimationStore.getState().frames);
+          const newCurrentFrame = useAnimationStore.getState().currentFrameIndex;
+          
+          const historyAction: ImportMediaHistoryAction = {
+            type: 'import_media',
+            timestamp: Date.now(),
+            description: `Import ${previewFrames.length} frames from ${selectedFile?.name || 'video'}`,
+            data: {
+              mode: importMode,
+              previousFrames,
+              previousCurrentFrame,
+              newFrames,
+              newCurrentFrame,
+              importedFrameCount: previewFrames.length,
+              ...(shouldMatchVideoFps ? {
+                previousProjectFps: previousProjectFps,
+                newProjectFps: Math.round(detectedVideoFps!),
+              } : {}),
+            }
+          };
+          pushToHistory(historyAction);
+        }
         
         setLivePreviewEnabled(false);
       }
@@ -952,7 +1048,10 @@ export function MediaImportPanel() {
     createConversionSettings,
     setLivePreviewEnabled,
     pushToHistory,
-    selectedFile
+    selectedFile,
+    detectedVideoFps,
+    frameRateMode,
+    projectFrameRate
   ]);
 
   // Get file icon based on type
@@ -1564,7 +1663,15 @@ export function MediaImportPanel() {
           {/* Import Mode Selection */}
           <div className="space-y-2">
             <Label className="text-xs font-medium">Import Mode</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
+              <Button
+                variant={importMode === 'new_layer' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setImportMode('new_layer')}
+                className="h-8 text-xs"
+              >
+                New Layer
+              </Button>
               <Button
                 variant={importMode === 'overwrite' ? 'default' : 'outline'}
                 size="sm"
@@ -1583,12 +1690,45 @@ export function MediaImportPanel() {
               </Button>
             </div>
             <div className="text-xs text-muted-foreground">
-              {importMode === 'overwrite' 
-                ? 'Replace frames starting from current frame'
-                : 'Add frames after the last existing frame'
+              {importMode === 'new_layer'
+                ? 'Create a new layer with imported frames'
+                : importMode === 'overwrite' 
+                  ? 'Replace frames on the active layer'
+                  : 'Add frames after the last frame on the active layer'
               }
             </div>
           </div>
+          
+          {/* Frame Rate Option (video imports only) */}
+          {selectedFile?.type === 'video' && detectedVideoFps && detectedVideoFps !== projectFrameRate && previewFrames.length > 1 && (
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Frame Rate</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button
+                  variant={frameRateMode === 'match_video' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFrameRateMode('match_video')}
+                  className="h-8 text-xs"
+                >
+                  Match Video
+                </Button>
+                <Button
+                  variant={frameRateMode === 'keep_project' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFrameRateMode('keep_project')}
+                  className="h-8 text-xs"
+                >
+                  Keep Project
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {frameRateMode === 'match_video'
+                  ? `Update project (${projectFrameRate} fps) to ${detectedVideoFps} fps to match video`
+                  : `Import at project's ${projectFrameRate} fps (video is ${detectedVideoFps} fps)`
+                }
+              </div>
+            </div>
+          )}
           
           <Button 
             onClick={handleImportToCanvas}

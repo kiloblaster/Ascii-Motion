@@ -55,11 +55,10 @@ export const BubbleteaExportDialog: React.FC = () => {
   const setIsExporting = useExportStore((state) => state.setIsExporting);
   const isExporting = useExportStore((state) => state.isExporting);
 
-  const exportData = useExportDataCollector();
+  const isOpen = showExportModal && activeFormat === 'bubbletea';
+  const exportData = useExportDataCollector(isOpen);
 
   const [copySuccess, setCopySuccess] = useState(false);
-
-  const isOpen = showExportModal && activeFormat === 'bubbletea';
 
   const sanitizedFileName = useMemo(() => finalizeFileName(sanitizeGoFileName(bubbleteaSettings.fileName)), [bubbleteaSettings.fileName]);
   const sanitizedPackageName = useMemo(() => sanitizePackageName(bubbleteaSettings.packageName), [bubbleteaSettings.packageName]);

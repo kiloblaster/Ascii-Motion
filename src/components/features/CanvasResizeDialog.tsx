@@ -44,6 +44,8 @@ export function CanvasResizeDialog({ isOpen, onOpenChange }: CanvasResizeDialogP
   // Local state for form inputs
   const [newWidth, setNewWidth] = useState(currentWidth);
   const [newHeight, setNewHeight] = useState(currentHeight);
+  const [widthInput, setWidthInput] = useState(String(currentWidth));
+  const [heightInput, setHeightInput] = useState(String(currentHeight));
   const [anchor, setAnchor] = useState<AnchorPosition>('middle-center');
   const [sizeMode, setSizeMode] = useState<'characters' | 'pixels'>('characters');
 
@@ -67,41 +69,63 @@ export function CanvasResizeDialog({ isOpen, onOpenChange }: CanvasResizeDialogP
     if (isOpen) {
       setNewWidth(currentWidth);
       setNewHeight(currentHeight);
+      setWidthInput(String(currentWidth));
+      setHeightInput(String(currentHeight));
       setAnchor('middle-center');
     }
   }, [isOpen, currentWidth, currentHeight]);
 
-  // Handle width change
-  const handleWidthChange = (value: number) => {
-    if (sizeMode === 'characters') {
-      setNewWidth(Math.max(4, Math.min(200, value)));
-    } else {
-      // Convert pixel input to characters
-      const validatedChars = validatePixelInput(
-        { width: value, height: newPixelDimensions.height },
-        { fontSize, characterSpacing, lineSpacing }
-      );
-      setNewWidth(validatedChars.width);
+  // Handle width change — allow free typing, only clamp on commit (blur/apply)
+  const handleWidthChange = (value: string) => {
+    setWidthInput(value);
+    const parsed = parseInt(value, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      if (sizeMode === 'characters') {
+        setNewWidth(Math.min(200, parsed));
+      } else {
+        const validatedChars = validatePixelInput(
+          { width: parsed, height: newPixelDimensions.height },
+          { fontSize, characterSpacing, lineSpacing }
+        );
+        setNewWidth(validatedChars.width);
+      }
     }
   };
 
-  // Handle height change
-  const handleHeightChange = (value: number) => {
-    if (sizeMode === 'characters') {
-      setNewHeight(Math.max(4, Math.min(100, value)));
-    } else {
-      // Convert pixel input to characters
-      const validatedChars = validatePixelInput(
-        { width: newPixelDimensions.width, height: value },
-        { fontSize, characterSpacing, lineSpacing }
-      );
-      setNewHeight(validatedChars.height);
+  // Commit width on blur — enforce minimum
+  const handleWidthBlur = () => {
+    const clamped = Math.max(4, Math.min(200, newWidth));
+    setNewWidth(clamped);
+    setWidthInput(sizeMode === 'characters' ? String(clamped) : String(charactersToPixels({ width: clamped, height: newHeight }, { fontSize, characterSpacing, lineSpacing }).width));
+  };
+
+  // Handle height change — allow free typing, only clamp on commit (blur/apply)
+  const handleHeightChange = (value: string) => {
+    setHeightInput(value);
+    const parsed = parseInt(value, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      if (sizeMode === 'characters') {
+        setNewHeight(Math.min(100, parsed));
+      } else {
+        const validatedChars = validatePixelInput(
+          { width: newPixelDimensions.width, height: parsed },
+          { fontSize, characterSpacing, lineSpacing }
+        );
+        setNewHeight(validatedChars.height);
+      }
     }
+  };
+
+  // Commit height on blur — enforce minimum
+  const handleHeightBlur = () => {
+    const clamped = Math.max(4, Math.min(100, newHeight));
+    setNewHeight(clamped);
+    setHeightInput(sizeMode === 'characters' ? String(clamped) : String(charactersToPixels({ width: newWidth, height: clamped }, { fontSize, characterSpacing, lineSpacing }).height));
   };
 
   // Get display values based on mode
-  const displayWidth = sizeMode === 'characters' ? newWidth : newPixelDimensions.width;
-  const displayHeight = sizeMode === 'characters' ? newHeight : newPixelDimensions.height;
+  const displayWidth = sizeMode === 'characters' ? widthInput : String(newPixelDimensions.width);
+  const displayHeight = sizeMode === 'characters' ? heightInput : String(newPixelDimensions.height);
   const displayCurrentWidth = sizeMode === 'characters' ? currentWidth : currentPixelDimensions.width;
   const displayCurrentHeight = sizeMode === 'characters' ? currentHeight : currentPixelDimensions.height;
 
@@ -111,7 +135,10 @@ export function CanvasResizeDialog({ isOpen, onOpenChange }: CanvasResizeDialogP
   // Handle resize action
   const handleResize = () => {
     if (sizeChanged) {
-      resizeCanvas(newWidth, newHeight, anchor);
+      // Enforce minimums on apply
+      const finalWidth = Math.max(4, Math.min(200, newWidth));
+      const finalHeight = Math.max(4, Math.min(100, newHeight));
+      resizeCanvas(finalWidth, finalHeight, anchor);
     }
     onOpenChange(false);
   };
@@ -129,7 +156,9 @@ export function CanvasResizeDialog({ isOpen, onOpenChange }: CanvasResizeDialogP
   // Increment/decrement width (handles pixel mode by adjusting by one character's worth)
   const adjustWidth = (delta: number) => {
     if (sizeMode === 'characters') {
-      setNewWidth(Math.max(4, Math.min(200, newWidth + delta)));
+      const val = Math.max(4, Math.min(200, newWidth + delta));
+      setNewWidth(val);
+      setWidthInput(String(val));
     } else {
       // In pixel mode, adjust by one character worth of pixels
       const baseCharWidth = fontSize * 0.6 * characterSpacing;
@@ -146,7 +175,9 @@ export function CanvasResizeDialog({ isOpen, onOpenChange }: CanvasResizeDialogP
   // Increment/decrement height (handles pixel mode by adjusting by one character's worth)
   const adjustHeight = (delta: number) => {
     if (sizeMode === 'characters') {
-      setNewHeight(Math.max(4, Math.min(100, newHeight + delta)));
+      const val = Math.max(4, Math.min(100, newHeight + delta));
+      setNewHeight(val);
+      setHeightInput(String(val));
     } else {
       // In pixel mode, adjust by one character worth of pixels
       const baseCharHeight = fontSize * lineSpacing;
@@ -217,7 +248,8 @@ export function CanvasResizeDialog({ isOpen, onOpenChange }: CanvasResizeDialogP
                   min={sizeMode === 'characters' ? 4 : 1}
                   max={sizeMode === 'characters' ? 200 : undefined}
                   value={displayWidth}
-                  onChange={(e) => handleWidthChange(parseInt(e.target.value) || 4)}
+                  onChange={(e) => handleWidthChange(e.target.value)}
+                  onBlur={handleWidthBlur}
                   className="text-center"
                 />
                 <div className="flex flex-col">
@@ -258,7 +290,8 @@ export function CanvasResizeDialog({ isOpen, onOpenChange }: CanvasResizeDialogP
                   min={sizeMode === 'characters' ? 4 : 1}
                   max={sizeMode === 'characters' ? 100 : undefined}
                   value={displayHeight}
-                  onChange={(e) => handleHeightChange(parseInt(e.target.value) || 4)}
+                  onChange={(e) => handleHeightChange(e.target.value)}
+                  onBlur={handleHeightBlur}
                   className="text-center"
                 />
                 <div className="flex flex-col">

@@ -69,7 +69,7 @@ const DEFAULT_IMAGE_SETTINGS: ImageExportSettings = {
 
 const DEFAULT_VIDEO_SETTINGS: VideoExportSettings = {
   sizeMultiplier: 1,
-  frameRate: 12, // Match typical animation frame rate
+  frameRate: 'auto' as number | 'auto', // Match typical animation frame rate
   frameRange: { start: 0, end: -1 }, // -1 means "end of animation"
   quality: 'medium', // For WebM
   crf: 24, // Default CRF for H.264 (good balance of quality/size)

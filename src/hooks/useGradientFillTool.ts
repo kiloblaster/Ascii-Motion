@@ -3,9 +3,10 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { useGradientStore, initializeGradientWithCurrentValues } from '../stores/gradientStore';
 import { useToolStore } from '../stores/toolStore';
-import { useAnimationStore } from '../stores/animationStore';
+import { useTimelineStore } from '../stores/timelineStore';
 import { calculateGradientCells } from '../utils/gradientEngine';
 import { getGradientFillArea } from '../utils/fillArea';
+import { screenToLocal } from '../utils/layerTransformUtils';
 import type { CanvasHistoryAction } from '../types';
 
 /**
@@ -13,25 +14,22 @@ import type { CanvasHistoryAction } from '../types';
  * Integrates canvas interaction, fill area detection, gradient calculation, and undo/redo
  */
 export const useGradientFillTool = () => {
-  const { 
-    cells,
-    width: canvasWidth,
-    height: canvasHeight,
-    getCell, 
-    setCanvasData 
-  } = useCanvasStore();
+  // PERF FIX: Targeted selectors instead of broad useCanvasStore()/useToolStore().
+  const cells = useCanvasStore((s) => s.cells);
+  const canvasWidth = useCanvasStore((s) => s.width);
+  const canvasHeight = useCanvasStore((s) => s.height);
+  const getCell = useCanvasStore((s) => s.getCell);
+  const setCanvasData = useCanvasStore((s) => s.setCanvasData);
   
   const { cellWidth, cellHeight } = useCanvasContext();
   
-  const { currentFrameIndex } = useAnimationStore();
+  const currentFrameIndex = useTimelineStore((s) => s.view.currentFrame);
   
-  const { 
-    activeTool,
-    selectedChar,
-    selectedColor,
-    selectedBgColor,
-    pushToHistory
-  } = useToolStore();
+  const activeTool = useToolStore((s) => s.activeTool);
+  const selectedChar = useToolStore((s) => s.selectedChar);
+  const selectedColor = useToolStore((s) => s.selectedColor);
+  const selectedBgColor = useToolStore((s) => s.selectedBgColor);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
   
   const { 
     isApplying, 
@@ -72,9 +70,11 @@ export const useGradientFillTool = () => {
   const generatePreview = useCallback((start: { x: number; y: number }, end: { x: number; y: number }) => {
     try {
       // Find fill area using gradient matching criteria
+      // Inverse-transform start point since getCell reads from layer-local canvas store
+      const localStart = screenToLocal(start.x, start.y);
       const fillArea = getGradientFillArea(
-        start.x, 
-        start.y,
+        localStart.x, 
+        localStart.y,
         { width: canvasWidth, height: canvasHeight, getCell },
         { contiguous, matchChar, matchColor, matchBgColor }
       );
@@ -84,16 +84,19 @@ export const useGradientFillTool = () => {
         return;
       }
       
-      // Calculate gradient cells
+      // Calculate gradient cells using local-space coordinates
+      // (fillArea keys are local, so start/end must also be local)
       const cellAspectRatio = cellWidth / cellHeight;
+      const localEnd = screenToLocal(end.x, end.y);
+      const localEllipse = ellipsePoint ? screenToLocal(ellipsePoint.x, ellipsePoint.y) : undefined;
       const gradientCells = calculateGradientCells({
-        startPoint: start,
-        endPoint: end,
-        ellipsePoint: ellipsePoint || undefined,
+        startPoint: localStart,
+        endPoint: localEnd,
+        ellipsePoint: localEllipse || undefined,
         definition,
         fillArea,
         cellAspectRatio,
-        getCell // Pass getCell to preserve existing values for disabled properties
+        getCell
       });
       
       setPreview(gradientCells);
@@ -128,6 +131,7 @@ export const useGradientFillTool = () => {
       const originalCells = new Map(cells);
       
       // Apply gradient to canvas
+      // Preview data is already in local space (fill area + gradient computed in local)
       const newCells = new Map(cells);
       previewData.forEach((cell, key) => {
         if (cell.char === ' ' && cell.color === '#FFFFFF' && cell.bgColor === 'transparent') {

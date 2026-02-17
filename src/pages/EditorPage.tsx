@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useLayoutState } from '../hooks/useLayoutState'
 import { cn } from '@/lib/utils'
 import { CanvasWithShortcuts } from '../components/features/CanvasWithShortcuts'
@@ -9,7 +10,8 @@ import { MainCharacterPaletteSection } from '../components/features/MainCharacte
 import { ColorPicker } from '../components/features/ColorPicker'
 import { ActiveStyleSection } from '../components/features/ActiveStyleSection'
 import { CanvasSettings } from '../components/features/CanvasSettings'
-import { AnimationTimeline } from '../components/features/AnimationTimeline'
+import { TimelinePanel } from '../components/features/TimelinePanel'
+import { TimelineResizeHandle } from '../components/features/timeline/TimelineResizeHandle'
 import { PlaybackOverlay } from '../components/features/PlaybackOverlay'
 import { FullscreenToggle } from '../components/features/FullscreenToggle'
 import { AsciiTypePanel } from '../components/features/AsciiTypePanel'
@@ -30,7 +32,6 @@ import { ReactExportDialog } from '../components/features/ReactExportDialog'
 import { InkExportDialog } from '../components/features/InkExportDialog'
 import { OpenTuiExportDialog } from '../components/features/OpenTuiExportDialog'
 import { BubbleteaExportDialog } from '../components/features/BubbleteaExportDialog'
-import { JsonImportDialog } from '../components/features/JsonImportDialog'
 import { SetFrameDurationDialog } from '../components/features/timeEffects/SetFrameDurationDialog'
 import { AddFramesDialog } from '../components/features/timeEffects/AddFramesDialog'
 import { WaveWarpDialog } from '../components/features/timeEffects/WaveWarpDialog'
@@ -38,6 +39,7 @@ import { WiggleDialog } from '../components/features/timeEffects/WiggleDialog'
 import { NewProjectDialog } from '../components/features/NewProjectDialog'
 import { ProjectSettingsDialog } from '../components/features/ProjectSettingsDialog'
 import { WelcomeDialog } from '../components/features/WelcomeDialog'
+import { useTimelineStore } from '@/stores/timelineStore'
 
 /**
  * Main editor page component
@@ -45,6 +47,14 @@ import { WelcomeDialog } from '../components/features/WelcomeDialog'
  */
 export function EditorPage() {
   const { layout, toggleLeftPanel, toggleRightPanel, toggleBottomPanel, toggleFullscreen } = useLayoutState()
+  const panelHeight = useTimelineStore((s) => s.view.panelHeight)
+
+  // Initialize --bottom-panel-height CSS variable from store on mount and when panelHeight changes
+  useEffect(() => {
+    if (layout.bottomPanelOpen) {
+      document.documentElement.style.setProperty('--bottom-panel-height', `${panelHeight}px`)
+    }
+  }, [panelHeight, layout.bottomPanelOpen])
 
   return (
     <div className="relative flex-1 overflow-hidden">
@@ -57,7 +67,7 @@ export function EditorPage() {
           <CollapsiblePanel
             isOpen={layout.leftPanelOpen}
             side="left"
-            minWidth="w-44"
+            minWidth="w-[84px]"
           >
             <div className="h-full flex flex-col">
               {/* Tools at the top */}
@@ -70,7 +80,7 @@ export function EditorPage() {
           {/* Left Panel Toggle Button - centered on canvas area */}
           <div className={cn(
             "absolute top-1/2 -translate-y-1/2 z-20 transition-all duration-300 ease-out pointer-events-auto",
-            layout.leftPanelOpen ? "left-44" : "left-0"
+            layout.leftPanelOpen ? "left-[84px]" : "left-0"
           )}>
             <PanelToggleButton
               isOpen={layout.leftPanelOpen}
@@ -127,6 +137,9 @@ export function EditorPage() {
             isOpen={layout.bottomPanelOpen}
             side="bottom"
           >
+            {/* Resize drag handle */}
+            <TimelineResizeHandle />
+            
             {/* Bottom Panel Toggle Button - moves with the panel */}
             <div className="absolute left-1/2 -translate-x-1/2 -top-0.5 z-20 pointer-events-auto">
               <PanelToggleButton
@@ -136,7 +149,7 @@ export function EditorPage() {
               />
             </div>
             
-            <AnimationTimeline />
+            <TimelinePanel />
           </CollapsiblePanel>
         </div>
 
@@ -144,14 +157,14 @@ export function EditorPage() {
         <div 
           className={cn(
             "absolute inset-0 flex flex-col transition-all duration-300 ease-out",
-            layout.leftPanelOpen && "left-44",
+            layout.leftPanelOpen && "left-[84px]",
             layout.rightPanelOpen && "right-56", 
             layout.bottomPanelOpen ? "bottom-[var(--bottom-panel-height,20rem)]" : "bottom-4"
           )}
         >
           {/* Canvas Settings Header */}
           <div className="flex-shrink-0 border-b border-border/50 bg-background/95 backdrop-blur" style={{ overflow: 'visible', position: 'relative', zIndex: 10 }}>
-            <div className="px-3 py-2 flex justify-center items-center">
+            <div className="px-4 py-2 flex justify-center items-center">
               <CanvasSettings />
             </div>
           </div>
@@ -194,7 +207,6 @@ export function EditorPage() {
       <InkExportDialog />
       <OpenTuiExportDialog />
       <BubbleteaExportDialog />
-      <JsonImportDialog />
       
       {/* Time Effects Dialogs */}
       <SetFrameDurationDialog />

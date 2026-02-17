@@ -56,7 +56,8 @@ export const ImageExportDialog: React.FC = () => {
 	const setIsExporting = useExportStore((state) => state.setIsExporting);
 	const isExporting = useExportStore((state) => state.isExporting);
 
-	const exportData = useExportDataCollector();
+	const isOpen = showExportModal && activeFormat === 'png';
+	const exportData = useExportDataCollector(isOpen);
 	const projectName = useProjectMetadataStore((state) => state.projectName);
 	const { selectedFontId, actualFont: canvasActualFont, isFontDetecting: canvasIsFontDetecting } = useCanvasContext();
 
@@ -70,8 +71,6 @@ export const ImageExportDialog: React.FC = () => {
 		actualFont: null,
 		isFallback: false
 	});
-
-	const isOpen = showExportModal && activeFormat === 'png';
 
 	// Sync filename with project name when dialog opens
 	useEffect(() => {

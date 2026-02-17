@@ -73,7 +73,8 @@ export type Tool =
   | 'beziershape'
   | 'gradientfill'
   | 'fliphorizontal'
-  | 'flipvertical';
+  | 'flipvertical'
+  | 'layertransform';
 
 export type BrushShape = 'circle' | 'square' | 'horizontal' | 'vertical';
 
@@ -270,7 +271,32 @@ export type HistoryActionType =
   | 'bezier_toggle_handles' // Toggle handles on/off for a point
   | 'bezier_delete_point'   // Delete anchor point
   | 'bezier_close_shape'    // Close the bezier shape
-  | 'bezier_commit';        // Commit bezier shape to canvas
+  | 'bezier_commit'         // Commit bezier shape to canvas
+  // Layer/Timeline actions (v2.0.0)
+  | 'layer_add'
+  | 'layer_remove'
+  | 'layer_reorder'
+  | 'layer_rename'
+  | 'layer_visibility'
+  | 'layer_opacity'
+  | 'content_frame_add'
+  | 'content_frame_remove'
+  | 'content_frame_timing'
+  | 'content_frame_data'
+  | 'keyframe_add'
+  | 'keyframe_remove'
+  | 'keyframe_update'
+  | 'property_track_add'
+  | 'property_track_remove'
+  | 'frame_rate_change'
+  | 'static_property_change'
+  | 'content_frame_reorder'
+  | 'timeline_duration_change'
+  | 'trim_to_work_area'
+  | 'apply_transforms'
+  | 'merge_layers'
+  | 'create_group'
+  | 'ungroup_layers';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -298,10 +324,30 @@ export interface CanvasResizeHistoryAction extends HistoryAction {
     newHeight: number;
     previousCanvasData: Map<string, Cell>;
     frameIndex: number;
-    // Optional crop operation data
+    // Optional crop operation data (legacy single-layer)
     allFramesPreviousData?: Map<string, Cell>[];
     allFramesNewData?: Map<string, Cell>[];
     isCropOperation?: boolean;
+    // Multi-layer crop snapshots
+    previousLayerSnapshots?: Array<{
+      id: string;
+      contentFrames: Array<{ id: string; data: Map<string, Cell> }>;
+      staticProperties: Record<string, number>;
+      propertyTracks: Array<{
+        id: string;
+        propertyPath: string;
+        keyframes: Array<{ id: string; frame: number; value: number | boolean | string; easing: unknown }>;
+      }>;
+    }>;
+    previousGroupSnapshots?: Array<{
+      id: string;
+      staticProperties: Record<string, number>;
+      propertyTracks?: Array<{
+        id: string;
+        propertyPath: string;
+        keyframes: Array<{ id: string; frame: number; value: number | boolean | string; easing: unknown }>;
+      }>;
+    }>;
   };
 }
 
@@ -424,11 +470,15 @@ export interface ApplyEffectHistoryAction extends HistoryAction {
     effectType: import('./effects').EffectType;
     effectSettings: import('./effects').EffectSettings; // Settings object for the effect
     applyToTimeline: boolean;
+    targetScope?: 'active-layer' | 'all-layers'; // Which layers were targeted
+    affectedLayerIds?: string[]; // Layer IDs affected (for correct undo targeting)
     affectedFrameIndices: number[];
     previousCanvasData?: Map<string, Cell>; // For single canvas effects (before)
-    previousFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (before)
+    previousFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (before) — single layer
+    previousLayerFramesData?: Array<{ layerId: string; framesData: Array<{ frameIndex: number; data: Map<string, Cell> }> }>; // For multi-layer timeline effects (before)
     newCanvasData?: Map<string, Cell>; // For single canvas effects (after) - needed for redo
-    newFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (after) - needed for redo
+    newFramesData?: Array<{ frameIndex: number; data: Map<string, Cell> }>; // For timeline effects (after) — single layer
+    newLayerFramesData?: Array<{ layerId: string; framesData: Array<{ frameIndex: number; data: Map<string, Cell> }> }>; // For multi-layer timeline effects (after)
   };
 }
 
@@ -455,32 +505,37 @@ export interface SetFrameDurationsHistoryAction extends HistoryAction {
 export interface ImportMediaHistoryAction extends HistoryAction {
   type: 'import_media';
   data: {
-    mode: 'single' | 'overwrite' | 'append';
+    mode: 'single' | 'overwrite' | 'append' | 'new_layer';
     // For single image import
     previousCanvasData?: Map<string, Cell>;
     previousFrameIndex?: number;
     newCanvasData?: Map<string, Cell>;
-    // For multi-frame import
+    // For multi-frame import (overwrite/append)
     previousFrames?: Frame[];
     previousCurrentFrame?: number;
     newFrames?: Frame[];
     newCurrentFrame?: number;
     importedFrameCount: number;
+    // For new_layer mode (undo = remove layer, redo = re-create from snapshot)
+    layerId?: string;
+    layerName?: string;
+    layerSnapshot?: Record<string, unknown>;
+    previousActiveLayerId?: string;
+    // For frame rate matching (undo restores previous fps)
+    previousProjectFps?: number;
+    newProjectFps?: number;
   };
 }
 
 export interface ApplyGeneratorHistoryAction extends HistoryAction {
   type: 'apply_generator';
   data: {
-    mode: 'overwrite' | 'append';
     generatorId: string;
-    // For overwrite mode
-    previousFrames?: Frame[];
-    previousCurrentFrame?: number;
-    // For both modes
-    newFrames?: Frame[];
-    newCurrentFrame?: number;
+    layerId: string;
+    layerName: string;
     frameCount: number;
+    // Serialized layer snapshot for redo restoration (Maps → Records)
+    layerSnapshot: Record<string, unknown>;
   };
 }
 
@@ -577,6 +632,231 @@ export interface BezierCommitHistoryAction extends HistoryAction {
   };
 }
 
+// ============================================
+// Layer/Timeline History Actions (v2.0.0)
+// ============================================
+
+export interface LayerAddHistoryAction extends HistoryAction {
+  type: 'layer_add';
+  data: {
+    layerId: string;
+    layerData: import('../types/timeline').Layer;
+    insertIndex: number;
+  };
+}
+
+export interface LayerRemoveHistoryAction extends HistoryAction {
+  type: 'layer_remove';
+  data: {
+    layerId: string;
+    layerData: import('../types/timeline').Layer;
+    index: number;
+  };
+}
+
+export interface LayerReorderHistoryAction extends HistoryAction {
+  type: 'layer_reorder';
+  data: {
+    fromIndex: number;
+    toIndex: number;
+    // Full snapshots for undo/redo when group membership changes are involved
+    previousLayers?: import('./timeline').Layer[];
+    previousGroups?: import('./timeline').LayerGroup[];
+    newLayers?: import('./timeline').Layer[];
+    newGroups?: import('./timeline').LayerGroup[];
+  };
+}
+
+export interface LayerRenameHistoryAction extends HistoryAction {
+  type: 'layer_rename';
+  data: {
+    layerId: string;
+    oldName: string;
+    newName: string;
+  };
+}
+
+export interface LayerVisibilityHistoryAction extends HistoryAction {
+  type: 'layer_visibility';
+  data: {
+    layerId: string;
+    oldVisible: boolean;
+    newVisible: boolean;
+  };
+}
+
+export interface LayerOpacityHistoryAction extends HistoryAction {
+  type: 'layer_opacity';
+  data: {
+    layerId: string;
+    oldOpacity: number;
+    newOpacity: number;
+  };
+}
+
+export interface ContentFrameAddHistoryAction extends HistoryAction {
+  type: 'content_frame_add';
+  data: {
+    layerId: string;
+    frameId: string;
+    frameData: import('../types/timeline').ContentFrame;
+  };
+}
+
+export interface ContentFrameRemoveHistoryAction extends HistoryAction {
+  type: 'content_frame_remove';
+  data: {
+    layerId: string;
+    frameId: string;
+    frameData: import('../types/timeline').ContentFrame;
+  };
+}
+
+export interface ContentFrameTimingHistoryAction extends HistoryAction {
+  type: 'content_frame_timing';
+  data: {
+    layerId: string;
+    frameId: string;
+    oldTiming: { startFrame: number; durationFrames: number };
+    newTiming: { startFrame: number; durationFrames: number };
+    previousTimelineDuration?: number;
+    newTimelineDuration?: number;
+  };
+}
+
+export interface ContentFrameDataHistoryAction extends HistoryAction {
+  type: 'content_frame_data';
+  data: {
+    layerId: string;
+    frameId: string;
+    previousData: Map<string, Cell>;
+    newData: Map<string, Cell>;
+  };
+}
+
+export interface KeyframeAddHistoryAction extends HistoryAction {
+  type: 'keyframe_add';
+  data: {
+    layerId: string;
+    trackId: string;
+    keyframeId: string;
+    keyframe: import('../types/timeline').Keyframe;
+  };
+}
+
+export interface KeyframeRemoveHistoryAction extends HistoryAction {
+  type: 'keyframe_remove';
+  data: {
+    layerId: string;
+    trackId: string;
+    keyframeId: string;
+    keyframe: import('../types/timeline').Keyframe;
+  };
+}
+
+export interface KeyframeUpdateHistoryAction extends HistoryAction {
+  type: 'keyframe_update';
+  data: {
+    layerId: string;
+    trackId: string;
+    keyframeId: string;
+    oldValue: import('../types/timeline').Keyframe;
+    newValue: import('../types/timeline').Keyframe;
+  };
+}
+
+export interface PropertyTrackAddHistoryAction extends HistoryAction {
+  type: 'property_track_add';
+  data: {
+    layerId: string;
+    trackId: string;
+    propertyPath: string;
+  };
+}
+
+export interface PropertyTrackRemoveHistoryAction extends HistoryAction {
+  type: 'property_track_remove';
+  data: {
+    layerId: string;
+    trackId: string;
+    trackData: import('../types/timeline').PropertyTrack;
+  };
+}
+
+export interface FrameRateChangeHistoryAction extends HistoryAction {
+  type: 'frame_rate_change';
+  data: {
+    oldFps: number;
+    newFps: number;
+    oldLayers: import('../types/timeline').Layer[];
+    newLayers: import('../types/timeline').Layer[];
+    oldDuration: number;
+    newDuration: number;
+  };
+}
+
+export interface StaticPropertyChangeHistoryAction extends HistoryAction {
+  type: 'static_property_change';
+  data: {
+    layerId: string;
+    propertyPath: string;
+    oldValue: number | undefined;
+    newValue: number;
+  };
+}
+
+/**
+ * Captures before/after snapshots of all content frame timings across
+ * affected layers during a drag-and-drop reorder operation.
+ */
+export interface ContentFrameReorderHistoryAction extends HistoryAction {
+  type: 'content_frame_reorder';
+  data: {
+    /** Snapshot of affected layers' content frames BEFORE the reorder */
+    previousState: Array<{
+      layerId: string;
+      contentFrames: Array<{ id: string; startFrame: number; durationFrames: number; name: string; data: Map<string, Cell> }>;
+    }>;
+    /** Snapshot of affected layers' content frames AFTER the reorder */
+    newState: Array<{
+      layerId: string;
+      contentFrames: Array<{ id: string; startFrame: number; durationFrames: number; name: string; data: Map<string, Cell> }>;
+    }>;
+    /** Keyframe positions before reorder (for sync-keyframes-to-frames) */
+    previousKeyframes?: Array<{ layerId: string; trackId: string; keyframeId: string; frame: number }>;
+    /** Keyframe positions after reorder */
+    newKeyframes?: Array<{ layerId: string; trackId: string; keyframeId: string; frame: number }>;
+    /** Timeline duration before (for remove blank space / trimming) */
+    previousTimelineDuration?: number;
+    /** Timeline duration after */
+    newTimelineDuration?: number;
+  };
+}
+
+export interface TimelineDurationChangeHistoryAction extends HistoryAction {
+  type: 'timeline_duration_change';
+  data: {
+    oldDuration: number;
+    newDuration: number;
+  };
+}
+
+/**
+ * Captures full before/after state for trim-to-work-area.
+ * Includes layers, duration, and work area state.
+ */
+export interface TrimToWorkAreaHistoryAction extends HistoryAction {
+  type: 'trim_to_work_area';
+  data: {
+    previousLayers: import('../types/timeline').Layer[];
+    previousDuration: number;
+    previousWorkAreaStart: number;
+    previousWorkAreaEnd: number;
+    newLayers: import('../types/timeline').Layer[];
+    newDuration: number;
+  };
+}
+
 export type AnyHistoryAction = 
   | CanvasHistoryAction
   | CanvasResizeHistoryAction
@@ -602,5 +882,68 @@ export type AnyHistoryAction =
   | BezierToggleHandlesHistoryAction
   | BezierDeletePointHistoryAction
   | BezierCloseShapeHistoryAction
-  | BezierCommitHistoryAction;
+  | BezierCommitHistoryAction
+  // Layer/Timeline actions (v2.0.0)
+  | LayerAddHistoryAction
+  | LayerRemoveHistoryAction
+  | LayerReorderHistoryAction
+  | LayerRenameHistoryAction
+  | LayerVisibilityHistoryAction
+  | LayerOpacityHistoryAction
+  | ContentFrameAddHistoryAction
+  | ContentFrameRemoveHistoryAction
+  | ContentFrameTimingHistoryAction
+  | ContentFrameDataHistoryAction
+  | KeyframeAddHistoryAction
+  | KeyframeRemoveHistoryAction
+  | KeyframeUpdateHistoryAction
+  | PropertyTrackAddHistoryAction
+  | PropertyTrackRemoveHistoryAction
+  | FrameRateChangeHistoryAction
+  | StaticPropertyChangeHistoryAction
+  | ContentFrameReorderHistoryAction
+  | TimelineDurationChangeHistoryAction
+  | TrimToWorkAreaHistoryAction
+  | ApplyTransformsHistoryAction
+  | MergeLayersHistoryAction
+  | CreateGroupHistoryAction
+  | UngroupLayersHistoryAction;
 
+export interface ApplyTransformsHistoryAction extends HistoryAction {
+  type: 'apply_transforms';
+  data: {
+    layerId: string;
+    previousLayer: import('../types/timeline').Layer;
+    newLayer: import('../types/timeline').Layer;
+  };
+}
+
+export interface MergeLayersHistoryAction extends HistoryAction {
+  type: 'merge_layers';
+  data: {
+    /** The layer IDs that were merged (in order, bottom to top) */
+    removedLayers: import('../types/timeline').Layer[];
+    /** The indices in the original layers array */
+    removedIndices: number[];
+    /** The new merged layer */
+    mergedLayer: import('../types/timeline').Layer;
+    /** Index where the merged layer was inserted */
+    insertIndex: number;
+  };
+}
+
+export interface CreateGroupHistoryAction extends HistoryAction {
+  type: 'create_group';
+  data: {
+    groupId: string;
+    groupName: string;
+    layerIds: string[];
+  };
+}
+
+export interface UngroupLayersHistoryAction extends HistoryAction {
+  type: 'ungroup_layers';
+  data: {
+    group: import('../types/timeline').LayerGroup;
+  };
+}

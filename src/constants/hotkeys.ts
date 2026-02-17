@@ -36,6 +36,7 @@ export const TOOL_HOTKEYS: ToolHotkey[] = [
   { tool: 'asciibox', key: 'q', displayName: 'Q', description: 'ASCII Box drawing hotkey' },
   { tool: 'beziershape', key: 'p', displayName: 'P', description: 'Bezier Pen Tool hotkey' },
   { tool: 'gradientfill', key: 'g', displayName: 'G', description: 'Gradient fill tool hotkey' },
+  { tool: 'layertransform', key: 'v', displayName: 'V', description: 'Layer Transform tool hotkey' },
 ];
 
 /**

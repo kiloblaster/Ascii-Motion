@@ -17,6 +17,7 @@ import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Spinner } from '../../common/Spinner';
 import { useGeneratorsStore } from '../../../stores/generatorsStore';
+import { useTimelineStore } from '../../../stores/timelineStore';
 
 interface GeneratorPreviewCanvasProps {
   isPlaying: boolean;
@@ -161,7 +162,7 @@ export function GeneratorPreviewCanvas({
         </div>
       )}
 
-      {/* Frame Count and Frame Rate Controls */}
+      {/* Frame Count and Match Timeline Controls */}
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Frame Count</Label>
@@ -176,15 +177,18 @@ export function GeneratorPreviewCanvas({
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Frame Rate (FPS)</Label>
-          <Input
-            type="number"
-            value={currentSettings.frameRate}
-            onChange={(e) => updateCurrentSettings({ frameRate: parseInt(e.target.value) || 1 })}
-            min={1}
-            max={60}
-            className="h-8 text-xs"
-          />
+          <Label className="text-xs text-muted-foreground">&nbsp;</Label>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-full text-xs"
+            onClick={() => {
+              const durationFrames = useTimelineStore.getState().config.durationFrames;
+              updateCurrentSettings({ frameCount: Math.max(1, durationFrames) });
+            }}
+          >
+            Match Timeline
+          </Button>
         </div>
       </div>
 
