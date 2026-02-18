@@ -7,7 +7,16 @@ import { globalIgnores } from 'eslint/config'
 
 export default tseslint.config([
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/build/**'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/build/**',
+      '**/.next/**',
+      'dev-tools/**',
+      'api/**',
+      'packages/web/**',
+      'packages/premium/supabase/**',
+    ],
   },
   {
     files: ['**/*.{ts,tsx}'],
