@@ -23,7 +23,7 @@ https://docs.ascii-motion.com
 ## 🎨 Current Features
 
 - **Grid-based ASCII Art Editor** with full drawing toolset (pencil, eraser, fill, rectangle, ellipse, bezier pen, text, gradient, and more)
--** Convert images or video assets to ASCII art** with fine-tuned rendering control and frame rate matching
+- ** Convert images or video assets to ASCII art** with fine-tuned rendering control and frame rate matching
 - **Custom Color and Character Palettes** including presets and import/export
 - **Apply effects** and filters to existing animations
 - **Generate animations** using procedural animation tools
