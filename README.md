@@ -1,6 +1,6 @@
 # [ASCII Motion](https://ascii-motion.app)
 
-![ASCII Motion](https://img.shields.io/badge/status-in%20development-yellow)
+![ASCII Motion](https://img.shields.io/badge/version-2.0.0-green)
 ![License - Dual](https://img.shields.io/badge/license-MIT%20%2B%20Proprietary-blue)
 
 A web app for creating and animating ASCII/ANSI art. 
@@ -21,14 +21,17 @@ https://ascii-motion.com
 
 ## 🎨 Current Features
 
-- Grid-based ASCII Art Editor with full drawing toolset
-- Animation Timeline for frame-by-frame editing and onion skinning
-- Custom Color and Character Palettes including presets and import/export features
-- Convert images or video assets to ASCII art, with fine-tuned rendering control
+- **Layer-Based Timeline** with keyframe interpolation for position, scale, rotation, and anchor point
+- **Multi-Layer Compositing** with z-order, visibility, solo, lock, and layer groups
+- **Keyframe Animation** with cubic bezier easing editor and presets
+- Grid-based ASCII Art Editor with full drawing toolset (pencil, eraser, fill, rectangle, ellipse, bezier pen, text, gradient, and more)
+- Convert images or video assets to ASCII art with fine-tuned rendering control and frame rate matching
+- Custom Color and Character Palettes including presets and import/export
 - Apply effects and filters to existing animations
-- Generate animations using a selection of procedural animation tools. 
-- Multiple Export Formats: Images (PNG, JPEG, SVG), Videos (MP4, WebM), Text files, JSON, HTML, and full session export
-- Publish to community gallery and explore what people are making. 
+- Generate animations using procedural animation tools
+- **Export Formats:** Images (PNG, JPEG, SVG), Videos (MP4, WebM), React Components, CLI Components (Ink, OpenTUI, BubbleTea), Text, HTML, and session files
+- Publish to community gallery and explore what people are making
+- **MCP Server** ([ascii-motion-mcp](https://www.npmjs.com/package/ascii-motion-mcp)) for AI-assisted animation creation 
   
 ## 🚀 Quick Start
 
@@ -72,8 +75,8 @@ The main ASCII art editor deploys with automated versioning:
 
 | Command | Version Increment | Use Case |
 |---------|------------------|----------|
-| `npm run deploy` | **Patch** (0.1.23 → 0.1.24) | Bug fixes, small updates, content changes |
-| `npm run deploy:major` | **Minor** (0.1.23 → 0.2.0) | New features, significant improvements |
+| `npm run deploy` | **Patch** (2.0.0 → 2.0.1) | Bug fixes, small updates |
+| `npm run deploy:major` | **Minor** (2.0.1 → 2.1.0) | New features, significant improvements |
 | `npm run deploy:preview` | **None** | Testing deployments, preview branches |
 
 ### Manual Version Commands
@@ -81,13 +84,13 @@ The main ASCII art editor deploys with automated versioning:
 For version management without deployment:
 
 ```bash
-# Increment patch version (0.1.23 → 0.1.24)
+# Increment patch version (2.0.0 → 2.0.1)
 npm run version:patch
 
-# Increment minor version (0.1.23 → 0.2.0) 
+# Increment minor version (2.0.1 → 2.1.0) 
 npm run version:minor
 
-# Increment major version (0.2.15 → 1.0.0)
+# Increment major version (2.1.0 → 3.0.0)
 npm run version:major
 ```
 </details>
@@ -111,13 +114,14 @@ See the README in each package for detailed deployment instructions.
 
 ## 🏗️ Tech Stack
 
-- **React 18** - UI framework
-- **TypeScript** - Type safety
+- **React 19** - UI framework
+- **TypeScript** - Type safety (strict mode)
 - **Vite** - Build tool and dev server
-- **Tailwind CSS** - Styling
+- **Tailwind CSS v3** - Styling
 - **Shadcn/ui** - UI components
 - **Zustand** - State management
 - **Lucide React** - Icons
+- **Vitest** - Testing framework
 
 ## 📦 Project Structure
 
@@ -151,14 +155,25 @@ See [docs/MONOREPO_SETUP_GUIDE.md](docs/MONOREPO_SETUP_GUIDE.md) for details.
 src/
 ├── components/
 │   ├── common/         # Shared/reusable components
-│   ├── features/       # Complex functional components  
+│   ├── features/       # Complex functional components (canvas, import/export)
+│   │   └── timeline/   # Layer list, track area, keyframe editor, ruler
 │   ├── tools/          # Tool-specific components
 │   └── ui/             # Shadcn UI components
-├── stores/             # Zustand state management
-├── types/              # TypeScript definitions
+├── stores/
+│   ├── timelineStore.ts   # PRIMARY: layers, content frames, keyframes, groups
+│   ├── canvasStore.ts     # Working canvas buffer for active layer
+│   ├── animationStore.ts  # Legacy compatibility adapter
+│   └── toolStore.ts       # Tools, settings, undo/redo history
+├── types/
+│   ├── timeline.ts        # Layer, ContentFrame, Keyframe, PropertyTrack types
+│   └── easing.ts          # Cubic bezier interpolation engine
 ├── hooks/              # Custom React hooks
-├── utils/              # Utility functions
-└── constants/          # App configuration
+├── utils/
+│   ├── layerCompositing.ts    # Multi-layer compositing with transforms
+│   ├── layerTransformUtils.ts # Screen↔local coordinate conversion
+│   └── sessionMigration.ts    # v1→v2 format migration
+├── constants/          # App configuration
+└── pages/              # Page components
 ```
 
 ## 📋 Development Status
@@ -250,13 +265,33 @@ Where I'm at with the concept:
 - [ ] Create help and tool tip for in product on boarding
  </details>
 
+<details>
+<summary> ✅ Phase 8: Layer Timeline System — v2.0.0 (Complete) </summary>
+   
+- [x] Layer-based timeline replacing frame-by-frame animation model
+- [x] Multi-layer compositing with z-order, visibility, solo, lock
+- [x] Layer groups with cascading transforms
+- [x] Keyframe animation for position, scale, rotation, anchor point
+- [x] Cubic bezier easing editor with presets
+- [x] Layer transform tool with bounding box handles
+- [x] Content frames with draggable timing on timeline
+- [x] Property tracks with keyframe diamonds and marquee selection
+- [x] Frame rate controls with presets and custom values
+- [x] Session format v2.0.0 with automatic v1 migration
+- [x] Media import with New Layer mode and video frame rate matching
+- [x] Export optimizations (frame deduplication, color dictionaries, compact formats)
+- [x] Multi-layer crop with transform and keyframe preservation
+- [x] MCP server v2.0.0 with 17 layer tools
+- [x] Resizable timeline panel with ruler, playhead, and zoom
+ </details>
+
 ## 📖 Documentation
 
-- **[Product Requirements Document](./PRD.md)** - Complete feature specifications
-- **[Development Guide](./DEVELOPMENT.md)** - Setup and project structure
-- **[Copilot Instructions](./COPILOT_INSTRUCTIONS.md)** - Development guidelines
-- **[Monorepo Setup Guide](./docs/MONOREPO_SETUP_GUIDE.md)** - Dual-license structure and migration
-- **[Technical Documentation](./docs/)** - Comprehensive implementation guides, plans, and feature documentation
+- **[Copilot Instructions](./COPILOT_INSTRUCTIONS.md)** - Architecture overview and development guidelines
+- **[Contributing Guide](./CONTRIBUTING.md)** - How to contribute
+- **[Monorepo Setup Guide](./docs/MONOREPO_SETUP_GUIDE.md)** - Dual-license structure
+- **[Layer Timeline Refactor Plan](./docs/LAYER_TIMELINE_REFACTOR_PLAN.md)** - v2.0.0 architecture design
+- **[Technical Documentation](./docs/)** - Implementation guides and feature documentation
 - **[Development Tools](./dev-tools/)** - Test scripts and debugging utilities
 
 ## 🤝 Contributing
@@ -308,33 +343,44 @@ Ascii-Motion/               # Main repository (public)
    npm install
    ```
 
-2. **The `packages/premium/` folder will be empty** - This is expected! You don't need it to contribute.
+2. **The `packages/premium/` folder will be empty** - This is expected! You don't need it to contribute. The app runs without premium features.
 
-3. **All your work happens in `packages/core/`:**
+3. **Development:**
    ```bash
-   # Core package has its own dev server
-   cd packages/core
-   npm run dev
+   npm run dev          # Start dev server
+   npm run test:run     # Run tests (343 tests)
+   npm run lint         # Check code quality
+   npm run build        # Production build
    ```
 
-4. **Development workflow:**
-   - Make changes in `packages/core/src/`
-   - The dev server will hot-reload your changes
-   - Test thoroughly before submitting PR
-   - Follow existing code patterns and TypeScript conventions
+4. **All source code lives in `src/`** — not in `packages/core/` (which is a shared UI component library). Your contributions go directly in `src/`.
+
+5. **Key files to know:**
+   - `src/stores/timelineStore.ts` — Primary state (layers, keyframes, timeline)
+   - `src/hooks/useKeyboardShortcuts.ts` — All keyboard shortcuts and undo/redo
+   - `src/components/features/ToolPalette.tsx` — Tool UI and options
+   - `src/utils/exportRenderer.ts` — All export format rendering
+   - `src/types/timeline.ts` — Core type definitions
 
 #### Import Paths
 
-When writing code in `packages/core/`, use these import patterns:
+When writing code in `src/`, use these import patterns:
 
 ```typescript
-// ✅ Correct - Importing from core package
-import { Button } from '@ascii-motion/core/components';
-import { useCanvas } from '@ascii-motion/core/hooks';
-import { CanvasStore } from '@ascii-motion/core/stores';
+// Stores
+import { useTimelineStore } from '../stores/timelineStore';
+import { useCanvasStore } from '../stores/canvasStore';
+import { useToolStore } from '../stores/toolStore';
 
-// ❌ Incorrect - Don't import from premium
-import { AuthContext } from '@ascii-motion/premium/auth';
+// Utils
+import { screenToLocal } from '../utils/layerTransformUtils';
+import { compositeLayersAtFrame } from '../utils/layerCompositing';
+
+// Types
+import type { Layer, ContentFrame, KeyframeId } from '../types/timeline';
+
+// UI Components
+import { Button } from '../components/ui/button';
 ```
 
 #### What Happens to Premium Code?
@@ -347,15 +393,20 @@ import { AuthContext } from '@ascii-motion/premium/auth';
 #### Testing Your Changes
 
 ```bash
-# Test from core package (recommended for contributors)
-cd packages/core
-npm run dev        # Opens Storybook or component sandbox
-npm run test       # Run unit tests
-npm run lint       # Check code style
+# Run the full test suite (343 tests)
+npm run test:run
 
-# Test in full app (optional)
-cd ../..           # Back to root
-npm run dev        # Runs full app (may show warnings about missing premium)
+# Run tests in watch mode during development
+npm test
+
+# Lint check
+npm run lint
+
+# TypeScript type check
+npx tsc --noEmit
+
+# Production build verification
+npm run build
 ```
 
 #### Submitting Pull Requests
@@ -368,11 +419,12 @@ npm run dev        # Runs full app (may show warnings about missing premium)
 6. Open a Pull Request to the `main` branch
 
 **PR Checklist:**
-- [ ] Changes are only in `packages/core/` (no premium code)
-- [ ] Code follows existing patterns and TypeScript conventions
-- [ ] Tests pass (`npm run test`)
+- [ ] Changes don't modify premium code (`packages/premium/`)
+- [ ] Code follows existing patterns and TypeScript strict mode
+- [ ] Tests pass (`npm run test:run`)
 - [ ] No linting errors (`npm run lint`)
-- [ ] Documentation updated if needed
+- [ ] Build succeeds (`npm run build`)
+- [ ] New features include tests where applicable
 - [ ] PR description explains what and why
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.

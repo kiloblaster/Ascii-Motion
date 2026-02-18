@@ -67,7 +67,7 @@ These features are closed-source and not accepting external contributions:
    git checkout -b feature/my-new-tool
    ```
 
-5. **Make your changes in `packages/core/src/`**
+5. **Make your changes in `src/`** (not `packages/core/` — that's a shared UI library)
 
 6. **Add license header to new files:**
    ```typescript
@@ -82,8 +82,10 @@ These features are closed-source and not accepting external contributions:
 
 7. **Test your changes:**
    ```bash
-   npm run dev
-   npm run build
+   npm run dev          # Manual testing
+   npm run test:run     # Run test suite (343 tests)
+   npm run lint         # Code quality check
+   npm run build        # Production build
    ```
 
 8. **Commit and push:**
@@ -99,9 +101,11 @@ These features are closed-source and not accepting external contributions:
 
 ### File Organization
 
-- Place new tools in `packages/core/src/components/tools/`
-- Place new hooks in `packages/core/src/hooks/`
-- Place utilities in `packages/core/src/utils/`
+- Place new tools in `src/components/tools/`
+- Place new hooks in `src/hooks/`
+- Place utilities in `src/utils/`
+- Place store additions in `src/stores/`
+- Follow the **9-step tool creation pattern** in [COPILOT_INSTRUCTIONS.md](./COPILOT_INSTRUCTIONS.md)
 
 ### TypeScript
 
@@ -127,8 +131,9 @@ These features are closed-source and not accepting external contributions:
  * @see LICENSE-MIT for full license text
  */
 
-import { useCanvasStore } from '@/stores/canvasStore';
-import { useToolStore } from '@/stores/toolStore';
+import { useCanvasStore } from '../../stores/canvasStore';
+import { useToolStore } from '../../stores/toolStore';
+import { screenToLocal } from '../../utils/layerTransformUtils';
 
 export function MyNewTool() {
   const { cells, setCells } = useCanvasStore();
@@ -150,12 +155,14 @@ export function MyNewTool() {
 
 Before submitting a PR:
 
+- [ ] Run `npm run test:run` - All 343 tests pass
+- [ ] Run `npm run lint` - Zero warnings
 - [ ] Run `npm run dev` - Verify no console errors
+- [ ] Run `npm run build` - Production build succeeds
 - [ ] Test your feature manually
-- [ ] Test with different canvas sizes
-- [ ] Test with multiple frames (if animation-related)
+- [ ] Test with multiple layers (if animation/drawing related)
+- [ ] Add tests for new store actions or utility functions
 - [ ] Verify exports still work
-- [ ] Check license headers: `npm run check-licenses`
 
 ## 📋 Pull Request Guidelines
 
