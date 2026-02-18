@@ -1,7 +1,7 @@
 import React from 'react';
 import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
-import { AsciiMotionTuiAnsi } from './ascii-motion-tui-ansi2.js';
+import { AsciiMotionTui } from './ascii-motion-tui.tsx';
 
 /**
  * OpenTUI Test CLI
@@ -22,7 +22,7 @@ async function main() {
   
   createRoot(renderer).render(
     // @ts-ignore - React 19 JSX type compatibility
-    <AsciiMotionTuiAnsi 
+    <AsciiMotionTui 
       hasDarkBackground={true} 
       autoPlay={true} 
       loop={true} 
