@@ -122,6 +122,7 @@ export const InteractiveBezierOverlay: React.FC = () => {
   // Get the active color palette — recompute when activePaletteId changes
   const colorPalette = useMemo(() => {
     return getActivePalette();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- activePaletteId intentionally triggers recomputation
   }, [getActivePalette, activePaletteId]);
 
   /**

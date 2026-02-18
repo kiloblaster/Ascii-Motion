@@ -12,13 +12,13 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useTimelineStore } from '../stores/timelineStore';
-import type { EasingCurve, EasingPreset, TimecodeFormat } from '../types/timeline';
+import type { EasingCurve, EasingPreset, KeyframeId } from '../types/timeline';
 import { EASING_PRESETS } from '../types/timeline';
-import { formatTimecodeValue } from '../components/features/timeline/TimecodeDisplay';
+import { formatTimecodeValue } from '../components/features/timeline/timecodeUtils';
 import {
   getTickInterval,
   formatFrameLabel,
-} from '../components/features/timeline/TimelineRuler';
+} from '../components/features/timeline/timelineRulerUtils';
 
 // ============================================
 // Helper: reset store before each test
@@ -295,12 +295,12 @@ describe('timeline store view state (Phase 3)', () => {
     });
 
     it('setEditingKeyframe sets the keyframe ID', () => {
-      useTimelineStore.getState().setEditingKeyframe('kf-1' as any);
+      useTimelineStore.getState().setEditingKeyframe('kf-1' as KeyframeId);
       expect(useTimelineStore.getState().view.editingKeyframeId).toBe('kf-1');
     });
 
     it('setEditingKeyframe(null) clears it', () => {
-      useTimelineStore.getState().setEditingKeyframe('kf-1' as any);
+      useTimelineStore.getState().setEditingKeyframe('kf-1' as KeyframeId);
       useTimelineStore.getState().setEditingKeyframe(null);
       expect(useTimelineStore.getState().view.editingKeyframeId).toBeNull();
     });
@@ -312,15 +312,15 @@ describe('timeline store view state (Phase 3)', () => {
     });
 
     it('selectKeyframes adds keyframes', () => {
-      useTimelineStore.getState().selectKeyframes(new Set(['kf-1', 'kf-2'] as any[]));
+      useTimelineStore.getState().selectKeyframes(new Set(['kf-1', 'kf-2'] as KeyframeId[]));
       expect(useTimelineStore.getState().view.selectedKeyframeIds.size).toBe(2);
     });
 
     it('selectKeyframes replaces previous selection', () => {
-      useTimelineStore.getState().selectKeyframes(new Set(['kf-1'] as any[]));
-      useTimelineStore.getState().selectKeyframes(new Set(['kf-2', 'kf-3'] as any[]));
+      useTimelineStore.getState().selectKeyframes(new Set(['kf-1'] as KeyframeId[]));
+      useTimelineStore.getState().selectKeyframes(new Set(['kf-2', 'kf-3'] as KeyframeId[]));
       expect(useTimelineStore.getState().view.selectedKeyframeIds.size).toBe(2);
-      expect(useTimelineStore.getState().view.selectedKeyframeIds.has('kf-1' as any)).toBe(false);
+      expect(useTimelineStore.getState().view.selectedKeyframeIds.has('kf-1' as KeyframeId)).toBe(false);
     });
   });
 
@@ -335,7 +335,6 @@ describe('timeline store view state (Phase 3)', () => {
     });
 
     it('setActiveLayer changes active layer', () => {
-      const state = useTimelineStore.getState();
       // Add a second layer
       useTimelineStore.getState().addLayer('Test Layer');
       const layers = useTimelineStore.getState().layers;
@@ -482,7 +481,7 @@ describe('layer reordering (Phase 3 DnD backing)', () => {
 
   it('reorderLayers changes layer order', () => {
     const state = useTimelineStore.getState();
-    const originalFirst = state.layers[0].id;
+    const _originalFirst = state.layers[0].id;
     const originalLast = state.layers[2].id;
     // Move last (index 2) to first (index 0): [A, B, C] → [C, A, B]
     useTimelineStore.getState().reorderLayers(2, 0);
@@ -562,7 +561,7 @@ describe('keyframe operations (Phase 3 diamond/editor backing)', () => {
   it('addPropertyTrack + addKeyframe creates a keyframe', () => {
     const state = useTimelineStore.getState();
     const layerId = state.layers[0].id;
-    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'opacity');
+    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'transform.rotation');
     useTimelineStore.getState().addKeyframe(layerId, trackId, 0, 100);
 
     const layer = useTimelineStore.getState().layers[0];
@@ -575,7 +574,7 @@ describe('keyframe operations (Phase 3 diamond/editor backing)', () => {
 
   it('moveKeyframe changes keyframe frame position', () => {
     const layerId = useTimelineStore.getState().layers[0].id;
-    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'opacity');
+    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'transform.rotation');
     useTimelineStore.getState().addKeyframe(layerId, trackId, 0, 100);
 
     const kfId = useTimelineStore.getState().layers[0]
@@ -591,7 +590,7 @@ describe('keyframe operations (Phase 3 diamond/editor backing)', () => {
 
   it('updateKeyframe changes easing', () => {
     const layerId = useTimelineStore.getState().layers[0].id;
-    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'opacity');
+    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'transform.rotation');
     useTimelineStore.getState().addKeyframe(layerId, trackId, 0, 100);
 
     const kfId = useTimelineStore.getState().layers[0]
@@ -609,7 +608,7 @@ describe('keyframe operations (Phase 3 diamond/editor backing)', () => {
 
   it('removeKeyframe deletes a keyframe', () => {
     const layerId = useTimelineStore.getState().layers[0].id;
-    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'opacity');
+    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'transform.rotation');
     useTimelineStore.getState().addKeyframe(layerId, trackId, 0, 100);
 
     const kfId = useTimelineStore.getState().layers[0]
@@ -624,10 +623,10 @@ describe('keyframe operations (Phase 3 diamond/editor backing)', () => {
 
   it('updateKeyframe can set looping property', () => {
     const layerId = useTimelineStore.getState().layers[0].id;
-    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'opacity');
+    const trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'transform.rotation');
     useTimelineStore.getState().addKeyframe(layerId, trackId, 0, 100);
 
-    const kfId = useTimelineStore.getState().layers[0]
+    const _kfId = useTimelineStore.getState().layers[0]
       .propertyTracks.find((t) => t.id === trackId)!
       .keyframes[0].id;
 

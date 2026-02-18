@@ -65,7 +65,8 @@ import {
   X,
   AlertTriangle,
 } from 'lucide-react';
-import { ProjectCanvasPreview, getProjectFrameCount } from './ProjectCanvasPreview';
+import { ProjectCanvasPreview } from './ProjectCanvasPreview';
+import { getProjectFrameCount } from '../../utils/projectUtils';
 import { UpgradeToProDialog } from './UpgradeToProDialog';
 import type { UserProfile } from '@ascii-motion/premium';
 

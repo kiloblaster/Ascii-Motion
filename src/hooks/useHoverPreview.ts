@@ -131,6 +131,7 @@ export const useHoverPreview = () => {
         }
       });
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- hoveredCellRef is a stable ref
   }, [fontMetrics.aspectRatio, setHoverPreview, getBrushCells]);
   
   // Register for direct notification when hoveredCell changes (bypasses React state)

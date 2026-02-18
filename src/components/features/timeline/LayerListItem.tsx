@@ -61,7 +61,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
   const setLayerSyncKeyframes = useTimelineStore((s) => s.setLayerSyncKeyframes);
   const renameLayer = useTimelineStore((s) => s.renameLayer);
 
-  const { removeLayer, duplicateLayer: _duplicateLayer, addKeyframe, removeKeyframe } = useTimelineHistory();
+  const { removeLayer, addKeyframe, removeKeyframe } = useTimelineHistory();
   const layers = useTimelineStore((s) => s.layers);
   const isExpanded = useTimelineStore((s) => s.view.expandedLayerIds.has(layer.id));
   const toggleLayerExpanded = useTimelineStore((s) => s.toggleLayerExpanded);

@@ -2521,6 +2521,7 @@ export const useKeyboardShortcuts = () => {
     duplicateContentFrame,
     splitContentFrame,
     updateContentFrameTiming,
+    createGroup,
   ]);
 
   const handleShortcutKeyPress = useCallback((event: KeyboardEvent) => {

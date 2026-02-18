@@ -561,7 +561,7 @@ export const CanvasActionButtons: React.FC = () => {
         break;
       }
     }
-  }, [setCanvasData, setCanvasSize, bezierStore, setActiveTool, setSelectedChar, setSelectedColor, setSelectedBgColor, activeTool]);
+  }, [setCanvasData, setCanvasSize, bezierStore, setActiveTool, setSelectedChar, setSelectedColor, setSelectedBgColor, activeTool, getAnimationStore]);
 
   const handleUndo = () => {
     if (canUndo()) {

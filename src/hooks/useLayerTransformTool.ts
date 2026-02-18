@@ -321,7 +321,8 @@ export function useLayerTransformTool() {
     ];
 
     return { corners, localBounds: { minX, minY, maxX, maxY } };
-  }, [hasActiveEntity, activeLayer, activeGroup, layers, currentFrame, cellAspectRatio,
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- .value deps intentionally included to trigger recomputation when transform values change
+  }, [hasActiveEntity, activeLayer, activeGroup, layers, layerGroups, currentFrame, cellAspectRatio,
       posX.value, posY.value, scaleX.value, scaleY.value, rotation.value, anchorX.value, anchorY.value]);
 
   // Current anchor position in screen space (for overlay & hit testing)

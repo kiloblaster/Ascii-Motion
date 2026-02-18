@@ -17,7 +17,7 @@ import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
-import type { ContentFrame, ContentFrameId, LayerId } from '../../../types/timeline';
+import type { ContentFrame, ContentFrameId, LayerId, PropertyTrackId, KeyframeId } from '../../../types/timeline';
 import type { ContentFrameReorderHistoryAction } from '../../../types';
 
 interface ContentFrameBlockProps {
@@ -34,7 +34,6 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = React.memo(fu
   layerId,
   contentFrame,
   pxPerFrame,
-  scrollX: _scrollX,
   onContextMenu,
 }) {
   const updateContentFrameTiming = useTimelineStore((s) => s.updateContentFrameTiming);
@@ -134,7 +133,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = React.memo(fu
       let didDrag = false;
       let beforeSnapshot: ReturnType<typeof snapshotLayerFrames>[] | null = null;
       // For keyframe sync: capture original frame starts and keyframes within each frame
-      let syncedKeyframesBefore: { trackId: string; keyframeId: string; frame: number; cfId: string; cfOrigStart: number }[] = [];
+      const syncedKeyframesBefore: { trackId: string; keyframeId: string; frame: number; cfId: string; cfOrigStart: number }[] = [];
       let keyframeSnapshotBefore: { layerId: string; trackId: string; keyframeId: string; frame: number }[] = [];
       // For Alt+drag duplicate: capture original positions/data of all affected frames
       let altDupEntries: { layerId: LayerId; startFrame: number; durationFrames: number; data: Map<string, import('../../../types').Cell> }[] = [];
@@ -466,7 +465,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = React.memo(fu
               const delta = cf.startFrame - entry.cfOrigStart;
               if (delta === 0) continue;
               const newFrame = Math.max(0, entry.frame + delta);
-              tl.moveKeyframe(layerId, entry.trackId as any, entry.keyframeId as any, newFrame);
+              tl.moveKeyframe(layerId, entry.trackId as PropertyTrackId, entry.keyframeId as KeyframeId, newFrame);
             }
           }
         }
@@ -505,6 +504,7 @@ export const ContentFrameBlock: React.FC<ContentFrameBlockProps> = React.memo(fu
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- getDropTarget, getOtherFrames, getTargetLayerId are stable helpers reading from store.getState()
     [contentFrame, layerId, pxPerFrame, updateContentFrameTiming, activeLayerId, setActiveLayer, selectContentFrames, addContentFramesToSelection, toggleContentFrameSelected, setContentFrameDragPreview, pushToHistory],
   );
 

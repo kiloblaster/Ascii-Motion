@@ -47,7 +47,6 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
   trackId,
   keyframe,
   pxPerFrame,
-  scrollX: _scrollX,
   isSelected,
   onContextMenu,
 }) => {
@@ -234,7 +233,7 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     },
-    [keyframe, layerId, trackId, pxPerFrame, moveKeyframeDirect, pushToHistory],
+    [keyframe, layerId, trackId, pxPerFrame, moveKeyframeDirect, pushToHistory, clearKeyframeDuplicateGhosts, setKeyframeDuplicateGhosts],
   );
 
   return (

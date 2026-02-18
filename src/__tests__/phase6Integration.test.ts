@@ -15,7 +15,6 @@ import { useTimelineStore } from '../stores/timelineStore';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useAnimationStore } from '../stores/animationStore';
 import type { Cell } from '../types';
-import type { LayerId, ContentFrameId } from '../types/timeline';
 
 // ============================================
 // Helpers

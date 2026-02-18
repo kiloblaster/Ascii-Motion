@@ -41,11 +41,10 @@ const GroupPropertyRow: React.FC<GroupPropertyRowProps> = ({ groupId, propertyPa
   const group = useTimelineStore((s) => s.layerGroups.find(g => g.id === groupId));
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const definition = PROPERTY_DEFINITIONS[propertyPath];
-  if (!group || !definition) return null;
 
-  const track = group.propertyTracks.find(t => t.propertyPath === propertyPath);
+  const track = group?.propertyTracks.find(t => t.propertyPath === propertyPath);
   const isTracked = !!track;
-  const value = getGroupPropertyValue(group, propertyPath, currentFrame);
+  const value = group ? getGroupPropertyValue(group, propertyPath, currentFrame) : (definition?.defaultValue as number ?? 0);
   const hasKeyframeAtCurrentFrame = track?.keyframes.some(kf => kf.frame === currentFrame) ?? false;
 
   const [localValue, setLocalValue] = useState<string>(String(value));
@@ -83,12 +82,14 @@ const GroupPropertyRow: React.FC<GroupPropertyRowProps> = ({ groupId, propertyPa
 
   const commitValue = useCallback(() => {
     const num = parseFloat(localValue);
-    if (!isNaN(num) && num !== value) {
+    if (!isNaN(num) && num !== value && definition) {
       const clamped = Math.max(definition.min ?? -Infinity, Math.min(definition.max ?? Infinity, num));
       writeValue(clamped);
     }
     setLocalValue(String(isNaN(num) ? value : num));
   }, [localValue, value, definition, writeValue]);
+
+  if (!group || !definition) return null;
 
   const handleKeyframeToggle = (e: React.MouseEvent) => {
     e.stopPropagation();

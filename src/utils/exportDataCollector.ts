@@ -288,6 +288,20 @@ export const useExportDataCollector = (enabled: boolean = true): ExportDataBundl
   const timelineView = useTimelineStore(state => state.view);
   const isLayerMode = timelineLayers.length > 0;
 
+  // Get canvas context data (must be called before early return — React hooks rules)
+  const {
+    zoom,
+    panOffset,
+    fontMetrics,
+    fontSize,
+    characterSpacing,
+    lineSpacing,
+    selectedFontId
+  } = useCanvasContext();
+
+  // Get theme context (must be called before early return — React hooks rules)
+  const { theme } = useTheme();
+
   // PERF FIX: Return null early when disabled — skip the expensive
   // computeCompositedFrames() and all data assembly below. The hooks above
   // still run (React requires it), but they're just reading store values.
@@ -318,20 +332,6 @@ export const useExportDataCollector = (enabled: boolean = true): ExportDataBundl
     exportLooping = looping;
     exportCurrentFrameIndex = currentFrameIndex;
   }
-
-  // Get canvas context data
-  const {
-    zoom,
-    panOffset,
-    fontMetrics,
-    fontSize,
-    characterSpacing,
-    lineSpacing,
-    selectedFontId
-  } = useCanvasContext();
-
-  // Get theme context
-  const { theme } = useTheme();
 
   return {
     // Top-level name and description (for convenience)

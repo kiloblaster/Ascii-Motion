@@ -14,7 +14,7 @@ import { useTimelineStore } from '../stores/timelineStore';
 import { useCanvasStore } from '../stores/canvasStore';
 import { detectSessionVersion, migrateV1ToV2, validateAndRepairV2 } from '../utils/sessionMigration';
 import { compositeLayersAtFrame } from '../utils/layerCompositing';
-import type { SessionDataV2, SessionLayerV2, LayerId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyTrack } from '../types/timeline';
+import type { SessionDataV2, LayerId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyTrack, PropertyPath } from '../types/timeline';
 import type { Cell } from '../types';
 
 // ============================================
@@ -286,7 +286,7 @@ describe('Session round-trip (v2)', () => {
       })),
       propertyTracks: sl.propertyTracks.map((t) => ({
         id: t.id as PropertyTrackId,
-        propertyPath: t.propertyPath as any,
+        propertyPath: t.propertyPath as PropertyPath,
         loopKeyframes: t.loopKeyframes,
         keyframes: t.keyframes.map((k) => ({
           id: k.id as KeyframeId,
@@ -331,7 +331,6 @@ describe('Session round-trip (v2)', () => {
 
     // Load into store
     resetStores();
-    const store = useTimelineStore.getState();
 
     const layers = migrated.layers.map((sl) => ({
       id: sl.id as LayerId,

@@ -23,47 +23,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
+import { formatTimecodeValue, formatLabel, parseTimecodeInput } from './timecodeUtils';
 
 // ============================================
-// FORMAT UTILITIES
+// INTERNAL UTILS
 // ============================================
-
-/** Format a frame number into a display string. Exported for testing. */
-export function formatTimecodeValue(
-  frame: number,
-  frameRate: number,
-  format: TimecodeFormat,
-): string {
-  switch (format) {
-    case 'frames':
-      return `${frame}`;
-    case 'seconds':
-      return `${(frame / frameRate).toFixed(2)}`;
-    case 'milliseconds':
-      return `${Math.round((frame / frameRate) * 1000)}`;
-    case 'timecode':
-    default: {
-      const totalSeconds = Math.floor(frame / frameRate);
-      const frames = frame % frameRate;
-      return `${totalSeconds.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`;
-    }
-  }
-}
-
-/** Full word label for each format (shown next to the input). */
-export function formatLabel(format: TimecodeFormat): string {
-  switch (format) {
-    case 'frames':
-      return 'Frames';
-    case 'seconds':
-      return 'Seconds';
-    case 'milliseconds':
-      return 'Milliseconds';
-    case 'timecode':
-    default:
-      return 'Timecode';
-  }
-}
 
 /** Full name for dropdown. */
 function formatName(format: TimecodeFormat): string {
@@ -77,54 +41,6 @@ function formatName(format: TimecodeFormat): string {
     case 'timecode':
     default:
       return 'Timecode (SS:FF)';
-  }
-}
-
-/**
- * Parse a user-entered timecode string into a frame number.
- * Returns the frame number, or null if the input is invalid.
- */
-export function parseTimecodeInput(
-  input: string,
-  frameRate: number,
-  format: TimecodeFormat,
-): number | null {
-  const trimmed = input.trim();
-  if (trimmed === '') return null;
-
-  switch (format) {
-    case 'frames': {
-      const n = parseInt(trimmed, 10);
-      return isNaN(n) ? null : Math.max(0, n);
-    }
-    case 'seconds': {
-      const n = parseFloat(trimmed);
-      if (isNaN(n)) return null;
-      return Math.max(0, Math.round(n * frameRate));
-    }
-    case 'milliseconds': {
-      const n = parseFloat(trimmed);
-      if (isNaN(n)) return null;
-      return Math.max(0, Math.round((n / 1000) * frameRate));
-    }
-    case 'timecode':
-    default: {
-      // Accept SS:FF or just FF (no minutes)
-      const parts = trimmed.split(':').map((s) => parseInt(s, 10));
-      if (parts.some(isNaN)) return null;
-
-      let totalFrames = 0;
-      if (parts.length === 2) {
-        // SS:FF
-        totalFrames = parts[0] * frameRate + parts[1];
-      } else if (parts.length === 1) {
-        // FF
-        totalFrames = parts[0];
-      } else {
-        return null;
-      }
-      return Math.max(0, totalFrames);
-    }
   }
 }
 

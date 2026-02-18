@@ -57,7 +57,6 @@ export const TimelineToolbar: React.FC = () => {
   const {
     addContentFrame,
     removeContentFrame,
-    duplicateContentFrame: _duplicateContentFrame,
     splitContentFrame,
     updateContentFrameTiming,
   } = useTimelineHistory();
@@ -118,7 +117,7 @@ export const TimelineToolbar: React.FC = () => {
       if (selectedFrames.length === 0) return;
       const firstStart = selectedFrames[0].startFrame;
       const lastEnd = selectedFrames[selectedFrames.length - 1].startFrame + selectedFrames[selectedFrames.length - 1].durationFrames;
-      let insertAt = lastEnd;
+      const insertAt = lastEnd;
       for (const cf of selectedFrames) {
         const offset = cf.startFrame - firstStart;
         addContentFrame(activeLayer.id, insertAt + offset, cf.durationFrames, new Map(cf.data));

@@ -920,6 +920,7 @@ export const CanvasOverlay: React.FC = React.memo(() => {
       registerHoverRender(null);
       hoverRenderFnRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- hoveredCellRef is a stable ref that doesn't change
   }, [canvasRef, registerHoverRender, hoverPreviewRef]);
   
   // Re-render hover canvas when hoveredCell changes (registered via ref-based callback)

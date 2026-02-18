@@ -165,6 +165,7 @@ export const useCanvasRenderer = () => {
       defaultBgColor: '#000000'
     };
     // Include isFontLoading to trigger re-render after font loads
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isFontLoading intentionally included to trigger re-render when font finishes loading
   }, [fontMetrics, zoom, canvasBackgroundColor, theme, isFontLoading]);
 
     // Optimized drawCell function with pixel-aligned rendering (but no coordinate changes)
@@ -581,12 +582,12 @@ export const useCanvasRenderer = () => {
     const totalCells = width * height;
     finishCanvasRender(totalCells);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- getCell and canvasBackgroundColor intentionally included as change triggers alongside memoized objects
   }, [
     // Use memoized objects to reduce re-renders
     canvasConfig,
     toolState,
     overlayState,
-  // Keep these individual dependencies for now
   getCell,
   getCellForRender,
   compositedCells,

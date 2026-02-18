@@ -32,7 +32,7 @@ export async function isFontAvailable(fontName: string): Promise<boolean> {
         fontAvailabilityCache.set(fontName, true);
         return true;
       }
-    } catch (e) {
+    } catch {
       // If check() throws, fall through to canvas measurement
     }
   }

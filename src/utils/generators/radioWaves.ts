@@ -146,7 +146,6 @@ export async function generateRadioWaves(
   height: number,
   frameCount: number,
   frameDuration: number,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _seed: number // Reserved for future deterministic randomness
 ): Promise<GeneratorFrame[]> {
   const frames: GeneratorFrame[] = [];

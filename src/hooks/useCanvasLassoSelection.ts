@@ -22,7 +22,6 @@ export const useCanvasLassoSelection = () => {
   const {
     selectionMode,
     moveState,
-    justCommittedMove,
     commitMove,
     setSelectionMode,
     setMoveState,
@@ -350,9 +349,7 @@ export const useCanvasLassoSelection = () => {
     cells,
     currentFrameIndex,
     moveState,
-    isPointInLassoSelection,
     commitMove,
-    clearLassoSelection,
     setJustCommittedMove,
   resetSelectionGesture,
   beginSelectionPreview,
@@ -360,7 +357,6 @@ export const useCanvasLassoSelection = () => {
     addLassoPoint,
     setMouseButtonDown,
     setSelectionMode,
-    justCommittedMove,
     setMoveState,
     getCell
   ]);

@@ -149,8 +149,7 @@ export class SessionImporter {
   /**
    * Validate session data structure
    */
-  // @ts-ignore - Legacy v1 validator, preserved for reference. All imports now use v2 pipeline.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - Legacy v1 validator, preserved for reference. All imports now use v2 pipeline.
   private static _validateSessionData(data: unknown): data is SessionImportData {
     try {
       if (typeof data !== 'object' || data === null) {
@@ -243,8 +242,7 @@ export class SessionImporter {
   /**
    * Restore session data to application stores
    */
-  // @ts-ignore - Legacy v1 restorer, preserved for reference. All imports now use restoreSessionDataV2.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // @ts-expect-error - Legacy v1 restorer, preserved for reference. All imports now use restoreSessionDataV2.
   private static _restoreSessionData(
     sessionData: SessionImportData, 
     typographyCallbacks?: {

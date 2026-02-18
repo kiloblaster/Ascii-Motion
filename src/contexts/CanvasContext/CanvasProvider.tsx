@@ -187,7 +187,7 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
           try {
             const fontNameWithQuotes = font.name.includes(' ') ? `"${font.name}"` : font.name;
             await document.fonts.load(`12px ${fontNameWithQuotes}`);
-          } catch (error) {
+          } catch {
             // Font might already be loaded or not available, continue anyway
           } finally {
             setIsFontLoading(false);
@@ -282,6 +282,7 @@ export const CanvasProvider: React.FC<CanvasProviderProps> = ({
     setShiftKeyDown, setAltKeyDown, setCtrlKeyDown,
     setSelectionMode, setPendingSelectionStart, setJustCommittedMove,
     setHoveredCellOptimized, setHoverPreviewOptimized,
+    registerHoverRender, registerHoveredCellRender,
     setMoveState,
     startPasteMode, updatePastePosition, startPasteDrag, stopPasteDrag,
     cancelPasteMode, commitPaste, setSelectionPreview,

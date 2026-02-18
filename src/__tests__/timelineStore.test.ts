@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useTimelineStore } from '../stores/timelineStore';
-import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../types/timeline';
+import type { LayerId, PropertyTrackId } from '../types/timeline';
 
 // ============================================
 // Helper: reset store before each test
@@ -130,9 +130,9 @@ describe('timelineStore', () => {
 
     it('removeLayer selects adjacent layer', () => {
       const store = useTimelineStore.getState();
-      const firstId = store.layers[0].id;
+      const _firstId = store.layers[0].id;
       const secondId = store.addLayer();
-      const thirdId = useTimelineStore.getState().addLayer();
+      const _thirdId = useTimelineStore.getState().addLayer();
 
       // Remove middle layer (secondId)
       useTimelineStore.getState().removeLayer(secondId);
@@ -352,7 +352,7 @@ describe('timelineStore', () => {
     it('addKeyframe auto-expands timeline', () => {
       const store = useTimelineStore.getState();
       const layerId = store.layers[0].id;
-      const trackId = store.addPropertyTrack(layerId, 'opacity');
+      const trackId = store.addPropertyTrack(layerId, 'transform.rotation');
       useTimelineStore.getState().addKeyframe(layerId, trackId, 50, 100);
 
       expect(useTimelineStore.getState().config.durationFrames).toBeGreaterThanOrEqual(51);
@@ -385,7 +385,7 @@ describe('timelineStore', () => {
     it('setFrameRate converts keyframe positions', () => {
       const store = useTimelineStore.getState();
       const layerId = store.layers[0].id;
-      const trackId = store.addPropertyTrack(layerId, 'opacity');
+      const trackId = store.addPropertyTrack(layerId, 'transform.rotation');
       useTimelineStore.getState().addKeyframe(layerId, trackId, 12, 50);
       useTimelineStore.getState().addKeyframe(layerId, trackId, 24, 100);
 
@@ -436,13 +436,13 @@ describe('timelineStore', () => {
 
     beforeEach(() => {
       layerId = useTimelineStore.getState().layers[0].id;
-      trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'opacity');
+      trackId = useTimelineStore.getState().addPropertyTrack(layerId, 'transform.rotation');
     });
 
     it('addPropertyTrack creates a track', () => {
       const layer = useTimelineStore.getState().getLayer(layerId)!;
       expect(layer.propertyTracks).toHaveLength(1);
-      expect(layer.propertyTracks[0].propertyPath).toBe('opacity');
+      expect(layer.propertyTracks[0].propertyPath).toBe('transform.rotation');
     });
 
     it('removePropertyTrack removes a track', () => {

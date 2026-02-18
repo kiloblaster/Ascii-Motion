@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useTimelineStore } from '../stores/timelineStore';
 import { useTimelineHistory } from '../hooks/useTimelineHistory';
+import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../types/timeline';
 
 // ============================================
 // Mock toolStore's pushToHistory
@@ -67,7 +68,7 @@ describe('useTimelineHistory', () => {
       mockPushToHistory.mockClear();
 
       act(() => {
-        result.current.removeLayer(layerId as any);
+        result.current.removeLayer(layerId as LayerId);
       });
 
       expect(mockPushToHistory).toHaveBeenCalledTimes(1);
@@ -186,7 +187,7 @@ describe('useTimelineHistory', () => {
       const { result } = renderHook(() => useTimelineHistory());
       const layerId = useTimelineStore.getState().layers[0].id;
 
-      let frameId: any;
+      let frameId: ContentFrameId | null;
       act(() => {
         frameId = result.current.addContentFrame(layerId, 5, 3);
       });
@@ -204,7 +205,7 @@ describe('useTimelineHistory', () => {
       const { result } = renderHook(() => useTimelineHistory());
       const layerId = useTimelineStore.getState().layers[0].id;
 
-      let frameId: any;
+      let frameId: ContentFrameId | null;
       act(() => {
         frameId = result.current.addContentFrame(layerId, 5, 3);
       });
@@ -231,7 +232,7 @@ describe('useTimelineHistory', () => {
       mockPushToHistory.mockClear();
 
       act(() => {
-        result.current.addPropertyTrack(layerId, 'opacity');
+        result.current.addPropertyTrack(layerId, 'transform.rotation');
       });
 
       expect(mockPushToHistory).toHaveBeenCalledTimes(1);
@@ -242,9 +243,9 @@ describe('useTimelineHistory', () => {
       const { result } = renderHook(() => useTimelineHistory());
       const layerId = useTimelineStore.getState().layers[0].id;
 
-      let trackId: any;
+      let trackId: PropertyTrackId;
       act(() => {
-        trackId = result.current.addPropertyTrack(layerId, 'opacity');
+        trackId = result.current.addPropertyTrack(layerId, 'transform.rotation');
       });
       mockPushToHistory.mockClear();
 
@@ -263,10 +264,10 @@ describe('useTimelineHistory', () => {
       const { result } = renderHook(() => useTimelineHistory());
       const layerId = useTimelineStore.getState().layers[0].id;
 
-      let trackId: any;
-      let kfId: any;
+      let trackId: PropertyTrackId;
+      let kfId: KeyframeId;
       act(() => {
-        trackId = result.current.addPropertyTrack(layerId, 'opacity');
+        trackId = result.current.addPropertyTrack(layerId, 'transform.rotation');
       });
       act(() => {
         kfId = result.current.addKeyframe(layerId, trackId, 10, 50);
@@ -285,10 +286,10 @@ describe('useTimelineHistory', () => {
       const { result } = renderHook(() => useTimelineHistory());
       const layerId = useTimelineStore.getState().layers[0].id;
 
-      let trackId: any;
-      let kfId: any;
+      let trackId: PropertyTrackId;
+      let kfId: KeyframeId;
       act(() => {
-        trackId = result.current.addPropertyTrack(layerId, 'opacity');
+        trackId = result.current.addPropertyTrack(layerId, 'transform.rotation');
       });
       act(() => {
         kfId = result.current.addKeyframe(layerId, trackId, 10, 50);

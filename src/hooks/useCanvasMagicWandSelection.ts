@@ -455,7 +455,6 @@ export const useCanvasMagicWandSelection = () => {
     cells,
     currentFrameIndex,
     moveState,
-    isPointInMagicWandSelection,
     commitMove,
     clearMagicWandSelection,
     setJustCommittedMove,
@@ -468,7 +467,10 @@ export const useCanvasMagicWandSelection = () => {
     isCellEmpty,
     findMatchingCells,
     startMagicWandSelection,
-    updateSelectionPreview
+    updateSelectionPreview,
+    height,
+    selectionAffectsAllLayers,
+    width,
   ]);
 
   // Handle mouse move during magic wand selection

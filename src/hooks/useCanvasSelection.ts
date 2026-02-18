@@ -22,8 +22,6 @@ export const useCanvasSelection = () => {
     selectionMode,
     moveState,
     pendingSelectionStart,
-    justCommittedMove,
-    isPointInEffectiveSelection,
     commitMove,
     setSelectionMode,
     setMoveState,
@@ -40,7 +38,6 @@ export const useCanvasSelection = () => {
   const selection = useToolStore((s) => s.selection);
   const startSelection = useToolStore((s) => s.startSelection);
   const updateSelection = useToolStore((s) => s.updateSelection);
-  const clearSelection = useToolStore((s) => s.clearSelection);
   const pushCanvasHistory = useToolStore((s) => s.pushCanvasHistory);
   const setSelectionFromMask = useToolStore((s) => s.setSelectionFromMask);
 
@@ -316,9 +313,7 @@ export const useCanvasSelection = () => {
     cells,
     currentFrameIndex,
     moveState,
-    isPointInEffectiveSelection,
     commitMove,
-    clearSelection,
     setJustCommittedMove,
     beginSelectionPreview,
     startSelection,
@@ -329,7 +324,6 @@ export const useCanvasSelection = () => {
     getCell,
     updateSelection,
     pendingSelectionStart,
-    justCommittedMove,
     resetSelectionGesture,
     updateSelectionPreview
   ]);

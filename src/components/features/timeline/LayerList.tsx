@@ -78,7 +78,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
       setShowLayerProperties(true);
       setEditingKeyframe(null); // Dismiss keyframe editor so layer panel shows
     }
-  }, [activeLayerId, displayLayers, setActiveLayer, selectLayers, toggleLayerSelected, clearLayerSelection, setShowLayerProperties]);
+  }, [activeLayerId, displayLayers, setActiveLayer, selectLayers, toggleLayerSelected, clearLayerSelection, setShowLayerProperties, setActiveGroup, setEditingKeyframe]);
 
   const handleDragStart = useCallback((displayIndex: number, groupId?: import('../../../types/timeline').LayerGroupId) => {
     dragSourceIndex.current = displayIndex;

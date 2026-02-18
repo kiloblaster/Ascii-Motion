@@ -8,7 +8,7 @@
  * - Integration with timelineStore addLayer/duplicateLayer
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useTimelineStore } from '../stores/timelineStore';
 import {
   canAddLayer,
