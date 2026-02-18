@@ -14,9 +14,10 @@ https://ascii-motion.app/community
 Learn more on the landing page:
 https://ascii-motion.com
 
+Check the usage documentation at:
+https://docs.ascii-motion.com
 
-<img width="2610" height="1758" alt="Screenshot of the ASCII Motion app UI" src="https://github.com/user-attachments/assets/e2be1571-c322-4c8f-bdef-10ab01eb9a05" />
-</br>
+<img width="2584" height="2002" alt="Screenshot 2026-02-17 at 4 26 14 PM" src="https://github.com/user-attachments/assets/ca4923b5-b964-4bd0-923c-c5c4b07ecad2" />
 
 
 ## 🎨 Current Features
