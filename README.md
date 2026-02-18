@@ -22,16 +22,16 @@ https://docs.ascii-motion.com
 
 ## 🎨 Current Features
 
-- **Layer-Based Timeline** with keyframe interpolation for position, scale, rotation, and anchor point
+- **Grid-based ASCII Art Editor** with full drawing toolset (pencil, eraser, fill, rectangle, ellipse, bezier pen, text, gradient, and more)
+-** Convert images or video assets to ASCII art** with fine-tuned rendering control and frame rate matching
+- **Custom Color and Character Palettes** including presets and import/export
+- **Apply effects** and filters to existing animations
+- **Generate animations** using procedural animation tools
+- - **Layer-Based Timeline** with keyframe interpolation for position, scale, rotation, and anchor point
 - **Multi-Layer Compositing** with z-order, visibility, solo, lock, and layer groups
 - **Keyframe Animation** with cubic bezier easing editor and presets
-- Grid-based ASCII Art Editor with full drawing toolset (pencil, eraser, fill, rectangle, ellipse, bezier pen, text, gradient, and more)
-- Convert images or video assets to ASCII art with fine-tuned rendering control and frame rate matching
-- Custom Color and Character Palettes including presets and import/export
-- Apply effects and filters to existing animations
-- Generate animations using procedural animation tools
 - **Export Formats:** Images (PNG, JPEG, SVG), Videos (MP4, WebM), React Components, CLI Components (Ink, OpenTUI, BubbleTea), Text, HTML, and session files
-- Publish to community gallery and explore what people are making
+- **Publish to community gallery** and explore what people are making
 - **MCP Server** ([ascii-motion-mcp](https://www.npmjs.com/package/ascii-motion-mcp)) for AI-assisted animation creation 
   
 ## 🚀 Quick Start
