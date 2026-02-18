@@ -27,7 +27,7 @@ https://docs.ascii-motion.com
 - **Custom Color and Character Palettes** including presets and import/export
 - **Apply effects** and filters to existing animations
 - **Generate animations** using procedural animation tools
-- - **Layer-Based Timeline** with keyframe interpolation for position, scale, rotation, and anchor point
+- **Layer-Based Timeline** with keyframe interpolation for position, scale, rotation, and anchor point
 - **Multi-Layer Compositing** with z-order, visibility, solo, lock, and layer groups
 - **Keyframe Animation** with cubic bezier easing editor and presets
 - **Export Formats:** Images (PNG, JPEG, SVG), Videos (MP4, WebM), React Components, CLI Components (Ink, OpenTUI, BubbleTea), Text, HTML, and session files
