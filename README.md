@@ -178,7 +178,7 @@ src/
 
 ## 📋 Development Status
 
-This is currently maintained entirely by me, an animator and brand designer with next to no experience with building tools. This has been vibe-coded into existence using GitHub Copilot in VScode, using mostly Claude Sonnet 4, with the occasional GPT-5 when Claude gets stumped. Please forgive any messy or unusal structure or vibe-code artifacts, I'm trying my best!
+This is currently maintained entirely by me, an animator and brand designer with next to no experience with building tools. This has been vibe-coded into existence using GitHub Copilot in VScode, using mostly Claude Opus 4.6, with the occasional GPT-5.2-Codex when Claude gets stumped. Please forgive any messy or unusal structure or vibe-code artifacts, I'm trying my best!
 
 Where I'm at with the concept:
 <details>
@@ -260,7 +260,7 @@ Where I'm at with the concept:
    
 - [x] Build a community sharing site to share and remix projects 
 - [x] Create live link sharing tools 
-- [ ] Make marketing site
+- [x] Make marketing site
 - [ ] Create tutorial series
 - [ ] Create help and tool tip for in product on boarding
  </details>
@@ -291,7 +291,7 @@ Where I'm at with the concept:
 - **[Contributing Guide](./CONTRIBUTING.md)** - How to contribute
 - **[Monorepo Setup Guide](./docs/MONOREPO_SETUP_GUIDE.md)** - Dual-license structure
 - **[Layer Timeline Refactor Plan](./docs/LAYER_TIMELINE_REFACTOR_PLAN.md)** - v2.0.0 architecture design
-- **[Technical Documentation](./docs/)** - Implementation guides and feature documentation
+- **[Technical Documentation](./docs/)** - Implementation guides and feature documentation. Each .md file was created as a planning document when that feature was worked on and may not be currently still in date, but may be useful for contributors to understand the architecture and design decisions.
 - **[Development Tools](./dev-tools/)** - Test scripts and debugging utilities
 
 ## 🤝 Contributing
