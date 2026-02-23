@@ -273,6 +273,19 @@ export const useTextTool = () => {
   const handleTextToolKeyDown = useCallback((event: KeyboardEvent) => {
     if (!textToolState.isTyping) return;
 
+    // If focus is on a UI input element (dialog text field, color picker hex input, etc.),
+    // let that element handle the keystrokes instead of the text tool.
+    const target = event.target as HTMLElement;
+    if (
+      target.tagName === 'INPUT' ||
+      target.tagName === 'TEXTAREA' ||
+      target.contentEditable === 'true' ||
+      target.getAttribute('role') === 'textbox' ||
+      target.closest('[role="dialog"], [data-radix-popper-content-wrapper]')
+    ) {
+      return;
+    }
+
     // Prevent default for keys we handle
     const handledKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Backspace', 'Escape'];
     if (handledKeys.includes(event.key)) {
