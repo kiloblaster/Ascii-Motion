@@ -62,9 +62,9 @@ export const rgbToHsv = (rgb: RGBColor): HSVColor => {
   }
   
   return {
-    h: Math.round(h),
-    s: Math.round(s * 100),
-    v: Math.round(v * 100)
+    h,
+    s: s * 100,
+    v: v * 100
   };
 };
 
