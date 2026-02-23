@@ -6,7 +6,7 @@ import { useCanvasContext } from '../contexts/CanvasContext';
 import { calculateBrushCells } from '../utils/brushUtils';
 import { useSelectionStore } from '../stores/selectionStore';
 import { isCellDrawableWithState, constrainCellsToSelectionWithState } from '../utils/selectionConstraint';
-import { isLayerEditable } from '../utils/layerCompositing';
+import { isLayerEditable, compositeLayersAtFrame, getContentFrameAtTime } from '../utils/layerCompositing';
 import { screenToLocal } from '../utils/layerTransformUtils';
 import { toast } from 'sonner';
 import type { Cell } from '../types';
@@ -213,10 +213,46 @@ export const useDrawingTool = () => {
         break;
       }
       case 'eyedropper': {
-        const existingCell = getCell(lx, ly);
-        if (existingCell) {
-          pickFromCell(existingCell.char, existingCell.color, existingCell.bgColor);
-        }
+        // Read from the composited canvas (all visible layers) in screen space,
+        // not just the active layer in local space.
+        const timelineState = useTimelineStore.getState();
+        const canvasState = useCanvasStore.getState();
+        const { layers, layerGroups, view } = timelineState;
+
+        // Composite all visible layers and pick from the result
+        const layersForCompositing = layers.map((layer) => {
+          if (layer.id === view.activeLayerId) {
+            const activeContentFrame = getContentFrameAtTime(layer, view.currentFrame);
+            if (activeContentFrame) {
+              return {
+                ...layer,
+                contentFrames: layer.contentFrames.map((cf) =>
+                  cf.id === activeContentFrame.id
+                    ? { ...cf, data: canvasState.cells }
+                    : cf,
+                ),
+              };
+            }
+          }
+          return layer;
+        });
+
+        const compositedCells = compositeLayersAtFrame(
+          layersForCompositing,
+          view.currentFrame,
+          canvasState.width,
+          canvasState.height,
+          undefined,
+          false,
+          layerGroups,
+        );
+
+        const existingCell = compositedCells.get(`${x},${y}`);
+        pickFromCell(
+          existingCell?.char ?? ' ',
+          existingCell?.color ?? selectedColor,
+          existingCell?.bgColor ?? selectedBgColor,
+        );
         break;
       }
       case 'paintbucket': {
@@ -239,7 +275,6 @@ export const useDrawingTool = () => {
   }, [
     activeTool,
     paintBucketContiguous,
-    getCell,
     fillArea,
     pickFromCell,
     pencilLastPosition,
