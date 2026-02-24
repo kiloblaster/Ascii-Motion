@@ -10,6 +10,7 @@ import {
 } from '../utils/canvasResizeUtils';
 import type { CanvasResizeHistoryAction } from '../types';
 import type { Cell } from '../types';
+import { getContentFrameAtTime } from '../utils/layerCompositing';
 
 /**
  * Shift all cell coordinates in a map by an offset.
@@ -72,8 +73,24 @@ export function useCanvasResize() {
 
       const tl = useTimelineStore.getState();
 
+      // Flush the active layer's canvas buffer to the timeline store first,
+      // so the snapshot captures the latest edits.
+      const activeLayerId = tl.view.activeLayerId;
+      if (activeLayerId) {
+        const activeLayer = tl.layers.find((l) => l.id === activeLayerId);
+        if (activeLayer) {
+          const activeCf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+          if (activeCf) {
+            tl.updateContentFrameData(activeLayer.id, activeCf.id, new Map(cells));
+          }
+        }
+      }
+
+      // Re-read after flush
+      const tlFlushed = useTimelineStore.getState();
+
       // Snapshot previous layer data for undo (matches previousLayerSnapshots format)
-      const previousLayerSnapshots = tl.layers.map((layer) => ({
+      const previousLayerSnapshots = tlFlushed.layers.map((layer) => ({
         id: layer.id as string,
         contentFrames: layer.contentFrames.map((cf) => ({
           id: cf.id as string,
@@ -86,7 +103,7 @@ export function useCanvasResize() {
           keyframes: t.keyframes.map((kf) => ({ ...kf, id: kf.id as string })),
         })),
       }));
-      const previousGroupSnapshots = tl.layerGroups.map((g) => ({
+      const previousGroupSnapshots = tlFlushed.layerGroups.map((g) => ({
         ...g,
         id: g.id as string,
         staticProperties: { ...g.staticProperties },
@@ -98,10 +115,39 @@ export function useCanvasResize() {
       }));
 
       // Shift every content frame in every layer
-      for (const layer of tl.layers) {
+      for (const layer of tlFlushed.layers) {
         for (const cf of layer.contentFrames) {
           const shifted = shiftCellMap(cf.data, offsetX, offsetY);
           tl.updateContentFrameData(layer.id, cf.id, shifted);
+        }
+      }
+
+      // Shift anchor points for ALL layers so rotation/scale centers track with
+      // the shifted content. Position transforms must NOT be shifted — the cell
+      // data shift already accounts for the visual offset, and shifting position
+      // too would double it. Group properties also stay untouched because group
+      // position is additive with layer position in compositing.
+      for (const layer of tlFlushed.layers) {
+        const oldAnchorX = layer.staticProperties['transform.anchorPoint.x'] ?? 0;
+        const oldAnchorY = layer.staticProperties['transform.anchorPoint.y'] ?? 0;
+        tl.setStaticProperty(layer.id, 'transform.anchorPoint.x', oldAnchorX + offsetX);
+        tl.setStaticProperty(layer.id, 'transform.anchorPoint.y', oldAnchorY + offsetY);
+
+        // Shift anchor point keyframes only (NOT position keyframes)
+        for (const track of layer.propertyTracks) {
+          if (track.propertyPath === 'transform.anchorPoint.x') {
+            for (const kf of track.keyframes) {
+              tl.updateKeyframe(layer.id, track.id, kf.id, {
+                value: (kf.value as number) + offsetX,
+              });
+            }
+          } else if (track.propertyPath === 'transform.anchorPoint.y') {
+            for (const kf of track.keyframes) {
+              tl.updateKeyframe(layer.id, track.id, kf.id, {
+                value: (kf.value as number) + offsetY,
+              });
+            }
+          }
         }
       }
 
@@ -109,22 +155,14 @@ export function useCanvasResize() {
       setCanvasSize(constrainedWidth, constrainedHeight);
 
       // Reload the active layer's current content frame into canvasStore
-      const activeLayerId = tl.view.activeLayerId;
-      if (activeLayerId) {
-        const activeLayer = tl.layers.find((l) => l.id === activeLayerId);
-        if (activeLayer) {
-          const currentFrame = tl.view.currentFrame;
-          const activeCf = activeLayer.contentFrames.find(
-            (cf) => currentFrame >= cf.startFrame && currentFrame < cf.startFrame + cf.durationFrames,
-          );
-          if (activeCf) {
-            // Re-read after mutation
-            const freshLayer = useTimelineStore.getState().layers.find((l) => l.id === activeLayerId);
-            const freshCf = freshLayer?.contentFrames.find((cf) => cf.id === activeCf.id);
-            if (freshCf) {
-              setCanvasData(new Map(freshCf.data));
-            }
-          }
+      const updatedTl = useTimelineStore.getState();
+      const activeLayerAfterResize = updatedTl.layers.find((l) => l.id === updatedTl.view.activeLayerId);
+      if (activeLayerAfterResize) {
+        const activeCf = getContentFrameAtTime(activeLayerAfterResize, updatedTl.view.currentFrame);
+        if (activeCf) {
+          setCanvasData(new Map(activeCf.data));
+        } else {
+          setCanvasData(new Map());
         }
       }
 
