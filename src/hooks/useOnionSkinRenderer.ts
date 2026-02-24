@@ -82,25 +82,35 @@ export const useOnionSkinRenderer = () => {
   // Generate cache key for onion skin frame
   const getCacheKey = useCallback((frameIndex: number, distance: number, isPrevious: boolean): string => {
     if (isLayerMode) {
-      // In layer mode, cache by frame index + layer count (composited frames change with layer edits)
-      return `layer-${frameIndex}-${distance}-${isPrevious ? 'prev' : 'next'}-${zoom}-${layersRef.current.length}`;
+      // In layer mode, cache by frame index + layer count + allLayers mode + active layer ID
+      const activeLayerId = onionSkin.allLayers ? 'all' : (useTimelineStore.getState().view.activeLayerId ?? 'none');
+      return `layer-${frameIndex}-${distance}-${isPrevious ? 'prev' : 'next'}-${zoom}-${layersRef.current.length}-${activeLayerId}`;
     }
     const frame = frames[frameIndex];
     const thumbKey = frame?.thumbnail || `frame-${frameIndex}`;
     return `${thumbKey}-${distance}-${isPrevious ? 'prev' : 'next'}-${zoom}-${effectiveCellWidth}-${effectiveCellHeight}`;
-  }, [isLayerMode, frames, zoom, effectiveCellWidth, effectiveCellHeight]);
+  }, [isLayerMode, onionSkin.allLayers, frames, zoom, effectiveCellWidth, effectiveCellHeight]);
 
   /** Get cell data for onion skin at a given frame index */
   const getOnionFrameData = useCallback((frameIndex: number): Map<string, Cell> | undefined => {
     if (isLayerMode) {
-      // Composite all visible layers at this frame
-      return compositeLayersAtFrame(layersRef.current, frameIndex, canvasWidth, canvasHeight, undefined, false, layerGroupsRef.current);
+      if (onionSkin.allLayers) {
+        // Composite all visible layers at this frame
+        return compositeLayersAtFrame(layersRef.current, frameIndex, canvasWidth, canvasHeight, undefined, false, layerGroupsRef.current);
+      } else {
+        // Active layer only: composite just this layer so transforms (position,
+        // scale, rotation) and group transforms are applied correctly.
+        const tl = useTimelineStore.getState();
+        const activeLayer = layersRef.current.find((l) => l.id === tl.view.activeLayerId);
+        if (!activeLayer) return undefined;
+        return compositeLayersAtFrame([activeLayer], frameIndex, canvasWidth, canvasHeight, undefined, false, layerGroupsRef.current);
+      }
     } else {
       // Legacy mode: get frame data from the animation store
       const { getFrameData } = useAnimationStore.getState();
       return getFrameData(frameIndex);
     }
-  }, [isLayerMode, canvasWidth, canvasHeight]);
+  }, [isLayerMode, canvasWidth, canvasHeight, onionSkin.allLayers]);
 
   // Create or get cached onion skin layer
   const getOrCreateOnionSkinLayer = useCallback((
