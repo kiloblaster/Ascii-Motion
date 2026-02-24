@@ -181,110 +181,15 @@ src/
 
 This is currently maintained entirely by me, an animator and brand designer with next to no experience with building tools. This has been vibe-coded into existence using GitHub Copilot in VScode, using mostly Claude Opus 4.6, with the occasional GPT-5.2-Codex when Claude gets stumped. Please forgive any messy or unusal structure or vibe-code artifacts, I'm trying my best!
 
-Where I'm at with the concept:
-<details>
-<summary> ✅ Phase 1: Foundation & Core Editor (Complete) </summary>
-   
-- [x] Project scaffolding and configuration
-- [x] State management architecture (Zustand stores: canvas, animation, tools)
-- [x] Type definitions and constants
-- [x] UI components and styling (Tailwind CSS + shadcn/ui)
-- [x] Canvas grid component with full rendering
-- [x] Complete drawing tool suite (pencil, eraser, paint bucket, rectangle, ellipse, selection, eyedropper)
-- [x] Zoom and navigation system (20%-400% zoom, pan controls, +/- hotkeys)
-- [x] Character palette interface
-- [x] Color picker
-- [x] Selection and advanced editing (copy/paste with visual preview)
-- [x] Undo/redo functionality
-- [x] Keyboard shortcuts (Cmd/Ctrl+C, V, Z, Shift+Z, Alt for temporary eyedropper, +/- for zoom)
-- [x] **High-DPI canvas rendering** - Crisp text quality on all displays
-- [x] **Performance optimizations** - 60fps rendering with batched updates
-- [x] **Gap-free drawing tools** - Smooth line interpolation for professional drawing
-- [x] **Performance monitoring** - Real-time metrics overlay (Ctrl+Shift+M)
-- [x] Theme system (dark/light mode)
-      
-</details>
+### Upcoming features planned
 
-<details>
-   
-<summary> ✅ Phase 2: Animation System (Complete) </summary>
+- Refactor of effects system to integrate with v2 timeline, so that effects are procedural and can be keyframed across time. 
+- Update the ellipse and rectangle tool to use the bezier pen tool's vector system
+- Add a "find edges" algorithm to media import using ASCII line characters
+- Update bezier tool and media import conversion functions to get more accurate shape edges
+- Add a post processing shader effect layer for things like CRT Effects, Chromatic abberation, bloom, etc.
 
-- [x] Timeline component with frame management
-- [x] Playback controls with variable speed
-- [x] Frame thumbnails with visual indicators
-- [x] Onion skinning with performance caching
-- [x] Animation state management and synchronization
-- [x] Keyboard shortcuts (Shift+O for onion skinning, Ctrl+N for new frame, Ctrl+D for duplicate frame, Ctrl+Delete/Backspace for delete frame)
-</details>
-
-<details>
-<summary> ✅ Phase 3: Export/Import System (Complete) </summary>
-  
-- [x] High-DPI image export (PNG, JPEG, SVG) with device pixel ratio scaling and quality controls
-- [x] SVG vector export with text-as-outlines, grid, background, and formatting options
-- [x] Complete session export/import (.asciimtn files with custom color & character palettes)
-- [x] Typography settings preservation (font size, spacing)
-- [x] Export UI with format-specific dialogs
-- [x] Import video/image files and convert to ASCII
-</details>
-
-
-<details>
-<summary> ✅ Phase 4: Advanced Tools (Next) (complete...for now </summary>
-  
-- [x] Brush sizing and shape
-- [x] Advanced color palettes beyond ANSI
-- [x] Re-color brush (change colors without affecting characters)
-- [x] Gradient fill tool 
-- [x] Figlet text system
-- [x] Draw boxes and tables with ascii characters
-</details>
-
-<details>
-<summary> ✅ Phase 5: Testing and bug bashing </summary>
-   
-- [x] FIX ALL THE BUGS!!!
-- [x] Sweeten tool set with quality of life improvements
-- [x] Address accessibilty issues
-</details>
-
-<details>
-<summary> 💸 Phase 6: Setup database and auth </summary>
-   
-- [x] Set up database for user account creation and project saving
-- [ ] Version history for projects
-- [ ] Set up paid tiers to cover server costs if we start getting traction????
- </details>
-
- <details>
-<summary> 🤝 Phase 7: Community and Marketing </summary>
-   
-- [x] Build a community sharing site to share and remix projects 
-- [x] Create live link sharing tools 
-- [x] Make marketing site
-- [ ] Create tutorial series
-- [ ] Create help and tool tip for in product on boarding
- </details>
-
-<details>
-<summary> ✅ Phase 8: Layer Timeline System — v2.0.0 (Complete) </summary>
-   
-- [x] Layer-based timeline replacing frame-by-frame animation model
-- [x] Multi-layer compositing with z-order, visibility, solo, lock
-- [x] Layer groups with cascading transforms
-- [x] Keyframe animation for position, scale, rotation, anchor point
-- [x] Cubic bezier easing editor with presets
-- [x] Layer transform tool with bounding box handles
-- [x] Content frames with draggable timing on timeline
-- [x] Property tracks with keyframe diamonds and marquee selection
-- [x] Frame rate controls with presets and custom values
-- [x] Session format v2.0.0 with automatic v1 migration
-- [x] Media import with New Layer mode and video frame rate matching
-- [x] Export optimizations (frame deduplication, color dictionaries, compact formats)
-- [x] Multi-layer crop with transform and keyframe preservation
-- [x] MCP server v2.0.0 with 17 layer tools
-- [x] Resizable timeline panel with ruler, playhead, and zoom
- </details>
+Got an idea for a new feature? [Open an issue](https://github.com/CameronFoxly/Ascii-Motion/issues/new)!
 
 ## 📖 Documentation
 
