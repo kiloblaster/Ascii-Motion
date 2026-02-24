@@ -466,6 +466,7 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
         enabled: false,
         previousFrames: 1,
         nextFrames: 1,
+        allLayers: false,
         wasEnabledBeforePlayback: false,
       },
     });
