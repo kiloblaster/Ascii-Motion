@@ -2107,6 +2107,76 @@ export const useKeyboardShortcuts = () => {
         navigateNext();
         return;
       }
+
+      // Handle J/K — jump to previous/next visible keyframe
+      if ((event.key === 'j' || event.key === 'k') && canNavigate) {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          const current = tl.view.currentFrame;
+          const direction = event.key === 'k' ? 1 : -1;
+          const expandedIds = tl.view.expandedLayerIds;
+
+          // Determine which groups are collapsed
+          const collapsedGroupIds = new Set<string>();
+          for (const g of tl.layerGroups) {
+            if (g.collapsed) collapsedGroupIds.add(g.id as string);
+          }
+
+          // Collect keyframe frame numbers from visible (expanded) layers,
+          // skipping layers inside collapsed groups
+          const keyframeFrames = new Set<number>();
+          for (const layer of tl.layers) {
+            if (!expandedIds.has(layer.id)) continue;
+            if (layer.parentGroupId && collapsedGroupIds.has(layer.parentGroupId as string)) continue;
+            for (const track of layer.propertyTracks) {
+              for (const kf of track.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
+            }
+          }
+
+          // Also include keyframes from non-collapsed groups
+          for (const g of tl.layerGroups) {
+            if (g.collapsed) continue;
+            for (const track of (g.propertyTracks ?? [])) {
+              for (const kf of track.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
+            }
+          }
+
+          if (keyframeFrames.size > 0) {
+            const sorted = [...keyframeFrames].sort((a, b) => a - b);
+            let target: number | null = null;
+            if (direction === 1) {
+              target = sorted.find((f) => f > current) ?? null;
+            } else {
+              for (let i = sorted.length - 1; i >= 0; i--) {
+                if (sorted[i] < current) { target = sorted[i]; break; }
+              }
+            }
+            if (target !== null) {
+              tl.goToFrame(target);
+            } else {
+              // Past the last/first keyframe — go to timeline boundary
+              if (direction === 1) {
+                tl.goToFrame(tl.config.durationFrames - 1);
+              } else {
+                tl.goToFrame(0);
+              }
+            }
+          } else {
+            // No visible keyframes — go to timeline boundary
+            if (direction === 1) {
+              tl.goToFrame(tl.config.durationFrames - 1);
+            } else {
+              tl.goToFrame(0);
+            }
+          }
+          return;
+        }
+      }
       
       // Handle color hotkeys
       if (event.key === 'x') {

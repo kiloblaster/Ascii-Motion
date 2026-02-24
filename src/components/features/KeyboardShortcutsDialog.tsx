@@ -94,6 +94,8 @@ const KEYBOARD_SHORTCUTS: ShortcutSection[] = [
       { keys: ['Shift', '>'], description: 'Last frame' },
       { keys: ['Cmd', '→'], description: 'Jump to next visible keyframe' },
       { keys: ['Cmd', '←'], description: 'Jump to previous visible keyframe' },
+      { keys: ['K'], description: 'Jump to next visible keyframe' },
+      { keys: ['J'], description: 'Jump to previous visible keyframe' },
       { keys: ['Cmd', 'N'], description: 'Add new frame block at playhead' },
       { keys: ['Cmd', 'D'], description: 'Duplicate frame block' },
       { keys: ['Cmd', 'X'], description: 'Split frame block at playhead' },
