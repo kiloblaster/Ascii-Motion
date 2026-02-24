@@ -78,18 +78,72 @@ const processHistoryAction = (
       if (isRedo) {
         canvas.setCanvasSize(resizeAction.data.newWidth, resizeAction.data.newHeight);
         
-        if (isCropOperation && !hasLayerSnapshots && resizeAction.data.allFramesNewData) {
+        if (hasLayerSnapshots && resizeAction.data.newLayerSnapshots) {
+          // Multi-layer redo: restore all layers to post-resize state
+          const tl = useTimelineStore.getState();
+          
+          for (const snapshot of resizeAction.data.newLayerSnapshots) {
+            const layerId = snapshot.id as import('../types/timeline').LayerId;
+            for (const cfSnapshot of snapshot.contentFrames) {
+              tl.updateContentFrameData(layerId, cfSnapshot.id as import('../types/timeline').ContentFrameId, new Map(cfSnapshot.data));
+            }
+            tl.replaceStaticProperties(layerId, snapshot.staticProperties);
+            if (snapshot.propertyTracks) {
+              for (const trackSnapshot of snapshot.propertyTracks) {
+                const trackId = trackSnapshot.id as import('../types/timeline').PropertyTrackId;
+                for (const kfSnapshot of trackSnapshot.keyframes) {
+                  tl.updateKeyframe(layerId, trackId, kfSnapshot.id as import('../types/timeline').KeyframeId, {
+                    value: kfSnapshot.value as number,
+                  });
+                }
+              }
+            }
+          }
+          
+          // Restore group snapshots for redo
+          if (resizeAction.data.newGroupSnapshots) {
+            for (const gSnapshot of resizeAction.data.newGroupSnapshots) {
+              const groupId = gSnapshot.id as unknown as import('../types/timeline').LayerId;
+              tl.replaceStaticProperties(groupId, gSnapshot.staticProperties);
+              if (gSnapshot.propertyTracks) {
+                for (const trackSnapshot of gSnapshot.propertyTracks) {
+                  const trackId = trackSnapshot.id as import('../types/timeline').PropertyTrackId;
+                  for (const kfSnapshot of trackSnapshot.keyframes) {
+                    tl.updateKeyframe(groupId, trackId, kfSnapshot.id as import('../types/timeline').KeyframeId, {
+                      value: kfSnapshot.value as number,
+                    });
+                  }
+                }
+              }
+            }
+          }
+          
+          // Reload canvas from active layer
+          const activeLayerId = tl.view.activeLayerId;
+          if (activeLayerId) {
+            const layer = useTimelineStore.getState().layers.find(l => l.id === activeLayerId);
+            if (layer) {
+              const frame = tl.view.currentFrame;
+              const cf = layer.contentFrames.find(c => frame >= c.startFrame && frame < c.startFrame + c.durationFrames);
+              if (cf) {
+                canvas.setCanvasData(new Map(cf.data));
+              }
+            }
+          }
+        } else if (isCropOperation && resizeAction.data.allFramesNewData) {
           // Legacy single-layer crop redo
           resizeAction.data.allFramesNewData.forEach((frameData: Map<string, Cell>, index: number) => {
             animationStore.setFrameData(index, frameData);
           });
-        }
-        // Multi-layer crop redo: re-run the crop (not easily reversible from snapshots alone)
-        // For now, re-crop is not supported — user would need to re-execute the crop
-        
-        const currentFrame = animationStore.frames[resizeAction.data.frameIndex];
-        if (currentFrame) {
-          canvas.setCanvasData(currentFrame.data);
+          const currentFrame = animationStore.frames[resizeAction.data.frameIndex];
+          if (currentFrame) {
+            canvas.setCanvasData(currentFrame.data);
+          }
+        } else {
+          const currentFrame = animationStore.frames[resizeAction.data.frameIndex];
+          if (currentFrame) {
+            canvas.setCanvasData(currentFrame.data);
+          }
         }
       } else {
         // Undo
@@ -107,10 +161,9 @@ const processHistoryAction = (
               tl.updateContentFrameData(layerId, cfSnapshot.id as import('../types/timeline').ContentFrameId, new Map(cfSnapshot.data));
             }
             
-            // Restore static properties (position, anchor)
-            for (const [key, value] of Object.entries(snapshot.staticProperties)) {
-              tl.setStaticProperty(layerId, key, value);
-            }
+            // Fully replace static properties so that keys added by the crop/resize
+            // (e.g. transform.position.x) are removed if they weren't present before
+            tl.replaceStaticProperties(layerId, snapshot.staticProperties);
             
             // Restore keyframe values on property tracks
             if (snapshot.propertyTracks) {
@@ -129,9 +182,7 @@ const processHistoryAction = (
           if (resizeAction.data.previousGroupSnapshots) {
             for (const gSnapshot of resizeAction.data.previousGroupSnapshots) {
               const groupId = gSnapshot.id as unknown as import('../types/timeline').LayerId;
-              for (const [key, value] of Object.entries(gSnapshot.staticProperties)) {
-                tl.setStaticProperty(groupId, key, value);
-              }
+              tl.replaceStaticProperties(groupId, gSnapshot.staticProperties);
               if (gSnapshot.propertyTracks) {
                 for (const trackSnapshot of gSnapshot.propertyTracks) {
                   const trackId = trackSnapshot.id as import('../types/timeline').PropertyTrackId;
@@ -2055,6 +2106,76 @@ export const useKeyboardShortcuts = () => {
         event.preventDefault();
         navigateNext();
         return;
+      }
+
+      // Handle J/K — jump to previous/next visible keyframe
+      if ((event.key === 'j' || event.key === 'k') && canNavigate) {
+        const tl = useTimelineStore.getState();
+        if (tl.layers.length > 0) {
+          event.preventDefault();
+          const current = tl.view.currentFrame;
+          const direction = event.key === 'k' ? 1 : -1;
+          const expandedIds = tl.view.expandedLayerIds;
+
+          // Determine which groups are collapsed
+          const collapsedGroupIds = new Set<string>();
+          for (const g of tl.layerGroups) {
+            if (g.collapsed) collapsedGroupIds.add(g.id as string);
+          }
+
+          // Collect keyframe frame numbers from visible (expanded) layers,
+          // skipping layers inside collapsed groups
+          const keyframeFrames = new Set<number>();
+          for (const layer of tl.layers) {
+            if (!expandedIds.has(layer.id)) continue;
+            if (layer.parentGroupId && collapsedGroupIds.has(layer.parentGroupId as string)) continue;
+            for (const track of layer.propertyTracks) {
+              for (const kf of track.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
+            }
+          }
+
+          // Also include keyframes from non-collapsed groups
+          for (const g of tl.layerGroups) {
+            if (g.collapsed) continue;
+            for (const track of (g.propertyTracks ?? [])) {
+              for (const kf of track.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
+            }
+          }
+
+          if (keyframeFrames.size > 0) {
+            const sorted = [...keyframeFrames].sort((a, b) => a - b);
+            let target: number | null = null;
+            if (direction === 1) {
+              target = sorted.find((f) => f > current) ?? null;
+            } else {
+              for (let i = sorted.length - 1; i >= 0; i--) {
+                if (sorted[i] < current) { target = sorted[i]; break; }
+              }
+            }
+            if (target !== null) {
+              tl.goToFrame(target);
+            } else {
+              // Past the last/first keyframe — go to timeline boundary
+              if (direction === 1) {
+                tl.goToFrame(tl.config.durationFrames - 1);
+              } else {
+                tl.goToFrame(0);
+              }
+            }
+          } else {
+            // No visible keyframes — go to timeline boundary
+            if (direction === 1) {
+              tl.goToFrame(tl.config.durationFrames - 1);
+            } else {
+              tl.goToFrame(0);
+            }
+          }
+          return;
+        }
       }
       
       // Handle color hotkeys

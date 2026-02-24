@@ -6,6 +6,7 @@ import { useAnimationStore } from '../stores/animationStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { cropAllFramesToSelection } from '../utils/cropUtils';
 import { getBoundsFromMask } from '../utils/selectionUtils';
+import { getContentFrameAtTime } from '../utils/layerCompositing';
 import type { CanvasResizeHistoryAction, Cell } from '../types';
 import type { LayerId } from '../types/timeline';
 
@@ -96,8 +97,26 @@ export function useCropToSelection() {
 
     if (isLayerMode) {
       // ── LAYER MODE: Crop ALL layers' content frames ──
+
+      // Flush the active layer's canvas buffer to the timeline store first,
+      // so the snapshot captures the latest edits (canvasStore is the live
+      // working copy; the timeline store may be stale).
+      const activeLayerId = tl.view.activeLayerId;
+      if (activeLayerId) {
+        const activeLayer = tl.layers.find(l => l.id === activeLayerId);
+        if (activeLayer) {
+          const activeCf = getContentFrameAtTime(activeLayer, tl.view.currentFrame);
+          if (activeCf) {
+            tl.updateContentFrameData(activeLayer.id, activeCf.id, new Map(cells));
+          }
+        }
+      }
+
+      // Re-read timeline state after flush
+      const tlFlushed = useTimelineStore.getState();
+
       // Snapshot all layers for undo (deep copy keyframes for proper restore)
-      const previousLayerSnapshots = tl.layers.map(l => ({
+      const previousLayerSnapshots = tlFlushed.layers.map(l => ({
         id: l.id,
         contentFrames: l.contentFrames.map(cf => ({
           id: cf.id,
@@ -109,7 +128,7 @@ export function useCropToSelection() {
           keyframes: t.keyframes.map(kf => ({ ...kf })),
         })),
       }));
-      const previousGroupSnapshots = tl.layerGroups.map(g => ({
+      const previousGroupSnapshots = tlFlushed.layerGroups.map(g => ({
         ...g,
         staticProperties: { ...g.staticProperties },
         propertyTracks: (g.propertyTracks ?? []).map(t => ({
@@ -132,14 +151,14 @@ export function useCropToSelection() {
 
       // Collect group IDs for quick lookup
       const groupChildIds = new Set<string>();
-      for (const group of tl.layerGroups) {
+      for (const group of tlFlushed.layerGroups) {
         for (const childId of group.childLayerIds) {
           groupChildIds.add(childId as string);
         }
       }
 
       // Shift each UNGROUPED layer's position (grouped layers get shifted via their group)
-      for (const layer of tl.layers) {
+      for (const layer of tlFlushed.layers) {
         if (groupChildIds.has(layer.id as string)) continue; // Skip grouped layers
         
         const oldPosX = layer.staticProperties['transform.position.x'] ?? 0;
@@ -167,7 +186,7 @@ export function useCropToSelection() {
       }
 
       // Shift group positions the same way
-      for (const group of tl.layerGroups) {
+      for (const group of tlFlushed.layerGroups) {
         const groupId = group.id as unknown as LayerId;
         const oldGPosX = group.staticProperties?.['transform.position.x'] ?? 0;
         const oldGPosY = group.staticProperties?.['transform.position.y'] ?? 0;
@@ -192,20 +211,46 @@ export function useCropToSelection() {
         }
       }
 
-      // Resize canvas and load active layer's content
+      // Resize canvas and reload the active layer's content frame into canvasStore
       setCanvasSize(newWidth, newHeight);
-      // Force canvas refresh from the active layer
       const updatedTl = useTimelineStore.getState();
-      const activeLayer = updatedTl.layers.find(l => l.id === updatedTl.view.activeLayerId);
-      if (activeLayer) {
-        // Trigger a layer-switch to reload canvas from the layer's content frame
-        useTimelineStore.getState().setActiveLayer(null as unknown as LayerId);
-        setTimeout(() => {
-          useTimelineStore.getState().setActiveLayer(activeLayer.id);
-        }, 0);
+      const activeLayerAfterCrop = updatedTl.layers.find(l => l.id === updatedTl.view.activeLayerId);
+      if (activeLayerAfterCrop) {
+        const activeCf = getContentFrameAtTime(activeLayerAfterCrop, updatedTl.view.currentFrame);
+        if (activeCf) {
+          setCanvasData(new Map(activeCf.data));
+        } else {
+          setCanvasData(new Map());
+        }
       }
 
       // Record history with layer snapshots
+      // Build new-state snapshots for redo
+      const postCropState = useTimelineStore.getState();
+      const newLayerSnapshots = postCropState.layers.map(l => ({
+        id: l.id as string,
+        contentFrames: l.contentFrames.map(cf => ({
+          id: cf.id as string,
+          data: new Map(cf.data),
+        })),
+        staticProperties: { ...l.staticProperties },
+        propertyTracks: l.propertyTracks.map(t => ({
+          ...t,
+          id: t.id as string,
+          keyframes: t.keyframes.map(kf => ({ ...kf, id: kf.id as string })),
+        })),
+      }));
+      const newGroupSnapshots = postCropState.layerGroups.map(g => ({
+        ...g,
+        id: g.id as string,
+        staticProperties: { ...g.staticProperties },
+        propertyTracks: (g.propertyTracks ?? []).map(t => ({
+          ...t,
+          id: t.id as string,
+          keyframes: t.keyframes.map(kf => ({ ...kf, id: kf.id as string })),
+        })),
+      }));
+
       const action: CanvasResizeHistoryAction = {
         type: 'canvas_resize' as const,
         timestamp: Date.now(),
@@ -218,9 +263,11 @@ export function useCropToSelection() {
           previousCanvasData: previousCells,
           frameIndex: currentFrameIndex,
           isCropOperation: true,
-          // Layer snapshots for multi-layer undo
+          // Layer snapshots for multi-layer undo/redo
           previousLayerSnapshots,
+          newLayerSnapshots,
           previousGroupSnapshots,
+          newGroupSnapshots,
         }
       };
       useToolStore.getState().pushToHistory(action);

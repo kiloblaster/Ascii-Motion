@@ -87,6 +87,7 @@ interface LegacyAnimationState {
     enabled: boolean;
     previousFrames: number;
     nextFrames: number;
+    allLayers: boolean;
     wasEnabledBeforePlayback: boolean;
   };
 
@@ -124,6 +125,7 @@ interface LegacyAnimationState {
   setPreviousFrames: (count: number) => void;
   setNextFrames: (count: number) => void;
   setOnionSkinEnabled: (enabled: boolean) => void;
+  toggleOnionSkinAllLayers: () => void;
 
   // ── Selection ──
   selectFrameRange: (startIndex: number, endIndex: number) => void;
@@ -185,6 +187,7 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
     enabled: false,
     previousFrames: 1,
     nextFrames: 1,
+    allLayers: false,
     wasEnabledBeforePlayback: false,
   },
 
@@ -463,6 +466,7 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
         enabled: false,
         previousFrames: 1,
         nextFrames: 1,
+        allLayers: false,
         wasEnabledBeforePlayback: false,
       },
     });
@@ -495,6 +499,11 @@ export const useAnimationStore = create<LegacyAnimationState>((set, get) => ({
   setOnionSkinEnabled: (enabled: boolean) =>
     set((state) => ({
       onionSkin: { ...state.onionSkin, enabled },
+    })),
+
+  toggleOnionSkinAllLayers: () =>
+    set((state) => ({
+      onionSkin: { ...state.onionSkin, allLayers: !state.onionSkin.allLayers },
     })),
 
   // ─────────────────────────────────────────

@@ -12,6 +12,7 @@ import { useAnimationStore } from '../../stores/animationStore';
 export const OnionSkinControls: React.FC = () => {
   const onionSkin = useAnimationStore((s) => s.onionSkin);
   const toggleOnionSkin = useAnimationStore((s) => s.toggleOnionSkin);
+  const toggleOnionSkinAllLayers = useAnimationStore((s) => s.toggleOnionSkinAllLayers);
   const setPreviousFrames = useAnimationStore((s) => s.setPreviousFrames);
   const setNextFrames = useAnimationStore((s) => s.setNextFrames);
 
@@ -126,6 +127,27 @@ export const OnionSkinControls: React.FC = () => {
             +
           </Button>
         </div>
+
+        {/* All Layers toggle — hidden but preserves layout when onion skin is off */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={toggleOnionSkinAllLayers}
+              className={`h-5 px-1.5 text-[10px] leading-none transition-opacity ${onionSkin.enabled ? (onionSkin.allLayers ? 'text-purple-500 hover:text-purple-400 opacity-100' : 'text-muted-foreground opacity-100') : 'opacity-0 pointer-events-none'}`}
+              tabIndex={onionSkin.enabled ? 0 : -1}
+              aria-hidden={!onionSkin.enabled}
+            >
+              All Layers
+            </Button>
+          </TooltipTrigger>
+          {onionSkin.enabled && (
+            <TooltipContent>
+              <p>{onionSkin.allLayers ? 'Showing all layers — click for active layer only' : 'Showing active layer only — click for all layers'}</p>
+            </TooltipContent>
+          )}
+        </Tooltip>
       </div>
     </TooltipProvider>
   );
