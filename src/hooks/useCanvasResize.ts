@@ -72,12 +72,28 @@ export function useCanvasResize() {
 
       const tl = useTimelineStore.getState();
 
-      // Snapshot previous layer data for undo
-      const previousLayersSnapshot = tl.layers.map((layer) => ({
-        layerId: layer.id,
+      // Snapshot previous layer data for undo (matches previousLayerSnapshots format)
+      const previousLayerSnapshots = tl.layers.map((layer) => ({
+        id: layer.id as string,
         contentFrames: layer.contentFrames.map((cf) => ({
-          frameId: cf.id,
+          id: cf.id as string,
           data: new Map(cf.data),
+        })),
+        staticProperties: { ...layer.staticProperties },
+        propertyTracks: layer.propertyTracks.map((t) => ({
+          ...t,
+          id: t.id as string,
+          keyframes: t.keyframes.map((kf) => ({ ...kf, id: kf.id as string })),
+        })),
+      }));
+      const previousGroupSnapshots = tl.layerGroups.map((g) => ({
+        ...g,
+        id: g.id as string,
+        staticProperties: { ...g.staticProperties },
+        propertyTracks: (g.propertyTracks ?? []).map((t) => ({
+          ...t,
+          id: t.id as string,
+          keyframes: t.keyframes.map((kf) => ({ ...kf, id: kf.id as string })),
         })),
       }));
 
@@ -112,12 +128,29 @@ export function useCanvasResize() {
         }
       }
 
-      // Build new-state snapshot for undo
-      const newLayersSnapshot = useTimelineStore.getState().layers.map((layer) => ({
-        layerId: layer.id,
+      // Build new-state snapshot for redo
+      const freshState = useTimelineStore.getState();
+      const newLayerSnapshots = freshState.layers.map((layer) => ({
+        id: layer.id as string,
         contentFrames: layer.contentFrames.map((cf) => ({
-          frameId: cf.id,
+          id: cf.id as string,
           data: new Map(cf.data),
+        })),
+        staticProperties: { ...layer.staticProperties },
+        propertyTracks: layer.propertyTracks.map((t) => ({
+          ...t,
+          id: t.id as string,
+          keyframes: t.keyframes.map((kf) => ({ ...kf, id: kf.id as string })),
+        })),
+      }));
+      const newGroupSnapshots = freshState.layerGroups.map((g) => ({
+        ...g,
+        id: g.id as string,
+        staticProperties: { ...g.staticProperties },
+        propertyTracks: (g.propertyTracks ?? []).map((t) => ({
+          ...t,
+          id: t.id as string,
+          keyframes: t.keyframes.map((kf) => ({ ...kf, id: kf.id as string })),
         })),
       }));
 
@@ -132,9 +165,11 @@ export function useCanvasResize() {
           newHeight: constrainedHeight,
           previousCanvasData: previousCells,
           frameIndex: 0,
-          allFramesPreviousData: previousLayersSnapshot.flatMap((l) => l.contentFrames.map((cf) => cf.data)),
-          allFramesNewData: newLayersSnapshot.flatMap((l) => l.contentFrames.map((cf) => cf.data)),
           isCropOperation: true,
+          previousLayerSnapshots,
+          newLayerSnapshots,
+          previousGroupSnapshots,
+          newGroupSnapshots,
         },
       };
       useToolStore.getState().pushToHistory(action);

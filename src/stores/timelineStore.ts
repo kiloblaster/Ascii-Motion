@@ -171,6 +171,7 @@ export interface TimelineState {
   setLayerSyncKeyframes: (layerId: LayerId, sync: boolean) => void;
   setLayerOpacity: (layerId: LayerId, opacity: number) => void;
   setStaticProperty: (layerId: LayerId, propertyPath: string, value: number) => void;
+  replaceStaticProperties: (layerId: LayerId, properties: Record<string, number>) => void;
 
   getActiveLayer: () => Layer | null;
   setActiveLayer: (layerId: LayerId | null) => void;
@@ -640,6 +641,28 @@ export const useTimelineStore = create<TimelineState>()(
           layerGroups: state.layerGroups.map((g) =>
             (g.id as unknown) === layerId
               ? { ...g, staticProperties: { ...g.staticProperties, [propertyPath]: value } }
+              : g,
+          ),
+        }));
+      }
+    },
+
+    replaceStaticProperties: (layerId, properties) => {
+      // Try layers first
+      const layer = get().layers.find((l) => l.id === layerId);
+      if (layer) {
+        set((state) => ({
+          layers: updateLayer(state.layers, layerId, (l) => ({
+            ...l,
+            staticProperties: { ...properties },
+          })),
+        }));
+      } else {
+        // Fall back to groups
+        set((state) => ({
+          layerGroups: state.layerGroups.map((g) =>
+            (g.id as unknown) === layerId
+              ? { ...g, staticProperties: { ...properties } }
               : g,
           ),
         }));

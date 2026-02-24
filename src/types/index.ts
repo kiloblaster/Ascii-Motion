@@ -328,7 +328,7 @@ export interface CanvasResizeHistoryAction extends HistoryAction {
     allFramesPreviousData?: Map<string, Cell>[];
     allFramesNewData?: Map<string, Cell>[];
     isCropOperation?: boolean;
-    // Multi-layer crop snapshots
+    // Multi-layer snapshots (for crop and resize undo/redo)
     previousLayerSnapshots?: Array<{
       id: string;
       contentFrames: Array<{ id: string; data: Map<string, Cell> }>;
@@ -339,7 +339,26 @@ export interface CanvasResizeHistoryAction extends HistoryAction {
         keyframes: Array<{ id: string; frame: number; value: number | boolean | string; easing: unknown }>;
       }>;
     }>;
+    newLayerSnapshots?: Array<{
+      id: string;
+      contentFrames: Array<{ id: string; data: Map<string, Cell> }>;
+      staticProperties: Record<string, number>;
+      propertyTracks: Array<{
+        id: string;
+        propertyPath: string;
+        keyframes: Array<{ id: string; frame: number; value: number | boolean | string; easing: unknown }>;
+      }>;
+    }>;
     previousGroupSnapshots?: Array<{
+      id: string;
+      staticProperties: Record<string, number>;
+      propertyTracks?: Array<{
+        id: string;
+        propertyPath: string;
+        keyframes: Array<{ id: string; frame: number; value: number | boolean | string; easing: unknown }>;
+      }>;
+    }>;
+    newGroupSnapshots?: Array<{
       id: string;
       staticProperties: Record<string, number>;
       propertyTracks?: Array<{
