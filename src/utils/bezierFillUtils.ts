@@ -21,6 +21,7 @@ import {
 } from './bezierAutofillUtils';
 import { getCharacterForPattern } from '../constants/bezierAutofill';
 import { generateStrokeOutline } from './bezierStrokeUtils';
+import { LineArtConverter, DEFAULT_LINE_ART_OPTIONS } from './lineArtConverter';
 
 /**
  * Helper function to map overlap percentage to color from a palette
@@ -344,7 +345,7 @@ export function fillAutofill(
 export function generateBezierPreview(
   anchorPoints: BezierAnchorPoint[],
   isClosed: boolean,
-  fillMode: 'constant' | 'palette' | 'autofill',
+  fillMode: 'constant' | 'palette' | 'autofill' | 'lineart',
   canvasWidth: number,
   canvasHeight: number,
   cellWidth: number,
@@ -360,13 +361,18 @@ export function generateBezierPreview(
   colorPalette?: ColorPalette,
   strokeWidth: number = 1.0,
   strokeTaperStart: number = 0.0,
-  strokeTaperEnd: number = 0.0
+  strokeTaperEnd: number = 0.0,
+  lineArtEdgeThreshold: number = 0.15,
+  lineArtSdfBlur: number = 3,
+  lineArtInverseMatch: number = 8
 ): { previewCells: Map<string, Cell>; affectedCount: number } {
+  console.log(`[bezierPreview] fillMode=${fillMode}, points=${anchorPoints.length}, isClosed=${isClosed}`);
   // If path is open and has stroke, convert stroke to closed polygon for filling
+  // (skip for lineart mode which renders the path directly)
   let effectiveAnchorPoints = anchorPoints;
   let effectiveIsClosed = isClosed;
 
-  if (!isClosed && strokeWidth > 0 && anchorPoints.length >= 2) {
+  if (fillMode !== 'lineart' && !isClosed && strokeWidth > 0 && anchorPoints.length >= 2) {
     // Generate stroke outline as a closed polygon
     const strokeOutline = generateStrokeOutline(
       anchorPoints,
@@ -453,6 +459,27 @@ export function generateBezierPreview(
       break;
     }
 
+    case 'lineart':
+      previewCells = fillLineArt(
+        anchorPoints,   // Use original path, not stroke-converted polygon
+        isClosed,
+        canvasWidth,
+        canvasHeight,
+        cellWidth,
+        cellHeight,
+        zoom,
+        panOffset,
+        selectedColor,
+        selectedBgColor,
+        strokeWidth,
+        lineArtEdgeThreshold,
+        lineArtSdfBlur,
+        lineArtInverseMatch,
+        strokeTaperStart,
+        strokeTaperEnd
+      );
+      break;
+
     default:
       console.warn(`[bezierFill] Unknown fill mode: ${fillMode}`);
       previewCells = new Map();
@@ -462,4 +489,195 @@ export function generateBezierPreview(
     previewCells,
     affectedCount: previewCells.size,
   };
+}
+
+/**
+ * Line Art fill mode.
+ * Renders the bezier path to a high-res offscreen canvas, then runs the
+ * LineArtConverter to pick line-drawing ASCII characters for each cell.
+ */
+function fillLineArt(
+  anchorPoints: BezierAnchorPoint[],
+  isClosed: boolean,
+  canvasWidth: number,
+  canvasHeight: number,
+  cellWidth: number,
+  cellHeight: number,
+  zoom: number,
+  panOffset: { x: number; y: number },
+  selectedColor: string,
+  selectedBgColor: string,
+  strokeWidth: number,
+  lineArtEdgeThreshold: number = 0.01,
+  lineArtSdfBlur: number = 0,
+  lineArtInverseMatch: number = 20,
+  strokeTaperStart: number = 0,
+  strokeTaperEnd: number = 0
+): Map<string, Cell> {
+  console.log(`[fillLineArt] ENTERED, points=${anchorPoints.length}, strokeWidth=${strokeWidth}, threshold=${lineArtEdgeThreshold}, sdf=${lineArtSdfBlur}, inverse=${lineArtInverseMatch}`);
+  const filledCells = new Map<string, Cell>();
+  if (anchorPoints.length < 2) { console.log('[fillLineArt] early return: < 2 points'); return filledCells; }
+
+  // Determine grid bounds from the path
+  const bounds = getIntegerBounds(anchorPoints, canvasWidth, canvasHeight);
+  console.log(`[fillLineArt] bounds: minX=${bounds.minX}, maxX=${bounds.maxX}, minY=${bounds.minY}, maxY=${bounds.maxY}`);
+  const gridW = (Math.ceil(bounds.maxX - bounds.minX + 1)) | 0;
+  const gridH = (Math.ceil(bounds.maxY - bounds.minY + 1)) | 0;
+  if (gridW <= 0 || gridH <= 0 || !isFinite(gridW) || !isFinite(gridH)) { console.log('[fillLineArt] early return: invalid grid'); return filledCells; }
+
+  // Render the bezier path to a high-res offscreen canvas (6px per cell)
+  const ppc = 6;
+  const renderW = (gridW * ppc) | 0;
+  const renderH = (gridH * ppc) | 0;
+  if (renderW <= 0 || renderH <= 0) return filledCells;
+  const offscreen = document.createElement('canvas');
+  offscreen.width = renderW;
+  offscreen.height = renderH;
+  const ctx = offscreen.getContext('2d')!;
+
+  // Black background
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, renderW, renderH);
+
+  // Build the bezier path directly in offscreen pixel coordinates
+  // Grid position (x, y) → offscreen pixel ((x - bounds.minX) * ppc + ppc/2, (y - bounds.minY) * ppc + ppc/2)
+  const toOffscreen = (gridPos: { x: number; y: number }) => ({
+    x: (gridPos.x - bounds.minX) * ppc + ppc / 2,
+    y: (gridPos.y - bounds.minY) * ppc + ppc / 2,
+  });
+
+  const path = new Path2D();
+  const first = toOffscreen(anchorPoints[0].position);
+  path.moveTo(first.x, first.y);
+
+  for (let i = 1; i < anchorPoints.length; i++) {
+    const prev = anchorPoints[i - 1];
+    const curr = anchorPoints[i];
+    const prevPx = toOffscreen(prev.position);
+    const currPx = toOffscreen(curr.position);
+
+    const prevHasHandle = prev.hasHandles && prev.handleOut;
+    const currHasHandle = curr.hasHandles && curr.handleIn;
+
+    if (prevHasHandle && currHasHandle) {
+      const cp1 = { x: prevPx.x + prev.handleOut!.x * ppc, y: prevPx.y + prev.handleOut!.y * ppc };
+      const cp2 = { x: currPx.x + curr.handleIn!.x * ppc, y: currPx.y + curr.handleIn!.y * ppc };
+      path.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, currPx.x, currPx.y);
+    } else if (prevHasHandle) {
+      const cp = { x: prevPx.x + prev.handleOut!.x * ppc, y: prevPx.y + prev.handleOut!.y * ppc };
+      path.quadraticCurveTo(cp.x, cp.y, currPx.x, currPx.y);
+    } else if (currHasHandle) {
+      const cp = { x: currPx.x + curr.handleIn!.x * ppc, y: currPx.y + curr.handleIn!.y * ppc };
+      path.quadraticCurveTo(cp.x, cp.y, currPx.x, currPx.y);
+    } else {
+      path.lineTo(currPx.x, currPx.y);
+    }
+  }
+
+  // Close if needed
+  if (isClosed && anchorPoints.length > 2) {
+    const last = anchorPoints[anchorPoints.length - 1];
+    const firstPt = anchorPoints[0];
+    const lastPx = toOffscreen(last.position);
+    const firstPx = toOffscreen(firstPt.position);
+
+    const lastHas = last.hasHandles && last.handleOut;
+    const firstHas = firstPt.hasHandles && firstPt.handleIn;
+
+    if (lastHas && firstHas) {
+      const cp1 = { x: lastPx.x + last.handleOut!.x * ppc, y: lastPx.y + last.handleOut!.y * ppc };
+      const cp2 = { x: firstPx.x + firstPt.handleIn!.x * ppc, y: firstPx.y + firstPt.handleIn!.y * ppc };
+      path.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, firstPx.x, firstPx.y);
+    } else if (lastHas) {
+      const cp = { x: lastPx.x + last.handleOut!.x * ppc, y: lastPx.y + last.handleOut!.y * ppc };
+      path.quadraticCurveTo(cp.x, cp.y, firstPx.x, firstPx.y);
+    } else if (firstHas) {
+      const cp = { x: firstPx.x + firstPt.handleIn!.x * ppc, y: firstPx.y + firstPt.handleIn!.y * ppc };
+      path.quadraticCurveTo(cp.x, cp.y, firstPx.x, firstPx.y);
+    } else {
+      path.lineTo(firstPx.x, firstPx.y);
+    }
+    path.closePath();
+  }
+
+  // Render the stroke — use tapered polygon when taper is active, plain stroke otherwise
+  ctx.fillStyle = '#FFFFFF';
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  const hasTaper = !isClosed && (strokeTaperStart > 0 || strokeTaperEnd > 0);
+
+  if (hasTaper) {
+    // Generate tapered stroke outline in grid coords, then fill as polygon
+    const outlinePoints = generateStrokeOutline(
+      anchorPoints, strokeWidth, strokeTaperStart, strokeTaperEnd, 32
+    );
+    if (outlinePoints.length > 2) {
+      const outlinePath = new Path2D();
+      const firstOff = toOffscreen(outlinePoints[0]);
+      outlinePath.moveTo(firstOff.x, firstOff.y);
+      for (let i = 1; i < outlinePoints.length; i++) {
+        const pt = toOffscreen(outlinePoints[i]);
+        outlinePath.lineTo(pt.x, pt.y);
+      }
+      outlinePath.closePath();
+      ctx.fill(outlinePath);
+    }
+  } else if (isClosed) {
+    // For closed shapes, stroke the outline
+    ctx.lineWidth = Math.max(1.5, strokeWidth * ppc * 0.3);
+    ctx.stroke(path);
+  } else {
+    // Open path, no taper — uniform stroke
+    ctx.lineWidth = Math.max(1.5, strokeWidth * ppc * 0.3);
+    ctx.stroke(path);
+  }
+
+  // Get image data
+  const imageData = ctx.getImageData(0, 0, renderW, renderH);
+
+  // Debug: check if any white pixels were rendered
+  let whitePixels = 0;
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    if (imageData.data[i] > 128) whitePixels++;
+  }
+  console.log(`[LineArt] grid=${gridW}x${gridH}, render=${renderW}x${renderH}, whitePixels=${whitePixels}, threshold=${lineArtEdgeThreshold}, sdf=${lineArtSdfBlur}, inverse=${lineArtInverseMatch}`);
+
+  if (whitePixels === 0) {
+    console.warn('[LineArt] No white pixels rendered — path may be outside canvas bounds');
+    return filledCells;
+  }
+
+  const converter = new LineArtConverter();
+  converter.init(ppc, ppc);
+
+  const dilate = Math.max(0, Math.round(strokeWidth) - 1);
+  const charMap = converter.convertImage(imageData, gridW, gridH, {
+    blurRadius: 0,
+    edgeThreshold: lineArtEdgeThreshold,
+    dilateRadius: dilate,
+    erodeRadius: 0,
+    sdfBlurRadius: lineArtSdfBlur,
+    inverseMatchWeight: lineArtInverseMatch,
+  });
+
+  console.log(`[LineArt] charMap size=${charMap.size}`);
+
+  // Map results back to canvas coordinates
+  for (const [key, char] of charMap) {
+    const [localX, localY] = key.split(',').map(Number);
+    const canvasX = localX + bounds.minX;
+    const canvasY = localY + bounds.minY;
+
+    if (canvasX >= 0 && canvasX < canvasWidth && canvasY >= 0 && canvasY < canvasHeight) {
+      filledCells.set(`${canvasX},${canvasY}`, {
+        char,
+        color: selectedColor,
+        bgColor: selectedBgColor,
+      });
+    }
+  }
+
+  return filledCells;
 }
