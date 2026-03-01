@@ -12,6 +12,7 @@ import type { Cell } from '../types';
 import type { ProcessedFrame } from './mediaProcessor';
 import type { CharacterPalette, CharacterMappingSettings } from '../types/palette';
 import { ShapeBasedConverter, type ShapeMappingMethod } from './shapeBasedConverter';
+import { LineArtConverter } from './lineArtConverter';
 
 // Legacy support - kept for backward compatibility
 export const DEFAULT_ASCII_CHARS = [
@@ -36,6 +37,17 @@ export interface ConversionSettings {
   autoModeDirectionalContrast: number;
   autoModeGridWidth: number;   // Character grid width (needed to compute cell dimensions)
   autoModeGridHeight: number;  // Character grid height
+  
+  // Line art mode (edge-detection + character convolution)
+  lineArtEnabled: boolean;
+  lineArtBlurRadius: number;
+  lineArtEdgeThreshold: number;
+  lineArtDilateRadius: number;
+  lineArtErodeRadius: number;
+  lineArtSdfBlurRadius: number;
+  lineArtInverseMatchWeight: number;
+  lineArtGridWidth: number;
+  lineArtGridHeight: number;
   
   // Text (foreground) color mapping - NEW
   enableTextColorMapping: boolean;
@@ -788,6 +800,11 @@ export class ASCIIConverter {
       return this.convertFrameAutoMode(imageData, settings, startTime);
     }
     
+    // Delegate to line art mode if enabled
+    if (settings.lineArtEnabled && settings.enableCharacterMapping) {
+      return this.convertFrameLineArt(imageData, settings, startTime);
+    }
+    
     const { data, width, height } = imageData;
     
     const cells = new Map<string, Cell>();
@@ -1247,6 +1264,110 @@ export class ASCIIConverter {
       default:
         return 'brightness';
     }
+  }
+
+  /**
+   * Convert a frame using line art mode.
+   * The imageData is higher resolution (multiple pixels per cell).
+   * Uses edge detection + character convolution for line art output.
+   */
+  private convertFrameLineArt(
+    imageData: ImageData,
+    settings: ConversionSettings,
+    startTime: number
+  ): ConversionResult {
+    const { data, width, height } = imageData;
+    const gridW = settings.lineArtGridWidth;
+    const gridH = settings.lineArtGridHeight;
+
+    const cells = new Map<string, Cell>();
+    const colorPalette = new Set<string>();
+    const characterUsage: { [char: string]: number } = {};
+
+    // Cell pixel dimensions
+    const cellW = Math.floor(width / gridW);
+    const cellH = Math.floor(height / gridH);
+
+    // Initialize line art converter with character bitmaps at cell size
+    const converter = new LineArtConverter();
+    converter.init(cellW, cellH);
+
+    // Apply preprocessing
+    const preprocessed = this.applyPreprocessing(imageData, settings);
+
+    // Run line art conversion
+    const charMap = converter.convertImage(preprocessed, gridW, gridH, {
+      blurRadius: settings.lineArtBlurRadius,
+      edgeThreshold: settings.lineArtEdgeThreshold,
+      dilateRadius: settings.lineArtDilateRadius,
+      erodeRadius: settings.lineArtErodeRadius,
+      sdfBlurRadius: settings.lineArtSdfBlurRadius,
+      inverseMatchWeight: settings.lineArtInverseMatchWeight,
+    });
+
+    // Extract colors if quantization is enabled
+    let quantizedColors: string[] = [];
+    if (settings.colorQuantization !== 'none') {
+      quantizedColors = this.extractColors(imageData, settings.paletteSize);
+    }
+
+    // Build cells with color from center pixel
+    for (let gy = 0; gy < gridH; gy++) {
+      for (let gx = 0; gx < gridW; gx++) {
+        const key = `${gx},${gy}`;
+        const character = charMap.get(key) || ' ';
+        if (character === ' ') continue;
+
+        // Sample center pixel for color
+        const centerPx = Math.min(Math.floor(gx * cellW + cellW / 2), width - 1);
+        const centerPy = Math.min(Math.floor(gy * cellH + cellH / 2), height - 1);
+        const pixelIdx = (centerPy * width + centerPx) * 4;
+
+        const r = data[pixelIdx];
+        const g = data[pixelIdx + 1];
+        const b = data[pixelIdx + 2];
+
+        // Determine text color
+        let color: string;
+        if (settings.enableTextColorMapping && settings.textColorPalette.length > 0) {
+          color = ColorMatcher.findClosestColor(r, g, b, settings.textColorPalette);
+        } else if (!settings.enableTextColorMapping) {
+          color = settings.defaultTextColor;
+        } else if (settings.useOriginalColors) {
+          color = settings.colorQuantization === 'none'
+            ? ColorMatcher.rgbToHex(r, g, b)
+            : this.quantizeColor(r, g, b, quantizedColors);
+        } else {
+          color = settings.defaultTextColor;
+        }
+
+        // Determine background color
+        let bgColor: string;
+        if (settings.enableBackgroundColorMapping && settings.backgroundColorPalette.length > 0) {
+          bgColor = ColorMatcher.findClosestColor(r, g, b, settings.backgroundColorPalette);
+        } else {
+          bgColor = 'transparent';
+        }
+
+        cells.set(key, { char: character, color, bgColor });
+        colorPalette.add(color);
+        characterUsage[character] = (characterUsage[character] || 0) + 1;
+      }
+    }
+
+    const endTime = performance.now();
+    return {
+      cells,
+      colorPalette: Array.from(colorPalette),
+      characterUsage,
+      metadata: {
+        width: gridW,
+        height: gridH,
+        totalCells: cells.size,
+        uniqueColors: colorPalette.size,
+        conversionTime: endTime - startTime,
+      },
+    };
   }
 
   /**

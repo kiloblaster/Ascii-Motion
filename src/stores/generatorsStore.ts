@@ -524,6 +524,17 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
         autoModeGridWidth: 0,
         autoModeGridHeight: 0,
         
+        // Line art mode disabled for generators
+        lineArtEnabled: false,
+        lineArtBlurRadius: 0,
+        lineArtEdgeThreshold: 0.1,
+        lineArtDilateRadius: 2,
+        lineArtErodeRadius: 0,
+        lineArtSdfBlurRadius: 6,
+        lineArtInverseMatchWeight: 9.5,
+        lineArtGridWidth: 0,
+        lineArtGridHeight: 0,
+        
         // Text color mapping
         enableTextColorMapping: state.mappingSettings.enableTextColorMapping,
         textColorPalette: textColors,

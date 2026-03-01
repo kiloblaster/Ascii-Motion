@@ -327,7 +327,7 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
                 <Label className="text-xs font-medium">Mapping Style</Label>
                 <Select 
                   value={settings.characterMappingStyle} 
-                  onValueChange={(value: 'character-palette' | 'auto-mode') => {
+                  onValueChange={(value: 'character-palette' | 'auto-mode' | 'line-art') => {
                     updateSettings({ characterMappingStyle: value });
                     onSettingsChange?.();
                   }}
@@ -338,6 +338,7 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
                   <SelectContent>
                     <SelectItem value="character-palette" className="text-xs">Character Palette</SelectItem>
                     <SelectItem value="auto-mode" className="text-xs">Auto Mode (Shape-Based)</SelectItem>
+                    <SelectItem value="line-art" className="text-xs">Line Art (Edge Detection)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -404,6 +405,131 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
                         min={1.0}
                         max={4.0}
                         step={0.1}
+                        className="w-full"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Line Art Controls (only shown in line-art mode) */}
+              {settings.characterMappingStyle === 'line-art' && (
+                <Card className="bg-card/50 border-border/50 overflow-hidden w-full">
+                  <CardContent className="p-3 space-y-3 w-full">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium">Line Art Settings</Label>
+                    </div>
+
+                    {/* Blur Radius */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Noise Smoothing</Label>
+                        <span className="text-xs text-muted-foreground">{settings.lineArtBlurRadius.toFixed(0)}</span>
+                      </div>
+                      <Slider
+                        value={settings.lineArtBlurRadius}
+                        onValueChange={(value: number) => {
+                          updateSettings({ lineArtBlurRadius: value });
+                          onSettingsChange?.();
+                        }}
+                        min={0}
+                        max={10}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Edge Threshold */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Edge Sensitivity</Label>
+                        <span className="text-xs text-muted-foreground">{settings.lineArtEdgeThreshold.toFixed(1)}</span>
+                      </div>
+                      <Slider
+                        value={settings.lineArtEdgeThreshold}
+                        onValueChange={(value: number) => {
+                          updateSettings({ lineArtEdgeThreshold: value });
+                          onSettingsChange?.();
+                        }}
+                        min={0.01}
+                        max={1.0}
+                        step={0.01}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Dilate Radius */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Edge Thickness</Label>
+                        <span className="text-xs text-muted-foreground">{settings.lineArtDilateRadius.toFixed(0)}</span>
+                      </div>
+                      <Slider
+                        value={settings.lineArtDilateRadius}
+                        onValueChange={(value: number) => {
+                          updateSettings({ lineArtDilateRadius: value });
+                          onSettingsChange?.();
+                        }}
+                        min={0}
+                        max={10}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Erode Radius */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Edge Thinning</Label>
+                        <span className="text-xs text-muted-foreground">{settings.lineArtErodeRadius.toFixed(0)}</span>
+                      </div>
+                      <Slider
+                        value={settings.lineArtErodeRadius}
+                        onValueChange={(value: number) => {
+                          updateSettings({ lineArtErodeRadius: value });
+                          onSettingsChange?.();
+                        }}
+                        min={0}
+                        max={10}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* SDF Blur Radius */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Edge Spread</Label>
+                        <span className="text-xs text-muted-foreground">{settings.lineArtSdfBlurRadius.toFixed(0)}</span>
+                      </div>
+                      <Slider
+                        value={settings.lineArtSdfBlurRadius}
+                        onValueChange={(value: number) => {
+                          updateSettings({ lineArtSdfBlurRadius: value });
+                          onSettingsChange?.();
+                        }}
+                        min={0}
+                        max={20}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Inverse Match Weight */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Match Precision</Label>
+                        <span className="text-xs text-muted-foreground">{settings.lineArtInverseMatchWeight.toFixed(1)}</span>
+                      </div>
+                      <Slider
+                        value={settings.lineArtInverseMatchWeight}
+                        onValueChange={(value: number) => {
+                          updateSettings({ lineArtInverseMatchWeight: value });
+                          onSettingsChange?.();
+                        }}
+                        min={0}
+                        max={20}
+                        step={0.5}
                         className="w-full"
                       />
                     </div>

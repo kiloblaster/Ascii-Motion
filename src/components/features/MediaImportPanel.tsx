@@ -469,6 +469,17 @@ export function MediaImportPanel() {
       autoModeGridWidth: settings.characterWidth,
       autoModeGridHeight: settings.characterHeight,
       
+      // Line art mode
+      lineArtEnabled: settings.characterMappingStyle === 'line-art',
+      lineArtBlurRadius: settings.lineArtBlurRadius,
+      lineArtEdgeThreshold: settings.lineArtEdgeThreshold,
+      lineArtDilateRadius: settings.lineArtDilateRadius,
+      lineArtErodeRadius: settings.lineArtErodeRadius,
+      lineArtSdfBlurRadius: settings.lineArtSdfBlurRadius,
+      lineArtInverseMatchWeight: settings.lineArtInverseMatchWeight,
+      lineArtGridWidth: settings.characterWidth,
+      lineArtGridHeight: settings.characterHeight,
+      
       // Text color mapping 
       enableTextColorMapping: settings.enableTextColorMapping,
       textColorPalette: textColorPalette,
@@ -508,6 +519,12 @@ export function MediaImportPanel() {
     settings.autoModeSamplingQuality,
     settings.characterWidth,
     settings.characterHeight,
+    settings.lineArtBlurRadius,
+    settings.lineArtEdgeThreshold,
+    settings.lineArtDilateRadius,
+    settings.lineArtErodeRadius,
+    settings.lineArtSdfBlurRadius,
+    settings.lineArtInverseMatchWeight,
     settings.enableTextColorMapping, 
     settings.textColorPaletteId,
     settings.textColorMappingMode,
@@ -547,11 +564,17 @@ export function MediaImportPanel() {
       setProgress(0);
       
       try {
-        // Determine pixels-per-cell for auto mode
+        // Determine pixels-per-cell for auto mode and line art mode
         const isAutoMode = settings.characterMappingStyle === 'auto-mode';
+        const isLineArt = settings.characterMappingStyle === 'line-art';
         const qualityPreset = isAutoMode
           ? SAMPLING_QUALITY_PRESETS[settings.autoModeSamplingQuality]
           : undefined;
+        // Line art needs higher res for edge detection; use medium preset
+        const lineArtPreset = isLineArt
+          ? SAMPLING_QUALITY_PRESETS['low']
+          : undefined;
+        const pixelsPreset = qualityPreset || lineArtPreset;
 
         const options = {
           targetWidth: settings.characterWidth,
@@ -559,9 +582,9 @@ export function MediaImportPanel() {
           maintainAspectRatio: false, // Don't crop - stretch to exact dimensions we calculated
           cropMode: settings.cropMode,
           quality: 'medium' as const,
-          ...(qualityPreset && {
-            pixelsPerCellX: qualityPreset.cellPixelsX,
-            pixelsPerCellY: qualityPreset.cellPixelsY,
+          ...(pixelsPreset && {
+            pixelsPerCellX: pixelsPreset.cellPixelsX,
+            pixelsPerCellY: pixelsPreset.cellPixelsY,
           }),
         };
         
@@ -604,6 +627,8 @@ export function MediaImportPanel() {
     settings.characterWidth,
     settings.characterHeight,
     settings.cropMode, // Added back - now used for aspect ratio cropping
+    settings.characterMappingStyle, // Re-process at different resolution when mode changes
+    settings.autoModeSamplingQuality,
     setProcessing,
     setProgress,
     setProcessedFrames,
@@ -667,6 +692,16 @@ export function MediaImportPanel() {
     settings.sharpen,
     // Character mapping settings
     settings.enableCharacterMapping,
+    settings.characterMappingStyle,
+    settings.autoModeCharacterSet,
+    settings.autoModeGlobalContrast,
+    settings.autoModeDirectionalContrast,
+    settings.lineArtBlurRadius,
+    settings.lineArtEdgeThreshold,
+    settings.lineArtDilateRadius,
+    settings.lineArtErodeRadius,
+    settings.lineArtSdfBlurRadius,
+    settings.lineArtInverseMatchWeight,
     activePalette,
     mappingMethod,
     invertDensity,
