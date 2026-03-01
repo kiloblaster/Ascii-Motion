@@ -516,6 +516,14 @@ export const useGeneratorsStore = create<GeneratorsState>((set, get) => ({
         characterMappingMode: state.mappingSettings.characterDitherMode,
         invertDensity: false,
         
+        // Auto mode disabled for generators
+        autoModeEnabled: false,
+        autoModeCharacterSet: 'basic-ascii' as const,
+        autoModeGlobalContrast: 2.0,
+        autoModeDirectionalContrast: 2.0,
+        autoModeGridWidth: 0,
+        autoModeGridHeight: 0,
+        
         // Text color mapping
         enableTextColorMapping: state.mappingSettings.enableTextColorMapping,
         textColorPalette: textColors,

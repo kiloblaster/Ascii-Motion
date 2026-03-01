@@ -34,6 +34,11 @@ export interface ProcessingOptions {
   
   // Quality settings
   quality: 'high' | 'medium' | 'low';
+  
+  // Auto mode: output image at higher resolution (multiple pixels per cell)
+  // When set, the output canvas will be targetWidth * pixelsPerCellX by targetHeight * pixelsPerCellY
+  pixelsPerCellX?: number;
+  pixelsPerCellY?: number;
 }
 
 export interface ProcessedFrame {
@@ -229,9 +234,15 @@ export class MediaProcessor {
   private processImageToCanvas(img: HTMLImageElement, options: ProcessingOptions): ProcessedFrame {
     const { targetWidth, targetHeight, maintainAspectRatio, cropMode } = options;
     
-    // Set canvas to target size (this is what the user wants)
-    this.canvas.width = targetWidth;
-    this.canvas.height = targetHeight;
+    // When pixelsPerCell is set (auto mode), output at higher resolution
+    const ppcX = options.pixelsPerCellX ?? 1;
+    const ppcY = options.pixelsPerCellY ?? 1;
+    const canvasWidth = targetWidth * ppcX;
+    const canvasHeight = targetHeight * ppcY;
+    
+    // Set canvas to output size
+    this.canvas.width = canvasWidth;
+    this.canvas.height = canvasHeight;
     
     // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -256,8 +267,8 @@ export class MediaProcessor {
         sourceRect.height,
         0,
         0,
-        targetWidth,
-        targetHeight
+        canvasWidth,
+        canvasHeight
       );
     } else {
       // Stretch to fit without maintaining aspect ratio
@@ -269,8 +280,8 @@ export class MediaProcessor {
         img.height,
         0,
         0,
-        targetWidth,
-        targetHeight
+        canvasWidth,
+        canvasHeight
       );
     }
     
@@ -485,9 +496,15 @@ export class MediaProcessor {
   ): ProcessedFrame {
     const { targetWidth, targetHeight, maintainAspectRatio, cropMode } = options;
     
-    // Set canvas to target size (this is what the user wants)
-    this.canvas.width = targetWidth;
-    this.canvas.height = targetHeight;
+    // When pixelsPerCell is set (auto mode), output at higher resolution
+    const ppcX = options.pixelsPerCellX ?? 1;
+    const ppcY = options.pixelsPerCellY ?? 1;
+    const canvasWidth = targetWidth * ppcX;
+    const canvasHeight = targetHeight * ppcY;
+    
+    // Set canvas to output size
+    this.canvas.width = canvasWidth;
+    this.canvas.height = canvasHeight;
     
     // Clear canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -512,8 +529,8 @@ export class MediaProcessor {
         sourceRect.height,
         0,
         0,
-        targetWidth,
-        targetHeight
+        canvasWidth,
+        canvasHeight
       );
     } else {
       // Stretch to fit without maintaining aspect ratio
@@ -525,8 +542,8 @@ export class MediaProcessor {
         video.videoHeight,
         0,
         0,
-        targetWidth,
-        targetHeight
+        canvasWidth,
+        canvasHeight
       );
     }
     

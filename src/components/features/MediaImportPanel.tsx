@@ -59,6 +59,7 @@ import {
 } from '../../stores/importStore';
 import { mediaProcessor, SUPPORTED_IMAGE_FORMATS, SUPPORTED_VIDEO_FORMATS } from '../../utils/mediaProcessor';
 import { asciiConverter } from '../../utils/asciiConverter';
+import { SAMPLING_QUALITY_PRESETS } from '../../utils/shapeBasedConverter';
 import { cloneFrames } from '../../utils/frameUtils';
 import { useCanvasStore } from '../../stores/canvasStore';
 import { useAnimationStore } from '../../stores/animationStore';
@@ -460,6 +461,14 @@ export function MediaImportPanel() {
       characterMappingMode: mappingMode,
       invertDensity: invertDensity,
       
+      // Auto mode (shape-vector based)
+      autoModeEnabled: settings.characterMappingStyle === 'auto-mode',
+      autoModeCharacterSet: settings.autoModeCharacterSet,
+      autoModeGlobalContrast: settings.autoModeGlobalContrast,
+      autoModeDirectionalContrast: settings.autoModeDirectionalContrast,
+      autoModeGridWidth: settings.characterWidth,
+      autoModeGridHeight: settings.characterHeight,
+      
       // Text color mapping 
       enableTextColorMapping: settings.enableTextColorMapping,
       textColorPalette: textColorPalette,
@@ -492,6 +501,13 @@ export function MediaImportPanel() {
     };
   }, [
     settings.enableCharacterMapping,
+    settings.characterMappingStyle,
+    settings.autoModeCharacterSet,
+    settings.autoModeGlobalContrast,
+    settings.autoModeDirectionalContrast,
+    settings.autoModeSamplingQuality,
+    settings.characterWidth,
+    settings.characterHeight,
     settings.enableTextColorMapping, 
     settings.textColorPaletteId,
     settings.textColorMappingMode,
@@ -531,12 +547,22 @@ export function MediaImportPanel() {
       setProgress(0);
       
       try {
+        // Determine pixels-per-cell for auto mode
+        const isAutoMode = settings.characterMappingStyle === 'auto-mode';
+        const qualityPreset = isAutoMode
+          ? SAMPLING_QUALITY_PRESETS[settings.autoModeSamplingQuality]
+          : undefined;
+
         const options = {
           targetWidth: settings.characterWidth,
           targetHeight: settings.characterHeight,
           maintainAspectRatio: false, // Don't crop - stretch to exact dimensions we calculated
           cropMode: settings.cropMode,
-          quality: 'medium' as const
+          quality: 'medium' as const,
+          ...(qualityPreset && {
+            pixelsPerCellX: qualityPreset.cellPixelsX,
+            pixelsPerCellY: qualityPreset.cellPixelsY,
+          }),
         };
         
         let result;

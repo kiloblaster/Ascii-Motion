@@ -116,6 +116,13 @@ export interface ImportSettings {
   enableColorAsAlpha: boolean;
   colorAsAlphaKey: string;      // Hex color to treat as transparent
   colorAsAlphaTolerance: number; // 0-255 RGB distance tolerance
+  
+  // Auto mode character mapping (shape-vector based)
+  characterMappingStyle: 'character-palette' | 'auto-mode';
+  autoModeCharacterSet: 'basic-ascii' | 'block-characters';
+  autoModeSamplingQuality: 'low' | 'medium' | 'high';
+  autoModeGlobalContrast: number;      // 1.0–4.0 exponent
+  autoModeDirectionalContrast: number; // 1.0–4.0 exponent
 }
 
 // Default UI state
@@ -182,7 +189,14 @@ const DEFAULT_IMPORT_SETTINGS: ImportSettings = {
   // Transparency settings
   enableColorAsAlpha: false,
   colorAsAlphaKey: '#000000', // Default to black
-  colorAsAlphaTolerance: 10 // Small default tolerance
+  colorAsAlphaTolerance: 10, // Small default tolerance
+  
+  // Auto mode character mapping
+  characterMappingStyle: 'character-palette',
+  autoModeCharacterSet: 'basic-ascii',
+  autoModeSamplingQuality: 'low',
+  autoModeGlobalContrast: 2.0,
+  autoModeDirectionalContrast: 2.0,
 };
 
 export const useImportStore = create<ImportState>((set, get) => ({

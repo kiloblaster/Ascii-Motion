@@ -322,7 +322,97 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
           
           {enableCharacterMapping && (
             <>
-              {/* Character Palette Editor */}
+              {/* Mapping Style Selector */}
+              <div className="space-y-2 w-full">
+                <Label className="text-xs font-medium">Mapping Style</Label>
+                <Select 
+                  value={settings.characterMappingStyle} 
+                  onValueChange={(value: 'character-palette' | 'auto-mode') => {
+                    updateSettings({ characterMappingStyle: value });
+                    onSettingsChange?.();
+                  }}
+                >
+                  <SelectTrigger className="h-8 text-xs w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="character-palette" className="text-xs">Character Palette</SelectItem>
+                    <SelectItem value="auto-mode" className="text-xs">Auto Mode (Shape-Based)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Auto Mode Controls */}
+              {settings.characterMappingStyle === 'auto-mode' && (
+                <Card className="bg-card/50 border-border/50 overflow-hidden w-full">
+                  <CardContent className="p-3 space-y-3 w-full">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm font-medium">Auto Mode Settings</Label>
+                    </div>
+
+                    {/* Character Set */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Character Set</Label>
+                      <Select 
+                        value={settings.autoModeCharacterSet} 
+                        onValueChange={(value: 'basic-ascii' | 'block-characters') => {
+                          updateSettings({ autoModeCharacterSet: value });
+                          onSettingsChange?.();
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="basic-ascii" className="text-xs">Basic ASCII</SelectItem>
+                          <SelectItem value="block-characters" className="text-xs">Block Characters</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Global Contrast */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Global Contrast</Label>
+                        <span className="text-xs text-muted-foreground">{settings.autoModeGlobalContrast.toFixed(1)}</span>
+                      </div>
+                      <Slider
+                        value={settings.autoModeGlobalContrast}
+                        onValueChange={(value: number) => {
+                          updateSettings({ autoModeGlobalContrast: value });
+                          onSettingsChange?.();
+                        }}
+                        min={1.0}
+                        max={4.0}
+                        step={0.1}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Directional Contrast */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs font-medium">Directional Contrast</Label>
+                        <span className="text-xs text-muted-foreground">{settings.autoModeDirectionalContrast.toFixed(1)}</span>
+                      </div>
+                      <Slider
+                        value={settings.autoModeDirectionalContrast}
+                        onValueChange={(value: number) => {
+                          updateSettings({ autoModeDirectionalContrast: value });
+                          onSettingsChange?.();
+                        }}
+                        min={1.0}
+                        max={4.0}
+                        step={0.1}
+                        className="w-full"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Character Palette Editor (only shown in palette mode) */}
+              {settings.characterMappingStyle === 'character-palette' && (
               <Card className="bg-card/50 border-border/50 overflow-hidden w-full">
             <CardContent className="p-3 space-y-3 w-full">
               
@@ -608,6 +698,7 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
               </div>
             </CardContent>
           </Card>
+          )}
           </>
           )}
         </div>
