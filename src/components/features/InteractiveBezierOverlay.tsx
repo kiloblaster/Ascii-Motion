@@ -78,6 +78,9 @@ export const InteractiveBezierOverlay: React.FC = () => {
     strokeWidth,
     strokeTaperStart,
     strokeTaperEnd,
+    lineArtEdgeThreshold,
+    lineArtSdfBlur,
+    lineArtInverseMatch,
     previewCells,
     addAnchorPoint,
     closeShape,
@@ -412,7 +415,10 @@ export const InteractiveBezierOverlay: React.FC = () => {
       colorPalette || undefined,
       strokeWidth,
       strokeTaperStart,
-      strokeTaperEnd
+      strokeTaperEnd,
+      lineArtEdgeThreshold,
+      lineArtSdfBlur,
+      lineArtInverseMatch
     );
 
     // Update the store with the preview
@@ -437,6 +443,9 @@ export const InteractiveBezierOverlay: React.FC = () => {
     strokeWidth,
     strokeTaperStart,
     strokeTaperEnd,
+    lineArtEdgeThreshold,
+    lineArtSdfBlur,
+    lineArtInverseMatch,
     updatePreview,
   ]);
 

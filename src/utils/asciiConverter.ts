@@ -11,6 +11,8 @@
 import type { Cell } from '../types';
 import type { ProcessedFrame } from './mediaProcessor';
 import type { CharacterPalette, CharacterMappingSettings } from '../types/palette';
+import { ShapeBasedConverter, type ShapeMappingMethod } from './shapeBasedConverter';
+import { LineArtConverter } from './lineArtConverter';
 
 // Legacy support - kept for backward compatibility
 export const DEFAULT_ASCII_CHARS = [
@@ -27,6 +29,25 @@ export interface ConversionSettings {
   mappingMethod: CharacterMappingSettings['mappingMethod'];
   characterMappingMode: 'by-index' | 'noise-dither' | 'bayer2x2' | 'bayer4x4'; // Dithering modes
   invertDensity: boolean;
+  
+  // Auto mode (shape-vector based character mapping)
+  autoModeEnabled: boolean;
+  autoModeCharacterSet: 'basic-ascii' | 'block-characters';
+  autoModeGlobalContrast: number;
+  autoModeDirectionalContrast: number;
+  autoModeGridWidth: number;   // Character grid width (needed to compute cell dimensions)
+  autoModeGridHeight: number;  // Character grid height
+  
+  // Line art mode (edge-detection + character convolution)
+  lineArtEnabled: boolean;
+  lineArtBlurRadius: number;
+  lineArtEdgeThreshold: number;
+  lineArtDilateRadius: number;
+  lineArtErodeRadius: number;
+  lineArtSdfBlurRadius: number;
+  lineArtInverseMatchWeight: number;
+  lineArtGridWidth: number;
+  lineArtGridHeight: number;
   
   // Text (foreground) color mapping - NEW
   enableTextColorMapping: boolean;
@@ -774,6 +795,16 @@ export class ASCIIConverter {
       imageData = this.applySharpenFilter(imageData, settings.sharpenAmount);
     }
     
+    // Delegate to auto mode if enabled
+    if (settings.autoModeEnabled && settings.enableCharacterMapping) {
+      return this.convertFrameAutoMode(imageData, settings, startTime);
+    }
+    
+    // Delegate to line art mode if enabled
+    if (settings.lineArtEnabled && settings.enableCharacterMapping) {
+      return this.convertFrameLineArt(imageData, settings, startTime);
+    }
+    
     const { data, width, height } = imageData;
     
     const cells = new Map<string, Cell>();
@@ -1030,6 +1061,315 @@ export class ASCIIConverter {
     };
   }
   
+  /**
+   * Convert a frame using shape-based auto mode.
+   * The imageData is higher resolution (multiple pixels per cell).
+   * Character selection uses 6D shape vectors; color uses center pixel.
+   */
+  private convertFrameAutoMode(
+    imageData: ImageData,
+    settings: ConversionSettings,
+    startTime: number
+  ): ConversionResult {
+    const { data, width, height } = imageData;
+    const gridW = settings.autoModeGridWidth;
+    const gridH = settings.autoModeGridHeight;
+    
+    const cells = new Map<string, Cell>();
+    const colorPalette = new Set<string>();
+    const characterUsage: { [char: string]: number } = {};
+    
+    // Build shape-based converter, using the mapping algorithm to control
+    // how RGB pixels are reduced to scalar values for shape analysis
+    const shapeMappingMethod = this.resolveShapeMappingMethod(settings.mappingMethod);
+    const converter = new ShapeBasedConverter({
+      characterSet: settings.autoModeCharacterSet,
+      globalContrastExponent: settings.autoModeGlobalContrast,
+      directionalContrastExponent: settings.autoModeDirectionalContrast,
+      mappingMethod: shapeMappingMethod,
+    });
+    
+    // Apply preprocessing to the full image data first
+    const preprocessed = this.applyPreprocessing(imageData, settings);
+    
+    // Use shape-based converter to get character map
+    const charMap = converter.convertImage(preprocessed, gridW, gridH);
+    
+    // Cell pixel dimensions
+    const cellW = width / gridW;
+    const cellH = height / gridH;
+    
+    // Extract colors if quantization is enabled
+    let quantizedColors: string[] = [];
+    if (settings.colorQuantization !== 'none') {
+      quantizedColors = this.extractColors(imageData, settings.paletteSize);
+    }
+    
+    // For each cell, determine character (from shape converter) and color (from center pixel)
+    for (let gy = 0; gy < gridH; gy++) {
+      for (let gx = 0; gx < gridW; gx++) {
+        const key = `${gx},${gy}`;
+        
+        // Get character from shape converter (may be absent for empty cells)
+        let character = charMap.get(key) || ' ';
+        
+        // If character mapping is disabled, use space
+        if (!settings.enableCharacterMapping) {
+          character = ' ';
+        }
+        
+        // Sample center pixel for color
+        const centerPx = Math.floor(gx * cellW + cellW / 2);
+        const centerPy = Math.floor(gy * cellH + cellH / 2);
+        const clampedPx = Math.min(centerPx, width - 1);
+        const clampedPy = Math.min(centerPy, height - 1);
+        const pixelIdx = (clampedPy * width + clampedPx) * 4;
+        
+        const r = data[pixelIdx];
+        const g = data[pixelIdx + 1];
+        const b = data[pixelIdx + 2];
+        const a = data[pixelIdx + 3];
+        
+        // Skip fully transparent cells
+        if (a < 128 && character === ' ') continue;
+        
+        // Apply preprocessing adjustments for color determination
+        let adjustedR = r, adjustedG = g, adjustedB = b;
+        if (settings.brightnessAdjustment !== 0) {
+          const adj = settings.brightnessAdjustment * 2.55;
+          adjustedR = Math.max(0, Math.min(255, r + adj));
+          adjustedG = Math.max(0, Math.min(255, g + adj));
+          adjustedB = Math.max(0, Math.min(255, b + adj));
+        }
+        if (settings.saturationAdjustment !== 0) {
+          [adjustedR, adjustedG, adjustedB] = this.applySaturationAdjustment(adjustedR, adjustedG, adjustedB, settings.saturationAdjustment);
+        }
+        
+        // Determine text color
+        let color: string;
+        if (settings.enableTextColorMapping && settings.textColorPalette.length > 0) {
+          color = ColorMatcher.findClosestColor(adjustedR, adjustedG, adjustedB, settings.textColorPalette);
+        } else if (!settings.enableTextColorMapping) {
+          color = settings.defaultTextColor;
+        } else if (settings.useOriginalColors) {
+          if (settings.colorQuantization === 'none') {
+            color = ColorMatcher.rgbToHex(r, g, b);
+          } else {
+            color = this.quantizeColor(r, g, b, quantizedColors);
+          }
+        } else {
+          color = settings.defaultTextColor;
+        }
+        
+        // Determine background color
+        let bgColor: string;
+        if (settings.enableBackgroundColorMapping && settings.backgroundColorPalette.length > 0) {
+          bgColor = ColorMatcher.findClosestColor(adjustedR, adjustedG, adjustedB, settings.backgroundColorPalette);
+        } else {
+          bgColor = 'transparent';
+        }
+        
+        if (character !== ' ' || bgColor !== 'transparent') {
+          cells.set(key, { char: character, color, bgColor });
+          colorPalette.add(color);
+          characterUsage[character] = (characterUsage[character] || 0) + 1;
+        }
+      }
+    }
+    
+    const endTime = performance.now();
+    return {
+      cells,
+      colorPalette: Array.from(colorPalette),
+      characterUsage,
+      metadata: {
+        width: gridW,
+        height: gridH,
+        totalCells: cells.size,
+        uniqueColors: colorPalette.size,
+        conversionTime: endTime - startTime,
+      },
+    };
+  }
+  
+  /**
+   * Apply preprocessing adjustments to a copy of the image data.
+   * Used by auto mode to preprocess before shape analysis.
+   */
+  private applyPreprocessing(imageData: ImageData, settings: ConversionSettings): ImageData {
+    const { data, width, height } = imageData;
+    
+    // If no adjustments needed, return original
+    if (
+      settings.brightnessAdjustment === 0 &&
+      settings.contrastEnhancement === 1 &&
+      settings.saturationAdjustment === 0 &&
+      settings.highlightsAdjustment === 0 &&
+      settings.shadowsAdjustment === 0 &&
+      settings.midtonesAdjustment === 0
+    ) {
+      return imageData;
+    }
+    
+    // Create a copy
+    const newData = new Uint8ClampedArray(data);
+    
+    for (let i = 0; i < newData.length; i += 4) {
+      let r = newData[i], g = newData[i + 1], b = newData[i + 2];
+      
+      if (settings.brightnessAdjustment !== 0) {
+        const adj = settings.brightnessAdjustment * 2.55;
+        r = Math.max(0, Math.min(255, r + adj));
+        g = Math.max(0, Math.min(255, g + adj));
+        b = Math.max(0, Math.min(255, b + adj));
+      }
+      if (settings.contrastEnhancement !== 1) {
+        r = this.applyContrastToChannel(r, settings.contrastEnhancement);
+        g = this.applyContrastToChannel(g, settings.contrastEnhancement);
+        b = this.applyContrastToChannel(b, settings.contrastEnhancement);
+      }
+      if (settings.saturationAdjustment !== 0) {
+        [r, g, b] = this.applySaturationAdjustment(r, g, b, settings.saturationAdjustment);
+      }
+      if (settings.highlightsAdjustment !== 0 || settings.shadowsAdjustment !== 0 || settings.midtonesAdjustment !== 0) {
+        [r, g, b] = this.applyTonalAdjustments(r, g, b, settings.highlightsAdjustment, settings.shadowsAdjustment, settings.midtonesAdjustment);
+      }
+      
+      newData[i] = r;
+      newData[i + 1] = g;
+      newData[i + 2] = b;
+    }
+    
+    return new ImageData(newData, width, height);
+  }
+
+  /**
+   * Map the full set of mapping methods to the subset supported by shape analysis.
+   * 'contrast' and 'edge-detection' fall back to 'brightness' since they need
+   * neighbor context that doesn't apply to sub-cell sampling circles.
+   */
+  private resolveShapeMappingMethod(
+    method: CharacterMappingSettings['mappingMethod']
+  ): ShapeMappingMethod {
+    switch (method) {
+      case 'brightness':
+      case 'luminance':
+      case 'saturation':
+      case 'red-channel':
+      case 'green-channel':
+      case 'blue-channel':
+        return method;
+      case 'contrast':
+      case 'edge-detection':
+      default:
+        return 'brightness';
+    }
+  }
+
+  /**
+   * Convert a frame using line art mode.
+   * The imageData is higher resolution (multiple pixels per cell).
+   * Uses edge detection + character convolution for line art output.
+   */
+  private convertFrameLineArt(
+    imageData: ImageData,
+    settings: ConversionSettings,
+    startTime: number
+  ): ConversionResult {
+    const { data, width, height } = imageData;
+    const gridW = settings.lineArtGridWidth;
+    const gridH = settings.lineArtGridHeight;
+
+    const cells = new Map<string, Cell>();
+    const colorPalette = new Set<string>();
+    const characterUsage: { [char: string]: number } = {};
+
+    // Cell pixel dimensions
+    const cellW = Math.floor(width / gridW);
+    const cellH = Math.floor(height / gridH);
+
+    // Initialize line art converter with character bitmaps at cell size
+    const converter = new LineArtConverter();
+    converter.init(cellW, cellH);
+
+    // Apply preprocessing
+    const preprocessed = this.applyPreprocessing(imageData, settings);
+
+    // Run line art conversion
+    const charMap = converter.convertImage(preprocessed, gridW, gridH, {
+      blurRadius: settings.lineArtBlurRadius,
+      edgeThreshold: settings.lineArtEdgeThreshold,
+      dilateRadius: settings.lineArtDilateRadius,
+      erodeRadius: settings.lineArtErodeRadius,
+      sdfBlurRadius: settings.lineArtSdfBlurRadius,
+      inverseMatchWeight: settings.lineArtInverseMatchWeight,
+    });
+
+    // Extract colors if quantization is enabled
+    let quantizedColors: string[] = [];
+    if (settings.colorQuantization !== 'none') {
+      quantizedColors = this.extractColors(imageData, settings.paletteSize);
+    }
+
+    // Build cells with color from center pixel
+    for (let gy = 0; gy < gridH; gy++) {
+      for (let gx = 0; gx < gridW; gx++) {
+        const key = `${gx},${gy}`;
+        const character = charMap.get(key) || ' ';
+        if (character === ' ') continue;
+
+        // Sample center pixel for color
+        const centerPx = Math.min(Math.floor(gx * cellW + cellW / 2), width - 1);
+        const centerPy = Math.min(Math.floor(gy * cellH + cellH / 2), height - 1);
+        const pixelIdx = (centerPy * width + centerPx) * 4;
+
+        const r = data[pixelIdx];
+        const g = data[pixelIdx + 1];
+        const b = data[pixelIdx + 2];
+
+        // Determine text color
+        let color: string;
+        if (settings.enableTextColorMapping && settings.textColorPalette.length > 0) {
+          color = ColorMatcher.findClosestColor(r, g, b, settings.textColorPalette);
+        } else if (!settings.enableTextColorMapping) {
+          color = settings.defaultTextColor;
+        } else if (settings.useOriginalColors) {
+          color = settings.colorQuantization === 'none'
+            ? ColorMatcher.rgbToHex(r, g, b)
+            : this.quantizeColor(r, g, b, quantizedColors);
+        } else {
+          color = settings.defaultTextColor;
+        }
+
+        // Determine background color
+        let bgColor: string;
+        if (settings.enableBackgroundColorMapping && settings.backgroundColorPalette.length > 0) {
+          bgColor = ColorMatcher.findClosestColor(r, g, b, settings.backgroundColorPalette);
+        } else {
+          bgColor = 'transparent';
+        }
+
+        cells.set(key, { char: character, color, bgColor });
+        colorPalette.add(color);
+        characterUsage[character] = (characterUsage[character] || 0) + 1;
+      }
+    }
+
+    const endTime = performance.now();
+    return {
+      cells,
+      colorPalette: Array.from(colorPalette),
+      characterUsage,
+      metadata: {
+        width: gridW,
+        height: gridH,
+        totalCells: cells.size,
+        uniqueColors: colorPalette.size,
+        conversionTime: endTime - startTime,
+      },
+    };
+  }
+
   /**
    * Apply contrast enhancement to individual color channel
    */

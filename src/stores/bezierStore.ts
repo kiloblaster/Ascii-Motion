@@ -15,7 +15,7 @@ import type { Cell } from '../types';
  * Maintains user preferences across tool switches
  */
 export interface BezierSessionSettings {
-  fillMode: 'constant' | 'palette' | 'autofill';
+  fillMode: 'constant' | 'palette' | 'autofill' | 'lineart';
   autofillPaletteId: string;
   fillColorMode: 'current' | 'palette';
   strokeWidth: number;
@@ -103,7 +103,7 @@ interface BezierStore {
   // ========================================
   
   /** Selected fill mode */
-  fillMode: 'constant' | 'palette' | 'autofill';
+  fillMode: 'constant' | 'palette' | 'autofill' | 'lineart';
   
   /** ID of the autofill palette to use ('block', 'ansi', etc.) */
   autofillPaletteId: string;
@@ -123,6 +123,17 @@ interface BezierStore {
   
   /** Taper amount at end of stroke (0 = no taper, 1 = taper to point) */
   strokeTaperEnd: number;
+  
+  // ========================================
+  // LINE ART CONFIGURATION
+  // ========================================
+  
+  /** Edge sensitivity for line art mode */
+  lineArtEdgeThreshold: number;
+  /** Edge spread for line art mode */
+  lineArtSdfBlur: number;
+  /** Match precision for line art mode */
+  lineArtInverseMatch: number;
   
   // ========================================
   // PREVIEW DATA
@@ -300,7 +311,7 @@ interface BezierStore {
    * Set the fill mode for this shape
    * @param mode - 'constant', 'palette', or 'autofill'
    */
-  setFillMode: (mode: 'constant' | 'palette' | 'autofill') => void;
+  setFillMode: (mode: 'constant' | 'palette' | 'autofill' | 'lineart') => void;
   
   /**
    * Set the autofill palette ID
@@ -335,6 +346,13 @@ interface BezierStore {
    * @param taper - 0 to 1 (0 = no taper, 1 = taper to point)
    */
   setStrokeTaperEnd: (taper: number) => void;
+  
+  /** Set line art edge threshold */
+  setLineArtEdgeThreshold: (v: number) => void;
+  /** Set line art SDF blur */
+  setLineArtSdfBlur: (v: number) => void;
+  /** Set line art inverse match weight */
+  setLineArtInverseMatch: (v: number) => void;
   
   // ========================================
   // ACTIONS - PREVIEW
@@ -389,7 +407,7 @@ interface BezierStore {
   captureState: () => {
     anchorPoints: BezierAnchorPoint[];
     isClosed: boolean;
-    fillMode: 'constant' | 'palette' | 'autofill';
+    fillMode: 'constant' | 'palette' | 'autofill' | 'lineart';
     autofillPaletteId: string;
     fillColorMode: 'current' | 'palette';
     strokeWidth: number;
@@ -403,7 +421,7 @@ interface BezierStore {
   restoreState: (snapshot: {
     anchorPoints: BezierAnchorPoint[];
     isClosed: boolean;
-    fillMode: 'constant' | 'palette' | 'autofill';
+    fillMode: 'constant' | 'palette' | 'autofill' | 'lineart';
     autofillPaletteId: string;
     fillColorMode: 'current' | 'palette';
     strokeWidth: number;
@@ -428,7 +446,7 @@ interface BezierStoreState {
   draggingPointId: string | null;
   draggingHandleId: { pointId: string; type: 'in' | 'out' } | null;
   remountKey: number;
-  fillMode: 'constant' | 'palette' | 'autofill';
+  fillMode: 'constant' | 'palette' | 'autofill' | 'lineart';
   autofillPaletteId: string;
   fillColorMode: 'current' | 'palette';
   strokeWidth: number;
@@ -461,6 +479,9 @@ const createDefaultState = (): BezierStoreState => ({
   strokeWidth: 1.0,
   strokeTaperStart: 0.0,
   strokeTaperEnd: 0.0,
+  lineArtEdgeThreshold: 0.01,
+  lineArtSdfBlur: 0,
+  lineArtInverseMatch: 20,
   previewCells: null,
   affectedCellCount: 0,
   originalFrameIndex: null,
@@ -1055,7 +1076,7 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
   // FILL MODE ACTIONS
   // ========================================
   
-  setFillMode: (mode: 'constant' | 'palette' | 'autofill') => {
+  setFillMode: (mode: 'constant' | 'palette' | 'autofill' | 'lineart') => {
     set((state) => {
       const newState = { ...state, fillMode: mode };
       return {
@@ -1117,6 +1138,16 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
         sessionSettings: createSessionSettings(newState)
       };
     });
+  },
+  
+  setLineArtEdgeThreshold: (v: number) => {
+    set({ lineArtEdgeThreshold: v });
+  },
+  setLineArtSdfBlur: (v: number) => {
+    set({ lineArtSdfBlur: v });
+  },
+  setLineArtInverseMatch: (v: number) => {
+    set({ lineArtInverseMatch: v });
   },
   
   // ========================================
@@ -1229,7 +1260,7 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
   restoreState: (snapshot: {
     anchorPoints: BezierAnchorPoint[];
     isClosed: boolean;
-    fillMode: 'constant' | 'palette' | 'autofill';
+    fillMode: 'constant' | 'palette' | 'autofill' | 'lineart';
     autofillPaletteId: string;
     fillColorMode: 'current' | 'palette';
     strokeWidth: number;

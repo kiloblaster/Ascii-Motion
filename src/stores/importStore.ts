@@ -116,6 +116,21 @@ export interface ImportSettings {
   enableColorAsAlpha: boolean;
   colorAsAlphaKey: string;      // Hex color to treat as transparent
   colorAsAlphaTolerance: number; // 0-255 RGB distance tolerance
+  
+  // Auto mode character mapping (shape-vector based)
+  characterMappingStyle: 'character-palette' | 'auto-mode' | 'line-art';
+  autoModeCharacterSet: 'basic-ascii' | 'block-characters';
+  autoModeSamplingQuality: 'low' | 'medium' | 'high';
+  autoModeGlobalContrast: number;      // 1.0–4.0 exponent
+  autoModeDirectionalContrast: number; // 1.0–4.0 exponent
+  
+  // Line art settings
+  lineArtBlurRadius: number;          // 0–5
+  lineArtEdgeThreshold: number;       // 0–1
+  lineArtDilateRadius: number;        // 0–10
+  lineArtErodeRadius: number;         // 0–10
+  lineArtSdfBlurRadius: number;       // 0–20
+  lineArtInverseMatchWeight: number;  // 0–20
 }
 
 // Default UI state
@@ -182,7 +197,22 @@ const DEFAULT_IMPORT_SETTINGS: ImportSettings = {
   // Transparency settings
   enableColorAsAlpha: false,
   colorAsAlphaKey: '#000000', // Default to black
-  colorAsAlphaTolerance: 10 // Small default tolerance
+  colorAsAlphaTolerance: 10, // Small default tolerance
+  
+  // Auto mode character mapping
+  characterMappingStyle: 'character-palette',
+  autoModeCharacterSet: 'basic-ascii',
+  autoModeSamplingQuality: 'low',
+  autoModeGlobalContrast: 2.0,
+  autoModeDirectionalContrast: 2.0,
+  
+  // Line art settings
+  lineArtBlurRadius: 0,
+  lineArtEdgeThreshold: 0,
+  lineArtDilateRadius: 0,
+  lineArtErodeRadius: 0,
+  lineArtSdfBlurRadius: 0,
+  lineArtInverseMatchWeight: 20,
 };
 
 export const useImportStore = create<ImportState>((set, get) => ({

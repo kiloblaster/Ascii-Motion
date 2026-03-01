@@ -634,7 +634,7 @@ export interface BezierCommitHistoryAction extends HistoryAction {
     bezierState: {
       anchorPoints: Array<import('../stores/bezierStore').BezierAnchorPoint>;
       isClosed: boolean;
-      fillMode: 'constant' | 'palette' | 'autofill';
+      fillMode: 'constant' | 'palette' | 'autofill' | 'lineart';
       autofillPaletteId: string;
       fillColorMode: 'current' | 'palette';
       strokeWidth: number;

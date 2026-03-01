@@ -59,6 +59,7 @@ import {
 } from '../../stores/importStore';
 import { mediaProcessor, SUPPORTED_IMAGE_FORMATS, SUPPORTED_VIDEO_FORMATS } from '../../utils/mediaProcessor';
 import { asciiConverter } from '../../utils/asciiConverter';
+import { SAMPLING_QUALITY_PRESETS } from '../../utils/shapeBasedConverter';
 import { cloneFrames } from '../../utils/frameUtils';
 import { useCanvasStore } from '../../stores/canvasStore';
 import { useAnimationStore } from '../../stores/animationStore';
@@ -94,7 +95,9 @@ function applyColorKey(
   enableColorAsAlpha: boolean,
   colorAsAlphaKey: string,
   colorAsAlphaTolerance: number,
-  originalImageData?: ImageData
+  originalImageData?: ImageData,
+  gridWidth?: number,
+  gridHeight?: number
 ): Map<string, Cell> {
   if (!enableColorAsAlpha) {
     return cells;
@@ -109,9 +112,18 @@ function applyColorKey(
     let shouldRemove = false;
     
     if (originalImageData) {
-      // Use ORIGINAL pixel color from source image (before any processing)
-      // This is what the user sees in the transparency preview
-      const pixelIndex = (y * originalImageData.width + x) * 4;
+      // When image is higher resolution than the grid (auto/line-art mode),
+      // map cell coordinates to the center pixel of the corresponding cell region.
+      const imgW = originalImageData.width;
+      const imgH = originalImageData.height;
+      const gw = gridWidth || imgW;
+      const gh = gridHeight || imgH;
+      const cellW = imgW / gw;
+      const cellH = imgH / gh;
+      const px = Math.min(Math.floor(x * cellW + cellW / 2), imgW - 1);
+      const py = Math.min(Math.floor(y * cellH + cellH / 2), imgH - 1);
+      
+      const pixelIndex = (py * imgW + px) * 4;
       const r = originalImageData.data[pixelIndex];
       const g = originalImageData.data[pixelIndex + 1];
       const b = originalImageData.data[pixelIndex + 2];
@@ -460,6 +472,25 @@ export function MediaImportPanel() {
       characterMappingMode: mappingMode,
       invertDensity: invertDensity,
       
+      // Auto mode (shape-vector based)
+      autoModeEnabled: settings.characterMappingStyle === 'auto-mode',
+      autoModeCharacterSet: settings.autoModeCharacterSet,
+      autoModeGlobalContrast: settings.autoModeGlobalContrast,
+      autoModeDirectionalContrast: settings.autoModeDirectionalContrast,
+      autoModeGridWidth: settings.characterWidth,
+      autoModeGridHeight: settings.characterHeight,
+      
+      // Line art mode
+      lineArtEnabled: settings.characterMappingStyle === 'line-art',
+      lineArtBlurRadius: settings.lineArtBlurRadius,
+      lineArtEdgeThreshold: settings.lineArtEdgeThreshold,
+      lineArtDilateRadius: settings.lineArtDilateRadius,
+      lineArtErodeRadius: settings.lineArtErodeRadius,
+      lineArtSdfBlurRadius: settings.lineArtSdfBlurRadius,
+      lineArtInverseMatchWeight: settings.lineArtInverseMatchWeight,
+      lineArtGridWidth: settings.characterWidth,
+      lineArtGridHeight: settings.characterHeight,
+      
       // Text color mapping 
       enableTextColorMapping: settings.enableTextColorMapping,
       textColorPalette: textColorPalette,
@@ -492,6 +523,19 @@ export function MediaImportPanel() {
     };
   }, [
     settings.enableCharacterMapping,
+    settings.characterMappingStyle,
+    settings.autoModeCharacterSet,
+    settings.autoModeGlobalContrast,
+    settings.autoModeDirectionalContrast,
+    settings.autoModeSamplingQuality,
+    settings.characterWidth,
+    settings.characterHeight,
+    settings.lineArtBlurRadius,
+    settings.lineArtEdgeThreshold,
+    settings.lineArtDilateRadius,
+    settings.lineArtErodeRadius,
+    settings.lineArtSdfBlurRadius,
+    settings.lineArtInverseMatchWeight,
     settings.enableTextColorMapping, 
     settings.textColorPaletteId,
     settings.textColorMappingMode,
@@ -531,12 +575,28 @@ export function MediaImportPanel() {
       setProgress(0);
       
       try {
+        // Determine pixels-per-cell for auto mode and line art mode
+        const isAutoMode = settings.characterMappingStyle === 'auto-mode';
+        const isLineArt = settings.characterMappingStyle === 'line-art';
+        const qualityPreset = isAutoMode
+          ? SAMPLING_QUALITY_PRESETS[settings.autoModeSamplingQuality]
+          : undefined;
+        // Line art needs higher res for edge detection; use medium preset
+        const lineArtPreset = isLineArt
+          ? SAMPLING_QUALITY_PRESETS['low']
+          : undefined;
+        const pixelsPreset = qualityPreset || lineArtPreset;
+
         const options = {
           targetWidth: settings.characterWidth,
           targetHeight: settings.characterHeight,
           maintainAspectRatio: false, // Don't crop - stretch to exact dimensions we calculated
           cropMode: settings.cropMode,
-          quality: 'medium' as const
+          quality: 'medium' as const,
+          ...(pixelsPreset && {
+            pixelsPerCellX: pixelsPreset.cellPixelsX,
+            pixelsPerCellY: pixelsPreset.cellPixelsY,
+          }),
         };
         
         let result;
@@ -578,6 +638,8 @@ export function MediaImportPanel() {
     settings.characterWidth,
     settings.characterHeight,
     settings.cropMode, // Added back - now used for aspect ratio cropping
+    settings.characterMappingStyle, // Re-process at different resolution when mode changes
+    settings.autoModeSamplingQuality,
     setProcessing,
     setProgress,
     setProcessedFrames,
@@ -604,7 +666,9 @@ export function MediaImportPanel() {
           settings.enableColorAsAlpha,
           settings.colorAsAlphaKey,
           settings.colorAsAlphaTolerance,
-          previewFrames[frameIndex].imageData
+          previewFrames[frameIndex].imageData,
+          settings.characterWidth,
+          settings.characterHeight
         );
         
         // Show preview on canvas overlay (positioned based on alignment)
@@ -641,6 +705,16 @@ export function MediaImportPanel() {
     settings.sharpen,
     // Character mapping settings
     settings.enableCharacterMapping,
+    settings.characterMappingStyle,
+    settings.autoModeCharacterSet,
+    settings.autoModeGlobalContrast,
+    settings.autoModeDirectionalContrast,
+    settings.lineArtBlurRadius,
+    settings.lineArtEdgeThreshold,
+    settings.lineArtDilateRadius,
+    settings.lineArtErodeRadius,
+    settings.lineArtSdfBlurRadius,
+    settings.lineArtInverseMatchWeight,
     activePalette,
     mappingMethod,
     invertDensity,
@@ -850,7 +924,9 @@ export function MediaImportPanel() {
           settings.enableColorAsAlpha,
           settings.colorAsAlphaKey,
           settings.colorAsAlphaTolerance,
-          previewFrames[0].imageData
+          previewFrames[0].imageData,
+          settings.characterWidth,
+          settings.characterHeight
         );
         
         const positionedCells = positionCellsOnCanvas(filteredCells, settings.characterWidth, settings.characterHeight);
@@ -896,7 +972,9 @@ export function MediaImportPanel() {
             settings.enableColorAsAlpha,
             settings.colorAsAlphaKey,
             settings.colorAsAlphaTolerance,
-            previewFrames[i].imageData
+            previewFrames[i].imageData,
+            settings.characterWidth,
+            settings.characterHeight
           );
           
           const positionedCells = positionCellsOnCanvas(filteredCells, settings.characterWidth, settings.characterHeight);
