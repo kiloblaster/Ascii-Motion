@@ -95,7 +95,9 @@ function applyColorKey(
   enableColorAsAlpha: boolean,
   colorAsAlphaKey: string,
   colorAsAlphaTolerance: number,
-  originalImageData?: ImageData
+  originalImageData?: ImageData,
+  gridWidth?: number,
+  gridHeight?: number
 ): Map<string, Cell> {
   if (!enableColorAsAlpha) {
     return cells;
@@ -110,9 +112,18 @@ function applyColorKey(
     let shouldRemove = false;
     
     if (originalImageData) {
-      // Use ORIGINAL pixel color from source image (before any processing)
-      // This is what the user sees in the transparency preview
-      const pixelIndex = (y * originalImageData.width + x) * 4;
+      // When image is higher resolution than the grid (auto/line-art mode),
+      // map cell coordinates to the center pixel of the corresponding cell region.
+      const imgW = originalImageData.width;
+      const imgH = originalImageData.height;
+      const gw = gridWidth || imgW;
+      const gh = gridHeight || imgH;
+      const cellW = imgW / gw;
+      const cellH = imgH / gh;
+      const px = Math.min(Math.floor(x * cellW + cellW / 2), imgW - 1);
+      const py = Math.min(Math.floor(y * cellH + cellH / 2), imgH - 1);
+      
+      const pixelIndex = (py * imgW + px) * 4;
       const r = originalImageData.data[pixelIndex];
       const g = originalImageData.data[pixelIndex + 1];
       const b = originalImageData.data[pixelIndex + 2];
@@ -655,7 +666,9 @@ export function MediaImportPanel() {
           settings.enableColorAsAlpha,
           settings.colorAsAlphaKey,
           settings.colorAsAlphaTolerance,
-          previewFrames[frameIndex].imageData
+          previewFrames[frameIndex].imageData,
+          settings.characterWidth,
+          settings.characterHeight
         );
         
         // Show preview on canvas overlay (positioned based on alignment)
@@ -911,7 +924,9 @@ export function MediaImportPanel() {
           settings.enableColorAsAlpha,
           settings.colorAsAlphaKey,
           settings.colorAsAlphaTolerance,
-          previewFrames[0].imageData
+          previewFrames[0].imageData,
+          settings.characterWidth,
+          settings.characterHeight
         );
         
         const positionedCells = positionCellsOnCanvas(filteredCells, settings.characterWidth, settings.characterHeight);
@@ -957,7 +972,9 @@ export function MediaImportPanel() {
             settings.enableColorAsAlpha,
             settings.colorAsAlphaKey,
             settings.colorAsAlphaTolerance,
-            previewFrames[i].imageData
+            previewFrames[i].imageData,
+            settings.characterWidth,
+            settings.characterHeight
           );
           
           const positionedCells = positionCellsOnCanvas(filteredCells, settings.characterWidth, settings.characterHeight);

@@ -371,10 +371,10 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
                       </Select>
                     </div>
 
-                    {/* Global Contrast */}
+                    {/* Internal Contrast */}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
-                        <Label className="text-xs font-medium">Global Contrast</Label>
+                        <Label className="text-xs font-medium">Internal Contrast</Label>
                         <span className="text-xs text-muted-foreground">{settings.autoModeGlobalContrast.toFixed(1)}</span>
                       </div>
                       <Slider
@@ -390,10 +390,10 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
                       />
                     </div>
 
-                    {/* Directional Contrast */}
+                    {/* Edge Contrast */}
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
-                        <Label className="text-xs font-medium">Directional Contrast</Label>
+                        <Label className="text-xs font-medium">Edge Contrast</Label>
                         <span className="text-xs text-muted-foreground">{settings.autoModeDirectionalContrast.toFixed(1)}</span>
                       </div>
                       <Slider
