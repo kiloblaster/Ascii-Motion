@@ -21,7 +21,7 @@ import {
 } from './bezierAutofillUtils';
 import { getCharacterForPattern } from '../constants/bezierAutofill';
 import { generateStrokeOutline } from './bezierStrokeUtils';
-import { LineArtConverter, DEFAULT_LINE_ART_OPTIONS } from './lineArtConverter';
+import { LineArtConverter } from './lineArtConverter';
 
 /**
  * Helper function to map overlap percentage to color from a palette
@@ -501,10 +501,10 @@ function fillLineArt(
   isClosed: boolean,
   canvasWidth: number,
   canvasHeight: number,
-  cellWidth: number,
-  cellHeight: number,
-  zoom: number,
-  panOffset: { x: number; y: number },
+  _cellWidth: number,
+  _cellHeight: number,
+  _zoom: number,
+  _panOffset: { x: number; y: number },
   selectedColor: string,
   selectedBgColor: string,
   strokeWidth: number,

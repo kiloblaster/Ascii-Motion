@@ -1,12 +1,61 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.0.2";
-export const BUILD_DATE = "2026-02-24T05:58:13.035Z";
-export const BUILD_HASH = "3204770";
+export const VERSION = "2.0.4";
+export const BUILD_DATE = "2026-03-01T23:53:23.774Z";
+export const BUILD_HASH = "72923a4";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.4",
+    "date": "2026-03-01T23:53:23.774Z",
+    "commits": [
+      "Merge pull request #79 from CameronFoxly/feature/auto-mode-character-mapping",
+      "Added line art mode to bezier tool.",
+      "Fine tuned line art and auto mode settings",
+      "Added line art character mapping setting",
+      "Set up auto mode for ascii conversion",
+      "Merge pull request #78 from CameronFoxly/dependabot/npm_and_yarn/rollup-4.59.0",
+      "Bump rollup from 4.50.0 to 4.59.0",
+      "Merge pull request #77 from CameronFoxly/dependabot/npm_and_yarn/dev-tools/react-export-test/rollup-4.59.0",
+      "Bump rollup from 4.57.1 to 4.59.0 in /dev-tools/react-export-test",
+      "Merge pull request #75 from CameronFoxly/dependabot/npm_and_yarn/multi-f5f34deeac",
+      "Bump minimatch",
+      "Merge pull request #72 from CameronFoxly/alert-autofix-2",
+      "Merge pull request #73 from CameronFoxly/dependabot/npm_and_yarn/hono-4.12.2",
+      "Bump hono from 4.11.9 to 4.12.2",
+      "Potential fix for code scanning alert no. 2: Insecure randomness",
+      "Update development plan in Readme",
+      "Bump version number",
+      "Merge pull request #71 from CameronFoxly/timeline-bugbash"
+    ]
+  },
+  {
+    "version": "2.0.3",
+    "date": "2026-03-01T23:50:03.911Z",
+    "commits": [
+      "Merge pull request #79 from CameronFoxly/feature/auto-mode-character-mapping",
+      "Added line art mode to bezier tool.",
+      "Fine tuned line art and auto mode settings",
+      "Added line art character mapping setting",
+      "Set up auto mode for ascii conversion",
+      "Merge pull request #78 from CameronFoxly/dependabot/npm_and_yarn/rollup-4.59.0",
+      "Bump rollup from 4.50.0 to 4.59.0",
+      "Merge pull request #77 from CameronFoxly/dependabot/npm_and_yarn/dev-tools/react-export-test/rollup-4.59.0",
+      "Bump rollup from 4.57.1 to 4.59.0 in /dev-tools/react-export-test",
+      "Merge pull request #75 from CameronFoxly/dependabot/npm_and_yarn/multi-f5f34deeac",
+      "Bump minimatch",
+      "Merge pull request #72 from CameronFoxly/alert-autofix-2",
+      "Merge pull request #73 from CameronFoxly/dependabot/npm_and_yarn/hono-4.12.2",
+      "Bump hono from 4.11.9 to 4.12.2",
+      "Potential fix for code scanning alert no. 2: Insecure randomness",
+      "Update development plan in Readme",
+      "Bump version number",
+      "Merge pull request #71 from CameronFoxly/timeline-bugbash",
+      "Update flags and version after deploy"
+    ]
+  },
   {
     "version": "2.0.2",
     "date": "2026-02-24T05:58:13.035Z",

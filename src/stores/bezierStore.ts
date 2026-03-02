@@ -452,6 +452,9 @@ interface BezierStoreState {
   strokeWidth: number;
   strokeTaperStart: number;
   strokeTaperEnd: number;
+  lineArtEdgeThreshold: number;
+  lineArtSdfBlur: number;
+  lineArtInverseMatch: number;
   previewCells: Map<string, Cell> | null;
   affectedCellCount: number;
   originalFrameIndex: number | null;
