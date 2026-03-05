@@ -24,8 +24,8 @@ export const BezierActionButtons: React.FC<BezierActionButtonsProps> = ({
   const { activeTool } = useToolStore();
   const { anchorPoints } = useBezierStore();
 
-  // Only show when bezier tool is active and there are anchor points
-  if (activeTool !== 'beziershape' || anchorPoints.length === 0) {
+  // Only show when bezier/rectangle/ellipse tool is active and there are anchor points
+  if ((activeTool !== 'beziershape' && activeTool !== 'rectangle' && activeTool !== 'ellipse') || anchorPoints.length === 0) {
     return null;
   }
 

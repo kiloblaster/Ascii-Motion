@@ -9,6 +9,13 @@
 
 import { create } from 'zustand';
 import type { Cell } from '../types';
+import {
+  generateRectangleAnchorPoints,
+  generateEllipseAnchorPoints,
+  type ShapeBounds,
+} from '../utils/vectorShapeGeometry';
+
+export type VectorShapeType = 'freeform' | 'rectangle' | 'ellipse';
 
 /**
  * Session-persistent settings for the bezier tool
@@ -147,6 +154,12 @@ interface BezierStore {
   
   /** Frame index where the shape was originally started (for frame-switch handling) */
   originalFrameIndex: number | null;
+  
+  /** Type of vector shape being drawn ('freeform' for bezier pen, 'rectangle', 'ellipse') */
+  shapeType: VectorShapeType;
+  
+  /** Bounding box for rectangle/ellipse shapes (null for freeform) */
+  shapeBounds: ShapeBounds | null;
   
   // ========================================
   // SESSION PERSISTENCE
@@ -355,6 +368,22 @@ interface BezierStore {
   setLineArtInverseMatch: (v: number) => void;
   
   // ========================================
+  // ACTIONS - VECTOR SHAPE (RECTANGLE/ELLIPSE)
+  // ========================================
+  
+  /**
+   * Initialize a rectangle or ellipse shape from bounding box
+   * Generates anchor points and enters editing mode
+   */
+  initializeShape: (shapeType: 'rectangle' | 'ellipse', bounds: ShapeBounds) => void;
+  
+  /**
+   * Update the bounding box of a rectangle/ellipse shape
+   * Regenerates anchor points to match new bounds
+   */
+  updateShapeBounds: (bounds: ShapeBounds) => void;
+
+  // ========================================
   // ACTIONS - PREVIEW
   // ========================================
   
@@ -413,6 +442,8 @@ interface BezierStore {
     strokeWidth: number;
     strokeTaperStart: number;
     strokeTaperEnd: number;
+    shapeType: VectorShapeType;
+    shapeBounds: ShapeBounds | null;
   };
   
   /**
@@ -427,6 +458,8 @@ interface BezierStore {
     strokeWidth: number;
     strokeTaperStart: number;
     strokeTaperEnd: number;
+    shapeType: VectorShapeType;
+    shapeBounds: ShapeBounds | null;
   }) => void;
 }
 
@@ -458,6 +491,8 @@ interface BezierStoreState {
   previewCells: Map<string, Cell> | null;
   affectedCellCount: number;
   originalFrameIndex: number | null;
+  shapeType: VectorShapeType;
+  shapeBounds: ShapeBounds | null;
 }
 
 /**
@@ -488,6 +523,8 @@ const createDefaultState = (): BezierStoreState => ({
   previewCells: null,
   affectedCellCount: 0,
   originalFrameIndex: null,
+  shapeType: 'freeform' as VectorShapeType,
+  shapeBounds: null,
 });
 
 /**
@@ -1154,6 +1191,39 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
   },
   
   // ========================================
+  // VECTOR SHAPE ACTIONS (RECTANGLE/ELLIPSE)
+  // ========================================
+  
+  initializeShape: (shapeType: 'rectangle' | 'ellipse', bounds: ShapeBounds) => {
+    const generator = shapeType === 'rectangle'
+      ? generateRectangleAnchorPoints
+      : generateEllipseAnchorPoints;
+    
+    set({
+      anchorPoints: generator(bounds),
+      isClosed: true,
+      isDrawing: false,
+      isEditingShape: true,
+      shapeType,
+      shapeBounds: { ...bounds },
+    });
+  },
+  
+  updateShapeBounds: (bounds: ShapeBounds) => {
+    const state = get();
+    if (state.shapeType === 'freeform') return;
+    
+    const generator = state.shapeType === 'rectangle'
+      ? generateRectangleAnchorPoints
+      : generateEllipseAnchorPoints;
+    
+    set({
+      anchorPoints: generator(bounds),
+      shapeBounds: { ...bounds },
+    });
+  },
+
+  // ========================================
   // PREVIEW ACTIONS
   // ========================================
   
@@ -1254,6 +1324,8 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
       strokeWidth: state.strokeWidth,
       strokeTaperStart: state.strokeTaperStart,
       strokeTaperEnd: state.strokeTaperEnd,
+      shapeType: state.shapeType,
+      shapeBounds: state.shapeBounds ? { ...state.shapeBounds } : null,
     };
   },
   
@@ -1269,6 +1341,8 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
     strokeWidth: number;
     strokeTaperStart: number;
     strokeTaperEnd: number;
+    shapeType: VectorShapeType;
+    shapeBounds: ShapeBounds | null;
   }) => {
     set({
       anchorPoints: snapshot.anchorPoints.map(p => ({ ...p })),
@@ -1281,6 +1355,8 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
       strokeWidth: snapshot.strokeWidth,
       strokeTaperStart: snapshot.strokeTaperStart,
       strokeTaperEnd: snapshot.strokeTaperEnd,
+      shapeType: snapshot.shapeType,
+      shapeBounds: snapshot.shapeBounds ? { ...snapshot.shapeBounds } : null,
       // Reset interaction state
       isDraggingPoint: false,
       isDraggingHandle: false,

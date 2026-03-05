@@ -235,10 +235,8 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         magicWandSelectionHandlers.handleMagicWandMouseDown(event);
         break;
       case 'rectangle':
-        dragAndDropHandlers.handleRectangleMouseDown(event);
-        break;
       case 'ellipse':
-        dragAndDropHandlers.handleEllipseMouseDown(event);
+        // Handled by InteractiveVectorShapeOverlay
         break;
       case 'text': {
         const textCoords = getGridCoordinatesFromEvent(event);
@@ -370,10 +368,8 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         magicWandSelectionHandlers.handleMagicWandMouseMove(event);
         break;
       case 'rectangle':
-        dragAndDropHandlers.handleRectangleMouseMove(event);
-        break;
       case 'ellipse':
-        dragAndDropHandlers.handleEllipseMouseMove(event);
+        // Handled by InteractiveVectorShapeOverlay
         break;
       case 'gradientfill': {
         const gradientCoords = getGridCoordinatesFromEvent(event);
@@ -468,10 +464,8 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
         magicWandSelectionHandlers.handleMagicWandMouseUp();
         break;
       case 'rectangle':
-        dragAndDropHandlers.handleRectangleMouseUp();
-        break;
       case 'ellipse':
-        dragAndDropHandlers.handleEllipseMouseUp();
+        // Handled by InteractiveVectorShapeOverlay
         break;
       case 'asciibox':
         asciiBoxHandlers.handleMouseUp();

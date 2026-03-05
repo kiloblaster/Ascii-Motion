@@ -1,34 +1,41 @@
 import React from 'react';
-import { Type } from 'lucide-react';
-import { useCanvasDragAndDrop } from '../../hooks/useCanvasDragAndDrop';
-import { useToolStore } from '../../stores/toolStore';
-import { ColorSwatch } from '../common/ColorSwatch';
+import { useBezierStore } from '../../stores/bezierStore';
 
 /**
  * Ellipse Tool Component
- * Handles ellipse drawing behavior
+ * The vector shape overlay handles all interaction.
  */
 export const EllipseTool: React.FC = () => {
-  // The ellipse logic is handled by useCanvasDragAndDrop hook
-  // This component ensures the hook is active when ellipse tool is selected
-  useCanvasDragAndDrop();
-
-  return null; // No direct UI - handles behavior through hooks
+  return null;
 };
 
 /**
  * Ellipse Tool Status Component
- * Provides visual feedback about the ellipse tool
  */
 export const EllipseToolStatus: React.FC = () => {
-  const { selectedChar, selectedColor, selectedBgColor, rectangleFilled } = useToolStore();
+  const { anchorPoints, affectedCellCount, fillMode } = useBezierStore();
+
+  const getFillModeText = () => {
+    switch (fillMode) {
+      case 'constant': return 'Selection';
+      case 'palette': return 'Palette';
+      case 'autofill': return 'Autofill';
+      case 'lineart': return 'Line Art';
+      default: return 'Palette';
+    }
+  };
+
+  if (anchorPoints.length === 0) {
+    return (
+      <span className="text-muted-foreground">
+        Ellipse: {getFillModeText()} • Drag to draw, Shift for circle
+      </span>
+    );
+  }
 
   return (
-    <span className="text-muted-foreground flex items-center gap-1.5">
-      Ellipse ({rectangleFilled ? 'filled' : 'hollow'}): "{selectedChar}" <Type className="w-3 h-3 inline" /> <ColorSwatch color={selectedColor} />
-      {selectedBgColor !== '#FFFFFF' && (
-        <> BG: <ColorSwatch color={selectedBgColor} /></>
-      )} - Drag to draw, Shift for circle
+    <span className="text-muted-foreground">
+      Ellipse: {affectedCellCount} cell{affectedCellCount === 1 ? '' : 's'} • {getFillModeText()} • Enter to apply, Escape to cancel
     </span>
   );
 };

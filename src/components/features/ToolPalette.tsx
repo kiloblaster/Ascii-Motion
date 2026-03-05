@@ -262,7 +262,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
  * Now exported for use in the canvas header horizontal bar.
  */
 export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
-  const { rectangleFilled, setRectangleFilled, paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection: _selection, lassoSelection: _lassoSelection, magicWandSelection: _magicWandSelection, selectionAffectsAllLayers, setSelectionAffectsAllLayers } = useToolStore();
+  const { paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection: _selection, lassoSelection: _lassoSelection, magicWandSelection: _magicWandSelection, selectionAffectsAllLayers, setSelectionAffectsAllLayers } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
   const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
   const { canCrop, cropToSelection } = useCropToSelection();
@@ -317,12 +317,47 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
         <div className="w-px h-5 bg-border/50" />
       )}
 
-      {/* Rectangle/Ellipse: Filled toggle */}
+      {/* Rectangle/Ellipse: Vector shape options (shared with bezier) */}
       {(effectiveTool === 'rectangle' || effectiveTool === 'ellipse') && (
-        <div className="flex items-center gap-1.5">
-          <Label htmlFor="filled-toggle" className="text-xs cursor-pointer text-muted-foreground">Filled</Label>
-          <Switch id="filled-toggle" checked={rectangleFilled} onCheckedChange={setRectangleFilled} className="scale-75" />
-        </div>
+        <>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-muted-foreground">Char:</Label>
+            <Select value={fillMode} onValueChange={(v) => setFillMode(v as 'constant' | 'palette' | 'autofill' | 'lineart')}>
+              <SelectTrigger className="h-6 w-20 text-[10px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="constant" className="text-xs">Selection</SelectItem>
+                <SelectItem value="palette" className="text-xs">Palette</SelectItem>
+                <SelectItem value="autofill" className="text-xs">Autofill</SelectItem>
+                <SelectItem value="lineart" className="text-xs">Line Art</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {fillMode === 'autofill' && (
+            <Select value={autofillPaletteId} onValueChange={setAutofillPaletteId}>
+              <SelectTrigger className="h-6 w-24 text-[10px]"><SelectValue>{AUTOFILL_PALETTES.find(p => p.id === autofillPaletteId)?.name ?? 'Palette'}</SelectValue></SelectTrigger>
+              <SelectContent>{AUTOFILL_PALETTES.map(p => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>)}</SelectContent>
+            </Select>
+          )}
+          {fillMode !== 'lineart' && (
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-muted-foreground">Color:</Label>
+            <Select value={fillColorMode} onValueChange={(v) => setFillColorMode(v as 'current' | 'palette')}>
+              <SelectTrigger className="h-6 w-20 text-[10px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="current" className="text-xs">Current</SelectItem>
+                <SelectItem value="palette" className="text-xs">Palette</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          )}
+          {fillMode === 'lineart' && (
+            <div className="flex items-center gap-1">
+              <Label className="text-[10px] text-muted-foreground">Width:</Label>
+              <Slider min={0.1} max={10} step={0.1} value={strokeWidth} onValueChange={setStrokeWidth} className="w-16" />
+              <span className="text-[10px] text-muted-foreground tabular-nums w-6">{strokeWidth.toFixed(1)}</span>
+            </div>
+          )}
+        </>
       )}
 
       {/* Paint bucket: Contiguous + Match criteria + Affects */}
