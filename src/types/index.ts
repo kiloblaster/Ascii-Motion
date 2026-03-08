@@ -642,6 +642,7 @@ export interface BezierCommitHistoryAction extends HistoryAction {
       strokeTaperEnd: number;
       shapeType: import('../stores/bezierStore').VectorShapeType;
       shapeBounds: import('../utils/vectorShapeGeometry').ShapeBounds | null;
+      shapeFilled: boolean;
       selectedChar: string;
       selectedColor: string;
       selectedBgColor: string;

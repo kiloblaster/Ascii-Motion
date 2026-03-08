@@ -373,8 +373,10 @@ export const InteractiveBezierOverlay: React.FC = () => {
    * Auto-commit shape when switching away from bezier tool
    */
   useEffect(() => {
+    const { isProcessingHistory } = useToolStore.getState();
+
     // Check if we're switching away from beziershape tool
-    if (prevToolRef.current === 'beziershape' && activeTool !== 'beziershape') {
+    if (prevToolRef.current === 'beziershape' && activeTool !== 'beziershape' && !isProcessingHistory) {
       // If there's a shape (open or closed) with preview data, commit it
       if (anchorPoints.length >= 2 && previewCells && previewCells.size > 0) {
         handleCommit();

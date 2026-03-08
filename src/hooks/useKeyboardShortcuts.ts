@@ -749,6 +749,7 @@ const processHistoryAction = (
           ...bezierStateForRestore,
           shapeType: bezierStateForRestore.shapeType ?? 'freeform',
           shapeBounds: bezierStateForRestore.shapeBounds ?? null,
+          shapeFilled: bezierStateForRestore.shapeFilled ?? true,
         });
         
         // Restore tool settings (they're part of bezierState)

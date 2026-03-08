@@ -64,6 +64,7 @@ export const InteractiveVectorShapeOverlay: React.FC = () => {
     previewCells,
     shapeType,
     shapeBounds,
+    shapeFilled,
     initializeShape,
     updateShapeBounds,
     updatePreview,
@@ -194,8 +195,9 @@ export const InteractiveVectorShapeOverlay: React.FC = () => {
   useEffect(() => {
     const prevTool = prevToolRef.current;
     const isVectorTool = prevTool === 'rectangle' || prevTool === 'ellipse';
+    const { isProcessingHistory } = useToolStore.getState();
 
-    if (isVectorTool && prevTool !== activeTool) {
+    if (isVectorTool && prevTool !== activeTool && !isProcessingHistory) {
       if (anchorPoints.length >= 2 && previewCells && previewCells.size > 0) {
         handleCommit();
       }

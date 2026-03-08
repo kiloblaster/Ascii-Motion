@@ -264,7 +264,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
 export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
   const { paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection: _selection, lassoSelection: _lassoSelection, magicWandSelection: _magicWandSelection, selectionAffectsAllLayers, setSelectionAffectsAllLayers } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
-  const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape } = useBezierStore();
+  const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape, shapeFilled, setShapeFilled } = useBezierStore();
   const { canCrop, cropToSelection } = useCropToSelection();
 
   const effectiveTool = activeTool;
@@ -321,6 +321,10 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
       {(effectiveTool === 'rectangle' || effectiveTool === 'ellipse') && (
         <>
           <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-muted-foreground">Filled</Label>
+            <Switch checked={shapeFilled} onCheckedChange={setShapeFilled} className="scale-75" />
+          </div>
+          <div className="flex items-center gap-1.5">
             <Label className="text-[10px] text-muted-foreground">Char:</Label>
             <Select value={fillMode} onValueChange={(v) => setFillMode(v as 'constant' | 'palette' | 'autofill' | 'lineart')}>
               <SelectTrigger className="h-6 w-20 text-[10px]"><SelectValue /></SelectTrigger>
@@ -350,7 +354,7 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
             </Select>
           </div>
           )}
-          {fillMode === 'lineart' && (
+          {(!shapeFilled || fillMode === 'lineart') && (
             <div className="flex items-center gap-1">
               <Label className="text-[10px] text-muted-foreground">Width:</Label>
               <Slider min={0.1} max={10} step={0.1} value={strokeWidth} onValueChange={setStrokeWidth} className="w-16" />

@@ -26,10 +26,11 @@ export interface ShapeBounds {
 }
 
 /**
- * Generate 4 BezierAnchorPoints for a rectangle (no handles — straight edges).
- * Points are ordered: top-left, top-right, bottom-right, bottom-left (clockwise).
+ * Generate BezierAnchorPoints for a rectangle.
+ * When filled=true (default): 4 points, no handles, closed path.
+ * When filled=false: 5 points (4 corners + closing duplicate), open path for stroke outline rendering.
  */
-export function generateRectangleAnchorPoints(bounds: ShapeBounds): BezierAnchorPoint[] {
+export function generateRectangleAnchorPoints(bounds: ShapeBounds, filled: boolean = true): BezierAnchorPoint[] {
   const { x, y, width, height } = bounds;
   const positions = [
     { x, y },                          // top-left
@@ -38,7 +39,7 @@ export function generateRectangleAnchorPoints(bounds: ShapeBounds): BezierAnchor
     { x, y: y + height },              // bottom-left
   ];
 
-  return positions.map((pos) => ({
+  const points: BezierAnchorPoint[] = positions.map((pos) => ({
     id: generateShapeAnchorId(),
     position: { ...pos },
     hasHandles: false,
@@ -47,14 +48,30 @@ export function generateRectangleAnchorPoints(bounds: ShapeBounds): BezierAnchor
     handleSymmetric: true,
     selected: false,
   }));
+
+  // When not filled, add a closing point duplicating the first position
+  // so the open path visually traces the full perimeter
+  if (!filled) {
+    points.push({
+      id: generateShapeAnchorId(),
+      position: { ...positions[0] },
+      hasHandles: false,
+      handleIn: null,
+      handleOut: null,
+      handleSymmetric: true,
+      selected: false,
+    });
+  }
+
+  return points;
 }
 
 /**
- * Generate 4 BezierAnchorPoints for an ellipse using kappa-based cubic bezier handles.
- * Points are at the cardinal positions: top, right, bottom, left (clockwise).
- * The handles approximate an ellipse to within ~0.027% error.
+ * Generate BezierAnchorPoints for an ellipse using kappa-based cubic bezier handles.
+ * When filled=true (default): 4 cardinal points, closed path.
+ * When filled=false: 5 points (4 cardinal + closing duplicate), open path for stroke outline rendering.
  */
-export function generateEllipseAnchorPoints(bounds: ShapeBounds): BezierAnchorPoint[] {
+export function generateEllipseAnchorPoints(bounds: ShapeBounds, filled: boolean = true): BezierAnchorPoint[] {
   const { x, y, width, height } = bounds;
   const cx = x + width / 2;
   const cy = y + height / 2;
@@ -65,7 +82,7 @@ export function generateEllipseAnchorPoints(bounds: ShapeBounds): BezierAnchorPo
   const ky = ry * KAPPA;
 
   // Top center, Right center, Bottom center, Left center (clockwise)
-  return [
+  const points: BezierAnchorPoint[] = [
     {
       id: generateShapeAnchorId(),
       position: { x: cx, y: cy - ry },       // top
@@ -103,4 +120,19 @@ export function generateEllipseAnchorPoints(bounds: ShapeBounds): BezierAnchorPo
       selected: false,
     },
   ];
+
+  // When not filled, add a closing point duplicating the first (top) position
+  if (!filled) {
+    points.push({
+      id: generateShapeAnchorId(),
+      position: { x: cx, y: cy - ry },       // top (duplicate)
+      hasHandles: true,
+      handleIn: { x: -kx, y: 0 },            // same handles as first point
+      handleOut: { x: kx, y: 0 },
+      handleSymmetric: true,
+      selected: false,
+    });
+  }
+
+  return points;
 }
