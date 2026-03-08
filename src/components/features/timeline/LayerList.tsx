@@ -15,6 +15,7 @@ import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { useLayerLimit } from '../../../hooks/useLayerLimit';
 import { LayerListItem } from './LayerListItem';
 import { GroupHeader } from './GroupHeader';
+import { GlobalEffectsTrackHeader } from './GlobalEffectsTrackHeader';
 import { LayerContextMenu, type LayerContextMenuState } from './LayerContextMenu';
 import { LayerMenu } from './LayerMenu';
 import { cn } from '@/lib/utils';
@@ -42,6 +43,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   const activeGroupId = useTimelineStore((s) => s.view.activeGroupId);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const { canAddLayer } = useLayerLimit();
+  const globalEffects = useTimelineStore((s) => s.globalEffects);
   const { addLayer } = useTimelineHistory();
 
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -340,6 +342,13 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
       {(() => {
         const renderedGroupIds = new Set<string>();
         const items: React.ReactNode[] = [];
+
+        // Global effects track at top
+        if (globalEffects.length > 0) {
+          items.push(
+            <GlobalEffectsTrackHeader key="global-effects" globalEffects={globalEffects} />
+          );
+        }
 
         displayLayers.forEach((layer, displayIndex) => {
           // Check if this layer belongs to a group

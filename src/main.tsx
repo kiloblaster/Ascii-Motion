@@ -5,6 +5,10 @@ import './styles/bundled-fonts.css'
 import { AppReveal } from './components/common/AppReveal'
 import App from './App'
 import { SpeedInsights } from '@vercel/speed-insights/react'
+import { registerAllEffects } from './registry/effects'
+
+// Register all built-in effects in the procedural effects registry
+registerAllEffects()
 
 // Set initial theme from localStorage or default to dark
 const storedTheme = localStorage.getItem('ascii-motion-theme') || 'dark'

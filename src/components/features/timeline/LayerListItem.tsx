@@ -10,9 +10,11 @@ import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond, RectangleEllipsis } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond, RectangleEllipsis, Sparkles } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
+import { EffectTrackRow } from './EffectTrackRow';
+import { getAllEffects } from '../../../registry/effectRegistry';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,6 +74,8 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
   const addKeyframesToSelection = useTimelineStore((s) => s.addKeyframesToSelection);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const goToFrame = useTimelineStore((s) => s.goToFrame);
+  const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
+  const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(layer.name);
@@ -441,6 +445,48 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
               </DropdownMenu>
             );
           })()}
+        </div>
+      )}
+
+      {/* Effect track rows + Add Effect (when expanded) */}
+      {isExpanded && (
+        <div>
+          {/* Existing effect tracks */}
+          {(layer.effectTracks ?? []).map((track) => (
+            <EffectTrackRow
+              key={track.id}
+              track={track}
+              isExpanded={expandedEffectTrackIds.has(track.effectBlock.id)}
+            />
+          ))}
+
+          {/* + Add Effect dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-1 px-1.5 py-0.5 min-h-[20px] text-xs text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 w-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Sparkles className="w-2.5 h-2.5" />
+                Add Effect
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[160px]">
+              {getAllEffects().map((effect) => (
+                <DropdownMenuItem
+                  key={effect.type}
+                  onClick={() => {
+                    const start = currentFrame;
+                    const duration = Math.max(1, useTimelineStore.getState().config.durationFrames - start);
+                    addEffectBlock(layer.id, effect.type, start, duration);
+                  }}
+                >
+                  <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+                  {effect.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </TooltipProvider>

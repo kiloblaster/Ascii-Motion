@@ -15,6 +15,7 @@ import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
+import { EffectBlockComponent } from './EffectBlock';
 import { PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
 import { defaultEasing } from '../../../types/easing';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
@@ -43,6 +44,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const setZoom = useTimelineStore((s) => s.setZoom);
   const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const expandedLayerIds = useTimelineStore((s) => s.view.expandedLayerIds);
+  const globalEffects = useTimelineStore((s) => s.globalEffects);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
   const clearContentFrameSelection = useTimelineStore((s) => s.clearContentFrameSelection);
   const clearKeyframeSelection = useTimelineStore((s) => s.clearKeyframeSelection);
@@ -310,6 +312,22 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
         {(() => {
           const renderedGroupIds = new Set<string>();
           const items: React.ReactNode[] = [];
+
+          // Global effects track rows at top
+          if (globalEffects.length > 0) {
+            // Global header spacer (matches GlobalEffectsTrackHeader height)
+            items.push(
+              <div key="global-effects-header-spacer" className="border-b border-border/50 bg-muted/20" style={{ minHeight: 28 }} />
+            );
+            // Global effect track rows
+            for (const track of globalEffects) {
+              items.push(
+                <div key={`global-et-${track.id}`} className="relative border-b border-border/30 min-h-[24px] bg-muted/10">
+                  <EffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
+                </div>
+              );
+            }
+          }
 
           displayLayers.forEach((layer) => {
             // Check for group header
@@ -677,6 +695,18 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
             {/* Spacer row matching the "+ Add Property" button row */}
             {expandedLayerIds.has(layer.id) && (
               <div className="min-h-[24px] border-b border-border/30 bg-muted/5" />
+            )}
+
+            {/* Effect track rows (when layer is expanded) */}
+            {expandedLayerIds.has(layer.id) && (layer.effectTracks ?? []).map((track) => (
+              <div key={`et-${track.id}`} className="relative border-b border-border/30 min-h-[24px] bg-muted/5">
+                <EffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
+              </div>
+            ))}
+
+            {/* Effect "Add Effect" spacer row */}
+            {expandedLayerIds.has(layer.id) && (
+              <div className="min-h-[20px] border-b border-border/30 bg-muted/5" />
             )}
           </div>
             );
