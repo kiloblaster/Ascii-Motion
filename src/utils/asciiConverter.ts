@@ -32,7 +32,7 @@ export interface ConversionSettings {
   
   // Auto mode (shape-vector based character mapping)
   autoModeEnabled: boolean;
-  autoModeCharacterSet: 'basic-ascii' | 'block-characters';
+  autoModeCharacterSet: 'basic-ascii' | 'block-characters' | 'braille';
   autoModeGlobalContrast: number;
   autoModeDirectionalContrast: number;
   autoModeGridWidth: number;   // Character grid width (needed to compute cell dimensions)

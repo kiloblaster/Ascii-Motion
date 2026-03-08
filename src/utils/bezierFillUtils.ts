@@ -18,6 +18,8 @@ import {
   isCellInside,
   calculateCellOverlap,
   detectCellRegions,
+  detectBrailleDots,
+  brailleBitsToChar,
 } from './bezierAutofillUtils';
 import { getCharacterForPattern } from '../constants/bezierAutofill';
 import { generateStrokeOutline } from './bezierStrokeUtils';
@@ -280,39 +282,49 @@ export function fillAutofill(
   // Get shared canvas
   const { ctx } = getSharedCanvas(canvasWidth * cellWidth, canvasHeight * cellHeight);
 
-  // Test each cell with 9-region detection
+  // Use Braille-specific 2×4 dot sampling or standard 9-region detection
+  const isBraille = paletteId === 'braille';
+
   for (let y = bounds.minY; y <= bounds.maxY; y++) {
     for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const filledRegions = detectCellRegions(
-        x,
-        y,
-        path,
-        ctx,
-        cellWidth,
-        cellHeight,
-        zoom,
-        panOffset
-      );
-
-      // Only fill cells that have at least one region covered
-      if (filledRegions.size > 0) {
-        const character = getCharacterForPattern(paletteId, filledRegions);
-
-        // Determine color based on fill color mode
-        let color = selectedColor;
-        if (fillColorMode === 'palette' && colorPalette) {
-          // For autofill, use number of filled regions as approximation of overlap
-          // 9 regions total, so percentage = (filled / 9) * 100
-          const overlapPercentage = (filledRegions.size / 9) * 100;
-          color = mapOverlapToColor(overlapPercentage, colorPalette);
+      if (isBraille) {
+        const bits = detectBrailleDots(x, y, path, ctx, cellWidth, cellHeight, zoom, panOffset);
+        if (bits > 0) {
+          let color = selectedColor;
+          if (fillColorMode === 'palette' && colorPalette) {
+            // Count set bits for coverage approximation (8 dots total)
+            let bitCount = bits;
+            bitCount = bitCount - ((bitCount >> 1) & 0x55);
+            bitCount = (bitCount & 0x33) + ((bitCount >> 2) & 0x33);
+            bitCount = (bitCount + (bitCount >> 4)) & 0x0F;
+            const overlapPercentage = (bitCount / 8) * 100;
+            color = mapOverlapToColor(overlapPercentage, colorPalette);
+          }
+          const key = `${x},${y}`;
+          filledCells.set(key, {
+            char: brailleBitsToChar(bits),
+            color,
+            bgColor: selectedBgColor,
+          });
         }
-
-        const key = `${x},${y}`;
-        filledCells.set(key, {
-          char: character,
-          color,
-          bgColor: selectedBgColor,
-        });
+      } else {
+        const filledRegions = detectCellRegions(
+          x, y, path, ctx, cellWidth, cellHeight, zoom, panOffset
+        );
+        if (filledRegions.size > 0) {
+          const character = getCharacterForPattern(paletteId, filledRegions);
+          let color = selectedColor;
+          if (fillColorMode === 'palette' && colorPalette) {
+            const overlapPercentage = (filledRegions.size / 9) * 100;
+            color = mapOverlapToColor(overlapPercentage, colorPalette);
+          }
+          const key = `${x},${y}`;
+          filledCells.set(key, {
+            char: character,
+            color,
+            bgColor: selectedBgColor,
+          });
+        }
       }
     }
   }
@@ -364,35 +376,59 @@ export function generateBezierPreview(
   strokeTaperEnd: number = 0.0,
   lineArtEdgeThreshold: number = 0.15,
   lineArtSdfBlur: number = 3,
-  lineArtInverseMatch: number = 8
+  lineArtInverseMatch: number = 8,
+  filled: boolean = true,
 ): { previewCells: Map<string, Cell>; affectedCount: number } {
-  console.log(`[bezierPreview] fillMode=${fillMode}, points=${anchorPoints.length}, isClosed=${isClosed}`);
-  // If path is open and has stroke, convert stroke to closed polygon for filling
-  // (skip for lineart mode which renders the path directly)
+  console.log(`[bezierPreview] fillMode=${fillMode}, points=${anchorPoints.length}, isClosed=${isClosed}, filled=${filled}`);
   let effectiveAnchorPoints = anchorPoints;
   let effectiveIsClosed = isClosed;
 
-  if (fillMode !== 'lineart' && !isClosed && strokeWidth > 0 && anchorPoints.length >= 2) {
-    // Generate stroke outline as a closed polygon
-    const strokeOutline = generateStrokeOutline(
-      anchorPoints,
-      strokeWidth,
-      strokeTaperStart,
-      strokeTaperEnd,
-      32 // segments per curve for smooth stroke
-    );
+  if (fillMode !== 'lineart') {
+    if (!filled && isClosed && anchorPoints.length >= 3) {
+      // Closed + Not Filled: duplicate first point to create an open perimeter path,
+      // then let stroke outline logic render it as an outline.
+      // Preserve handleIn on the duplicate so the closing segment curves correctly.
+      const firstPoint = anchorPoints[0];
+      effectiveAnchorPoints = [
+        ...anchorPoints,
+        {
+          ...firstPoint,
+          id: `${firstPoint.id}_dup`,
+          hasHandles: firstPoint.hasHandles,
+          handleIn: firstPoint.handleIn,
+          handleOut: null,
+          handleSymmetric: false,
+        },
+      ];
+      effectiveIsClosed = false;
+    } else if (filled && !isClosed && anchorPoints.length >= 2) {
+      // Open + Filled: treat as closed to fill the area between start and end
+      effectiveIsClosed = true;
+    }
 
-    // Convert outline points back to anchor points format for filling
-    effectiveAnchorPoints = strokeOutline.map((point, index) => ({
-      id: `stroke_${index}`,
-      position: point,
-      handleIn: index > 0 ? strokeOutline[index - 1] : point,
-      handleOut: index < strokeOutline.length - 1 ? strokeOutline[index + 1] : point,
-      hasHandles: false,
-      handleSymmetric: false,
-      selected: false,
-    }));
-    effectiveIsClosed = true; // Stroke outline is always closed
+    // For non-filled (stroke outline) rendering of open paths
+    if (!effectiveIsClosed && strokeWidth > 0 && effectiveAnchorPoints.length >= 2) {
+      // Generate stroke outline as a closed polygon
+      const strokeOutline = generateStrokeOutline(
+        effectiveAnchorPoints,
+        strokeWidth,
+        strokeTaperStart,
+        strokeTaperEnd,
+        32 // segments per curve for smooth stroke
+      );
+
+      // Convert outline points back to anchor points format for filling
+      effectiveAnchorPoints = strokeOutline.map((point, index) => ({
+        id: `stroke_${index}`,
+        position: point,
+        handleIn: index > 0 ? strokeOutline[index - 1] : point,
+        handleOut: index < strokeOutline.length - 1 ? strokeOutline[index + 1] : point,
+        hasHandles: false,
+        handleSymmetric: false,
+        selected: false,
+      }));
+      effectiveIsClosed = true; // Stroke outline is always closed
+    }
   }
 
   let previewCells: Map<string, Cell>;

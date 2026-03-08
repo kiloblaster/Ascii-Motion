@@ -10,6 +10,7 @@ import { useCanvasState } from '../../hooks/useCanvasState';
 import { getFontString } from '../../utils/fontMetrics';
 import { InteractiveGradientOverlay } from './InteractiveGradientOverlay';
 import { InteractiveBezierOverlay } from './InteractiveBezierOverlay';
+import { InteractiveVectorShapeOverlay } from './InteractiveVectorShapeOverlay';
 import { AnchorPointOverlay } from './AnchorPointOverlay';
 import { LayerTransformOverlay } from './LayerTransformOverlay';
 import { transformCellMapToScreen } from '../../utils/layerTransformUtils';
@@ -951,6 +952,7 @@ export const CanvasOverlay: React.FC = React.memo(() => {
       />
       <InteractiveGradientOverlay />
       {activeTool === 'beziershape' && <InteractiveBezierOverlay key={bezierRemountKey} />}
+      {(activeTool === 'rectangle' || activeTool === 'ellipse') && <InteractiveVectorShapeOverlay key={`vs-${bezierRemountKey}`} />}
       {activeTool === 'layertransform' ? <LayerTransformOverlay /> : <AnchorPointOverlay />}
     </>
   );

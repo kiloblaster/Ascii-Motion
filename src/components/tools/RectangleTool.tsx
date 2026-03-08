@@ -1,34 +1,41 @@
 import React from 'react';
-import { Type } from 'lucide-react';
-import { useCanvasDragAndDrop } from '../../hooks/useCanvasDragAndDrop';
-import { useToolStore } from '../../stores/toolStore';
-import { ColorSwatch } from '../common/ColorSwatch';
+import { useBezierStore } from '../../stores/bezierStore';
 
 /**
  * Rectangle Tool Component
- * Handles rectangle drawing behavior
+ * The vector shape overlay handles all interaction.
  */
 export const RectangleTool: React.FC = () => {
-  // The rectangle logic is handled by useCanvasDragAndDrop hook
-  // This component ensures the hook is active when rectangle tool is selected
-  useCanvasDragAndDrop();
-
-  return null; // No direct UI - handles behavior through hooks
+  return null;
 };
 
 /**
  * Rectangle Tool Status Component
- * Provides visual feedback about the rectangle tool
  */
 export const RectangleToolStatus: React.FC = () => {
-  const { selectedChar, selectedColor, selectedBgColor, rectangleFilled } = useToolStore();
+  const { anchorPoints, affectedCellCount, fillMode } = useBezierStore();
+
+  const getFillModeText = () => {
+    switch (fillMode) {
+      case 'constant': return 'Selection';
+      case 'palette': return 'Palette';
+      case 'autofill': return 'Autofill';
+      case 'lineart': return 'Line Art';
+      default: return 'Palette';
+    }
+  };
+
+  if (anchorPoints.length === 0) {
+    return (
+      <span className="text-muted-foreground">
+        Rectangle: {getFillModeText()} • Drag to draw, Shift for square
+      </span>
+    );
+  }
 
   return (
-    <span className="text-muted-foreground flex items-center gap-1.5">
-      Rectangle ({rectangleFilled ? 'filled' : 'hollow'}): "{selectedChar}" <Type className="w-3 h-3 inline" /> <ColorSwatch color={selectedColor} />
-      {selectedBgColor !== '#FFFFFF' && (
-        <> BG: <ColorSwatch color={selectedBgColor} /></>
-      )} - Drag to draw, Shift for square
+    <span className="text-muted-foreground">
+      Rectangle: {affectedCellCount} cell{affectedCellCount === 1 ? '' : 's'} • {getFillModeText()} • Enter to apply, Escape to cancel
     </span>
   );
 };

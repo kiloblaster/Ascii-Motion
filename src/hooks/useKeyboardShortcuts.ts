@@ -743,16 +743,30 @@ const processHistoryAction = (
         canvasStore.setCanvasData(commitAction.data.previousCanvasData);
         animationStore.setFrameData(commitAction.data.frameIndex, commitAction.data.previousCanvasData);
         
-        // Restore bezier state
-        bezierStore.restoreState(commitAction.data.bezierState);
+        // Restore bezier state (with backward-compatible defaults for shapeType/shapeBounds)
+        const { selectedChar: _sc, selectedColor: _scl, selectedBgColor: _sbg, ...bezierStateForRestore } = commitAction.data.bezierState;
+        bezierStore.restoreState({
+          ...bezierStateForRestore,
+          shapeType: bezierStateForRestore.shapeType ?? 'freeform',
+          shapeBounds: bezierStateForRestore.shapeBounds ?? null,
+          shapeFilled: bezierStateForRestore.shapeFilled ?? true,
+          bezierFilled: bezierStateForRestore.bezierFilled ?? true,
+        });
         
         // Restore tool settings (they're part of bezierState)
         toolStore.setSelectedChar(commitAction.data.bezierState.selectedChar);
         toolStore.setSelectedColor(commitAction.data.bezierState.selectedColor);
         toolStore.setSelectedBgColor(commitAction.data.bezierState.selectedBgColor);
         
-        // Switch to bezier tool to show restored shape
-        toolStore.setActiveTool('beziershape');
+        // Switch to the appropriate tool to show restored shape
+        const restoredShapeType = bezierStateForRestore.shapeType ?? 'freeform';
+        if (restoredShapeType === 'rectangle') {
+          toolStore.setActiveTool('rectangle');
+        } else if (restoredShapeType === 'ellipse') {
+          toolStore.setActiveTool('ellipse');
+        } else {
+          toolStore.setActiveTool('beziershape');
+        }
       }
       
       // Ensure we're on the correct frame

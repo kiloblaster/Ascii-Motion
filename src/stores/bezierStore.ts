@@ -9,6 +9,13 @@
 
 import { create } from 'zustand';
 import type { Cell } from '../types';
+import {
+  generateRectangleAnchorPoints,
+  generateEllipseAnchorPoints,
+  type ShapeBounds,
+} from '../utils/vectorShapeGeometry';
+
+export type VectorShapeType = 'freeform' | 'rectangle' | 'ellipse';
 
 /**
  * Session-persistent settings for the bezier tool
@@ -21,6 +28,8 @@ export interface BezierSessionSettings {
   strokeWidth: number;
   strokeTaperStart: number;
   strokeTaperEnd: number;
+  shapeFilled: boolean;
+  bezierFilled: boolean;
 }
 
 /**
@@ -147,6 +156,18 @@ interface BezierStore {
   
   /** Frame index where the shape was originally started (for frame-switch handling) */
   originalFrameIndex: number | null;
+  
+  /** Type of vector shape being drawn ('freeform' for bezier pen, 'rectangle', 'ellipse') */
+  shapeType: VectorShapeType;
+  
+  /** Bounding box for rectangle/ellipse shapes (null for freeform) */
+  shapeBounds: ShapeBounds | null;
+  
+  /** Whether rectangle/ellipse shapes are filled (true) or outlined (false) */
+  shapeFilled: boolean;
+  
+  /** Whether the bezier freeform path is filled (true) or outlined (false) */
+  bezierFilled: boolean;
   
   // ========================================
   // SESSION PERSISTENCE
@@ -354,6 +375,28 @@ interface BezierStore {
   /** Set line art inverse match weight */
   setLineArtInverseMatch: (v: number) => void;
   
+  /** Set whether shapes are filled or outlined */
+  setShapeFilled: (filled: boolean) => void;
+  
+  /** Set whether bezier freeform paths are filled or outlined */
+  setBezierFilled: (filled: boolean) => void;
+  
+  // ========================================
+  // ACTIONS - VECTOR SHAPE (RECTANGLE/ELLIPSE)
+  // ========================================
+  
+  /**
+   * Initialize a rectangle or ellipse shape from bounding box
+   * Generates anchor points and enters editing mode
+   */
+  initializeShape: (shapeType: 'rectangle' | 'ellipse', bounds: ShapeBounds) => void;
+  
+  /**
+   * Update the bounding box of a rectangle/ellipse shape
+   * Regenerates anchor points to match new bounds
+   */
+  updateShapeBounds: (bounds: ShapeBounds) => void;
+
   // ========================================
   // ACTIONS - PREVIEW
   // ========================================
@@ -413,6 +456,10 @@ interface BezierStore {
     strokeWidth: number;
     strokeTaperStart: number;
     strokeTaperEnd: number;
+    shapeType: VectorShapeType;
+    shapeBounds: ShapeBounds | null;
+    shapeFilled: boolean;
+    bezierFilled: boolean;
   };
   
   /**
@@ -427,6 +474,10 @@ interface BezierStore {
     strokeWidth: number;
     strokeTaperStart: number;
     strokeTaperEnd: number;
+    shapeType: VectorShapeType;
+    shapeBounds: ShapeBounds | null;
+    shapeFilled: boolean;
+    bezierFilled: boolean;
   }) => void;
 }
 
@@ -458,11 +509,11 @@ interface BezierStoreState {
   previewCells: Map<string, Cell> | null;
   affectedCellCount: number;
   originalFrameIndex: number | null;
+  shapeType: VectorShapeType;
+  shapeBounds: ShapeBounds | null;
+  shapeFilled: boolean;
+  bezierFilled: boolean;
 }
-
-/**
- * Default state factory
- */
 const createDefaultState = (): BezierStoreState => ({
   anchorPoints: [],
   isClosed: false,
@@ -488,6 +539,10 @@ const createDefaultState = (): BezierStoreState => ({
   previewCells: null,
   affectedCellCount: 0,
   originalFrameIndex: null,
+  shapeType: 'freeform' as VectorShapeType,
+  shapeBounds: null,
+  shapeFilled: false,
+  bezierFilled: false,
 });
 
 /**
@@ -509,6 +564,8 @@ function createSessionSettings(state: BezierStoreState): BezierSessionSettings {
     strokeWidth: state.strokeWidth,
     strokeTaperStart: state.strokeTaperStart,
     strokeTaperEnd: state.strokeTaperEnd,
+    shapeFilled: state.shapeFilled,
+    bezierFilled: state.bezierFilled,
   };
 }
 
@@ -1153,6 +1210,74 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
     set({ lineArtInverseMatch: v });
   },
   
+  setShapeFilled: (filled: boolean) => {
+    const state = get();
+    const newState = { ...state, shapeFilled: filled };
+    
+    // If we're editing a shape, regenerate points with new filled state
+    if (state.shapeType !== 'freeform' && state.shapeBounds) {
+      const generator = state.shapeType === 'rectangle'
+        ? generateRectangleAnchorPoints
+        : generateEllipseAnchorPoints;
+      
+      set({
+        shapeFilled: filled,
+        anchorPoints: generator(state.shapeBounds, filled),
+        isClosed: filled,
+        sessionSettings: createSessionSettings(newState),
+      });
+    } else {
+      set({
+        shapeFilled: filled,
+        sessionSettings: createSessionSettings(newState),
+      });
+    }
+  },
+  
+  setBezierFilled: (filled: boolean) => {
+    const state = get();
+    const newState = { ...state, bezierFilled: filled };
+    set({
+      bezierFilled: filled,
+      sessionSettings: createSessionSettings(newState),
+    });
+  },
+  
+  // ========================================
+  // VECTOR SHAPE ACTIONS (RECTANGLE/ELLIPSE)
+  // ========================================
+  
+  initializeShape: (shapeType: 'rectangle' | 'ellipse', bounds: ShapeBounds) => {
+    const state = get();
+    const filled = state.shapeFilled;
+    const generator = shapeType === 'rectangle'
+      ? generateRectangleAnchorPoints
+      : generateEllipseAnchorPoints;
+    
+    set({
+      anchorPoints: generator(bounds, filled),
+      isClosed: filled,
+      isDrawing: false,
+      isEditingShape: true,
+      shapeType,
+      shapeBounds: { ...bounds },
+    });
+  },
+  
+  updateShapeBounds: (bounds: ShapeBounds) => {
+    const state = get();
+    if (state.shapeType === 'freeform') return;
+    
+    const generator = state.shapeType === 'rectangle'
+      ? generateRectangleAnchorPoints
+      : generateEllipseAnchorPoints;
+    
+    set({
+      anchorPoints: generator(bounds, state.shapeFilled),
+      shapeBounds: { ...bounds },
+    });
+  },
+
   // ========================================
   // PREVIEW ACTIONS
   // ========================================
@@ -1181,6 +1306,8 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
       strokeWidth: currentSettings.strokeWidth,
       strokeTaperStart: currentSettings.strokeTaperStart,
       strokeTaperEnd: currentSettings.strokeTaperEnd,
+      shapeFilled: currentSettings.shapeFilled,
+      bezierFilled: currentSettings.bezierFilled,
       sessionSettings: currentSettings,
     });
     
@@ -1202,6 +1329,8 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
       strokeWidth: currentSettings.strokeWidth,
       strokeTaperStart: currentSettings.strokeTaperStart,
       strokeTaperEnd: currentSettings.strokeTaperEnd,
+      shapeFilled: currentSettings.shapeFilled,
+      bezierFilled: currentSettings.bezierFilled,
       sessionSettings: currentSettings,
     });
   },
@@ -1254,6 +1383,10 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
       strokeWidth: state.strokeWidth,
       strokeTaperStart: state.strokeTaperStart,
       strokeTaperEnd: state.strokeTaperEnd,
+      shapeType: state.shapeType,
+      shapeBounds: state.shapeBounds ? { ...state.shapeBounds } : null,
+      shapeFilled: state.shapeFilled,
+      bezierFilled: state.bezierFilled,
     };
   },
   
@@ -1269,18 +1402,26 @@ export const useBezierStore = create<BezierStore>((set, get) => ({
     strokeWidth: number;
     strokeTaperStart: number;
     strokeTaperEnd: number;
+    shapeType: VectorShapeType;
+    shapeBounds: ShapeBounds | null;
+    shapeFilled: boolean;
+    bezierFilled: boolean;
   }) => {
     set({
       anchorPoints: snapshot.anchorPoints.map(p => ({ ...p })),
       isClosed: snapshot.isClosed,
       isDrawing: false,
-      isEditingShape: snapshot.isClosed,
+      isEditingShape: snapshot.shapeType !== 'freeform' || snapshot.isClosed,
       fillMode: snapshot.fillMode,
       autofillPaletteId: snapshot.autofillPaletteId,
       fillColorMode: snapshot.fillColorMode,
       strokeWidth: snapshot.strokeWidth,
       strokeTaperStart: snapshot.strokeTaperStart,
       strokeTaperEnd: snapshot.strokeTaperEnd,
+      shapeType: snapshot.shapeType,
+      shapeBounds: snapshot.shapeBounds ? { ...snapshot.shapeBounds } : null,
+      shapeFilled: snapshot.shapeFilled,
+      bezierFilled: snapshot.bezierFilled,
       // Reset interaction state
       isDraggingPoint: false,
       isDraggingHandle: false,

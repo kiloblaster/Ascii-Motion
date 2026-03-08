@@ -324,62 +324,10 @@ export const useCanvasRenderer = () => {
       });
     }
 
-    // Draw shape preview overlay (for rectangle/ellipse tools - separate from selection)
+    // Draw shape preview overlay (legacy — now handled by InteractiveVectorShapeOverlay for rect/ellipse)
+    // This block is retained for any future tools that may use the shapePreview system.
     if (overlayState.shapePreviewData) {
-      if (overlayState.shapePreviewData.tool === 'ellipse') {
-        // Draw ellipse preview with highlighted cells
-        const centerX = (overlayState.shapePreviewData.startX + overlayState.shapePreviewData.startX + overlayState.shapePreviewData.width - 1) / 2;
-        const centerY = (overlayState.shapePreviewData.startY + overlayState.shapePreviewData.startY + overlayState.shapePreviewData.height - 1) / 2;
-        const radiusX = (overlayState.shapePreviewData.width - 1) / 2;
-        const radiusY = (overlayState.shapePreviewData.height - 1) / 2;
-
-        // Get ellipse points to highlight exactly which cells will be affected
-        const ellipsePoints = getEllipsePoints(centerX, centerY, radiusX, radiusY, toolState.rectangleFilled);
-        
-        // Highlight each cell that will be part of the ellipse
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.3)'; // Purple highlight
-        ellipsePoints.forEach(({ x, y }) => {
-          if (x >= 0 && y >= 0 && x < canvasConfig.width && y < canvasConfig.height) {
-            ctx.fillRect(
-              Math.round(x * canvasConfig.effectiveCellWidth + canvasConfig.panOffset.x),
-              Math.round(y * canvasConfig.effectiveCellHeight + canvasConfig.panOffset.y),
-              Math.round(canvasConfig.effectiveCellWidth),
-              Math.round(canvasConfig.effectiveCellHeight)
-            );
-          }
-        });
-
-        // Draw ellipse outline
-        ctx.strokeStyle = '#A855F7'; // Purple border
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        
-        // Draw ellipse path using HTML5 Canvas ellipse method
-        ctx.beginPath();
-        ctx.ellipse(
-          (centerX + 0.5) * canvasConfig.effectiveCellWidth + canvasConfig.panOffset.x,  // center x
-          (centerY + 0.5) * canvasConfig.effectiveCellHeight + canvasConfig.panOffset.y,  // center y  
-          (radiusX + 0.5) * canvasConfig.effectiveCellWidth,  // radius x
-          (radiusY + 0.5) * canvasConfig.effectiveCellHeight,  // radius y
-          0,                           // rotation
-          0,                           // start angle
-          2 * Math.PI                  // end angle
-        );
-        ctx.stroke();
-        ctx.setLineDash([]);
-      } else if (overlayState.shapePreviewData.tool === 'rectangle') {
-        // Rectangle tool preview
-        ctx.strokeStyle = '#A855F7'; // Purple border (same as ellipse)
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.strokeRect(
-          Math.round(overlayState.shapePreviewData.startX * canvasConfig.effectiveCellWidth + canvasConfig.panOffset.x),
-          Math.round(overlayState.shapePreviewData.startY * canvasConfig.effectiveCellHeight + canvasConfig.panOffset.y),
-          Math.round(overlayState.shapePreviewData.width * canvasConfig.effectiveCellWidth),
-          Math.round(overlayState.shapePreviewData.height * canvasConfig.effectiveCellHeight)
-        );
-        ctx.setLineDash([]);
-      }
+      // No-op: rectangle/ellipse previews now rendered via SVG overlay
     }
 
     // Draw selection overlay (for selection tools only - NOT rectangle/ellipse)
