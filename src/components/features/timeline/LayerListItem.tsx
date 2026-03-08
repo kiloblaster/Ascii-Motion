@@ -453,11 +453,21 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
         <div>
           {/* Existing effect tracks */}
           {(layer.effectTracks ?? []).map((track) => (
-            <EffectTrackRow
-              key={track.id}
-              track={track}
-              isExpanded={expandedEffectTrackIds.has(track.effectBlock.id)}
-            />
+            <React.Fragment key={track.id}>
+              <EffectTrackRow
+                track={track}
+                isExpanded={expandedEffectTrackIds.has(track.effectBlock.id)}
+              />
+              {/* Effect property track labels when expanded */}
+              {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
+                <div
+                  key={pt.id}
+                  className="flex items-center px-3 min-h-[20px] border-b border-border/20 text-[9px] text-muted-foreground/60"
+                >
+                  {pt.propertyPath}
+                </div>
+              ))}
+            </React.Fragment>
           ))}
 
           {/* + Add Effect dropdown */}

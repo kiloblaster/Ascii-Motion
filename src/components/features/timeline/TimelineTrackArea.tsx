@@ -44,6 +44,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const setZoom = useTimelineStore((s) => s.setZoom);
   const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const expandedLayerIds = useTimelineStore((s) => s.view.expandedLayerIds);
+  const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
   const globalEffects = useTimelineStore((s) => s.globalEffects);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
   const clearContentFrameSelection = useTimelineStore((s) => s.clearContentFrameSelection);
@@ -326,6 +327,23 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                   <EffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
                 </div>
               );
+              // Effect property keyframe sub-rows (when expanded)
+              if (expandedEffectTrackIds.has(track.effectBlock.id)) {
+                for (const pt of track.effectBlock.propertyTracks) {
+                  items.push(
+                    <div key={`global-ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5">
+                      {pt.keyframes.map((kf) => (
+                        <div
+                          key={kf.id}
+                          className="absolute w-2.5 h-2.5 rotate-45 bg-yellow-500/80 z-10"
+                          style={{ left: kf.frame * pxPerFrame - 4, top: 5 }}
+                          title={`${pt.propertyPath}: ${kf.value} @ frame ${kf.frame}`}
+                        />
+                      ))}
+                    </div>
+                  );
+                }
+              }
             }
           }
 
@@ -699,9 +717,24 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
             {/* Effect track rows (when layer is expanded) */}
             {expandedLayerIds.has(layer.id) && (layer.effectTracks ?? []).map((track) => (
-              <div key={`et-${track.id}`} className="relative border-b border-border/30 min-h-[24px] bg-muted/5">
-                <EffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
-              </div>
+              <React.Fragment key={`et-${track.id}`}>
+                <div className="relative border-b border-border/30 min-h-[24px] bg-muted/5">
+                  <EffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
+                </div>
+                {/* Effect property keyframe sub-rows (when effect block is expanded) */}
+                {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
+                  <div key={`ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5">
+                    {pt.keyframes.map((kf) => (
+                      <div
+                        key={kf.id}
+                        className="absolute w-2.5 h-2.5 rotate-45 bg-yellow-500/80 z-10"
+                        style={{ left: kf.frame * pxPerFrame - 4, top: 5 }}
+                        title={`${pt.propertyPath}: ${kf.value} @ frame ${kf.frame}`}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </React.Fragment>
             ))}
 
             {/* Effect "Add Effect" spacer row */}
