@@ -386,15 +386,16 @@ export function generateBezierPreview(
   if (fillMode !== 'lineart') {
     if (!filled && isClosed && anchorPoints.length >= 3) {
       // Closed + Not Filled: duplicate first point to create an open perimeter path,
-      // then let stroke outline logic render it as an outline
+      // then let stroke outline logic render it as an outline.
+      // Preserve handleIn on the duplicate so the closing segment curves correctly.
       const firstPoint = anchorPoints[0];
       effectiveAnchorPoints = [
         ...anchorPoints,
         {
           ...firstPoint,
           id: `${firstPoint.id}_dup`,
-          hasHandles: false,
-          handleIn: null,
+          hasHandles: firstPoint.hasHandles,
+          handleIn: firstPoint.handleIn,
           handleOut: null,
           handleSymmetric: false,
         },
