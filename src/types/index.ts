@@ -296,7 +296,16 @@ export type HistoryActionType =
   | 'apply_transforms'
   | 'merge_layers'
   | 'create_group'
-  | 'ungroup_layers';
+  | 'ungroup_layers'
+  // Effect block actions (procedural effects)
+  | 'effect_block_add'
+  | 'effect_block_remove'
+  | 'effect_block_update'
+  | 'effect_block_reorder'
+  | 'effect_keyframe_add'
+  | 'effect_keyframe_remove'
+  | 'effect_keyframe_update'
+  | 'effect_bake';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -930,7 +939,16 @@ export type AnyHistoryAction =
   | ApplyTransformsHistoryAction
   | MergeLayersHistoryAction
   | CreateGroupHistoryAction
-  | UngroupLayersHistoryAction;
+  | UngroupLayersHistoryAction
+  // Effect block actions (procedural effects)
+  | EffectBlockAddHistoryAction
+  | EffectBlockRemoveHistoryAction
+  | EffectBlockUpdateHistoryAction
+  | EffectBlockReorderHistoryAction
+  | EffectKeyframeAddHistoryAction
+  | EffectKeyframeRemoveHistoryAction
+  | EffectKeyframeUpdateHistoryAction
+  | EffectBakeHistoryAction;
 
 export interface ApplyTransformsHistoryAction extends HistoryAction {
   type: 'apply_transforms';
@@ -968,5 +986,100 @@ export interface UngroupLayersHistoryAction extends HistoryAction {
   type: 'ungroup_layers';
   data: {
     group: import('../types/timeline').LayerGroup;
+  };
+}
+
+// ============================================
+// EFFECT BLOCK HISTORY ACTIONS
+// ============================================
+
+export interface EffectBlockAddHistoryAction extends HistoryAction {
+  type: 'effect_block_add';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    trackSnapshot: import('../types/effectBlock').EffectTrack;
+  };
+}
+
+export interface EffectBlockRemoveHistoryAction extends HistoryAction {
+  type: 'effect_block_remove';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    trackSnapshot: import('../types/effectBlock').EffectTrack;
+    trackIndex: number;
+  };
+}
+
+export interface EffectBlockUpdateHistoryAction extends HistoryAction {
+  type: 'effect_block_update';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    blockId: string;
+    previousBlock: import('../types/effectBlock').EffectBlock;
+    newBlock: import('../types/effectBlock').EffectBlock;
+  };
+}
+
+export interface EffectBlockReorderHistoryAction extends HistoryAction {
+  type: 'effect_block_reorder';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    fromIndex: number;
+    toIndex: number;
+  };
+}
+
+export interface EffectKeyframeAddHistoryAction extends HistoryAction {
+  type: 'effect_keyframe_add';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    blockId: string;
+    trackId: string;
+    keyframe: import('../types/effectBlock').EffectKeyframe;
+  };
+}
+
+export interface EffectKeyframeRemoveHistoryAction extends HistoryAction {
+  type: 'effect_keyframe_remove';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    blockId: string;
+    trackId: string;
+    keyframe: import('../types/effectBlock').EffectKeyframe;
+  };
+}
+
+export interface EffectKeyframeUpdateHistoryAction extends HistoryAction {
+  type: 'effect_keyframe_update';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    blockId: string;
+    trackId: string;
+    keyframeId: string;
+    previousKeyframe: import('../types/effectBlock').EffectKeyframe;
+    newKeyframe: import('../types/effectBlock').EffectKeyframe;
+  };
+}
+
+export interface EffectBakeHistoryAction extends HistoryAction {
+  type: 'effect_bake';
+  data: {
+    ownerId: string | null;
+    ownerType: 'layer' | 'group' | 'global';
+    trackSnapshot: import('../types/effectBlock').EffectTrack;
+    trackIndex: number;
+    /** Snapshots of original cell data for affected content frames (for undo) */
+    contentFrameSnapshots: Array<{
+      layerId: string;
+      frameId: string;
+      previousData: Map<string, Cell>;
+    }>;
   };
 }

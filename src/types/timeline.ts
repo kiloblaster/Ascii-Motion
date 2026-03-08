@@ -411,6 +411,11 @@ export interface TimelineViewState {
 
   // Timecode display format (shared between playhead and duration inputs)
   timecodeFormat: TimecodeFormat;
+
+  // Effect block selection & expansion (procedural effects system)
+  selectedEffectBlockId: import('./effectBlock').EffectBlockId | null;
+  expandedEffectTrackIds: Set<import('./effectBlock').EffectBlockId>;
+  editingEffectKeyframeId: KeyframeId | null;
 }
 
 /**
