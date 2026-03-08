@@ -12,8 +12,9 @@ import { getEffect } from '../../../registry/effectRegistry';
 import { evaluateEffectBlock } from '../../../utils/effectsPipeline';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
-import { Trash2, Eye, EyeOff, X } from 'lucide-react';
-import type { EffectTrack, EffectPropertyDefinition } from '../../../types/effectBlock';
+import { Trash2, Eye, EyeOff, X, Diamond } from 'lucide-react';
+import type { EffectTrack, EffectPropertyDefinition, EffectBlock } from '../../../types/effectBlock';
+import type { KeyframeId } from '../../../types/timeline';
 
 /**
  * Find the effect track containing a block by its ID across layers, groups, and global.
@@ -53,11 +54,71 @@ interface EffectPropertyRowProps {
   definition: EffectPropertyDefinition;
   value: unknown;
   onChange: (value: unknown) => void;
+  block: EffectBlock;
+  currentFrame: number;
 }
 
-const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value, onChange }) => {
+const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value, onChange, block, currentFrame }) => {
   const [localValue, setLocalValue] = useState<string>(String(value ?? definition.defaultValue));
   const [isFocused, setIsFocused] = useState(false);
+  const addEffectPropertyTrack = useTimelineStore((s) => s.addEffectPropertyTrack);
+  const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
+  const removeEffectKeyframe = useTimelineStore((s) => s.removeEffectKeyframe);
+
+  // Find existing property track and keyframe at current frame
+  const existingTrack = block.propertyTracks.find((pt) => pt.propertyPath === definition.path);
+  const existingKf = existingTrack?.keyframes.find((kf) => kf.frame === currentFrame);
+  const isTracked = !!existingTrack;
+  const hasKeyframeAtCurrentFrame = !!existingKf;
+
+  const handleKeyframeToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isTracked) {
+      // Create property track + add keyframe at current frame
+      const trackId = addEffectPropertyTrack(block.id, definition.path);
+      if (trackId) {
+        const kfValue = (value ?? definition.defaultValue) as import('../../../types/effectBlock').EffectKeyframe['value'];
+        addEffectKeyframe(block.id, trackId, currentFrame, kfValue);
+      }
+    } else if (hasKeyframeAtCurrentFrame && existingKf && existingTrack) {
+      // Remove keyframe at current frame
+      removeEffectKeyframe(block.id, existingTrack.id, existingKf.id as KeyframeId);
+    } else if (existingTrack) {
+      // Add keyframe at current frame
+      const kfValue = (value ?? definition.defaultValue) as import('../../../types/effectBlock').EffectKeyframe['value'];
+      addEffectKeyframe(block.id, existingTrack.id, currentFrame, kfValue);
+    }
+  }, [isTracked, hasKeyframeAtCurrentFrame, block.id, definition.path, definition.defaultValue, currentFrame, value, existingKf, existingTrack, addEffectPropertyTrack, addEffectKeyframe, removeEffectKeyframe]);
+
+  const keyframeDiamond = (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            className="flex-shrink-0 p-0.5 hover:bg-muted rounded"
+            onClick={handleKeyframeToggle}
+          >
+            <Diamond
+              className={`w-3 h-3 ${
+                hasKeyframeAtCurrentFrame
+                  ? 'text-yellow-400 fill-yellow-400'
+                  : isTracked
+                    ? 'text-yellow-500'
+                    : 'text-muted-foreground/40'
+              }`}
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="left">
+          {hasKeyframeAtCurrentFrame
+            ? 'Remove keyframe at playhead'
+            : isTracked
+              ? 'Add keyframe at playhead'
+              : 'Add property track + keyframe'}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 
   const displayValue = isFocused ? localValue : String(value ?? definition.defaultValue);
 
@@ -100,7 +161,7 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
   if (definition.valueType === 'boolean') {
     return (
       <div className="flex items-center gap-1.5 py-0.5">
-        <div className="w-3.5 flex-shrink-0" />
+        {keyframeDiamond}
         <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
           {definition.displayName}
         </span>
@@ -118,7 +179,7 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
   if (definition.valueType === 'select' && definition.options) {
     return (
       <div className="flex items-center gap-1.5 py-0.5">
-        <div className="w-3.5 flex-shrink-0" />
+        {keyframeDiamond}
         <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
           {definition.displayName}
         </span>
@@ -141,7 +202,7 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
     const count = mappingValue ? Object.keys(mappingValue).length : 0;
     return (
       <div className="flex items-center gap-1.5 py-0.5">
-        <div className="w-3.5 flex-shrink-0" />
+        {keyframeDiamond}
         <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
           {definition.displayName}
         </span>
@@ -155,7 +216,7 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
   // Numeric input (default)
   return (
     <div className="flex items-center gap-1.5 py-0.5">
-      <div className="w-3.5 flex-shrink-0" />
+      {keyframeDiamond}
       <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
         {definition.displayName}
       </span>
@@ -265,6 +326,8 @@ export const EffectPropertiesPanel: React.FC = () => {
                 onChange={(newValue) => {
                   updateEffectBlockSettings(block.id, { [def.path]: newValue });
                 }}
+                block={block}
+                currentFrame={currentFrame}
               />
             ))}
           </div>

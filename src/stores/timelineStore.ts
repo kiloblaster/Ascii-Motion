@@ -44,6 +44,7 @@ import type { EffectTrack, EffectKeyframe } from '../types/effectBlock';
 import {
   generateEffectBlockId,
   generateEffectTrackId,
+  generateEffectPropertyTrackId,
 } from '../types/effectBlock';
 import { getEffect } from '../registry/effectRegistry';
 
@@ -404,6 +405,12 @@ export interface TimelineState {
   toggleEffectBlockEnabled: (
     blockId: import('../types/effectBlock').EffectBlockId,
   ) => void;
+
+  /** Add a property track to an effect block (if not already present) and return its ID */
+  addEffectPropertyTrack: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    propertyPath: string,
+  ) => import('../types/effectBlock').EffectPropertyTrackId | null;
 
   /** Add a keyframe to an effect property track */
   addEffectKeyframe: (
@@ -2453,6 +2460,46 @@ export const useTimelineStore = create<TimelineState>()(
           globalEffects,
         ),
       });
+    },
+
+    addEffectPropertyTrack: (blockId, propertyPath) => {
+      const ptId = generateEffectPropertyTrackId();
+
+      const addTrackToBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) => {
+          if (t.effectBlock.id !== blockId) return t;
+          // Don't add if already exists
+          if (t.effectBlock.propertyTracks.some((pt) => pt.propertyPath === propertyPath)) return t;
+          return {
+            ...t,
+            effectBlock: {
+              ...t.effectBlock,
+              propertyTracks: [
+                ...t.effectBlock.propertyTracks,
+                { id: ptId, propertyPath, keyframes: [], loopKeyframes: false },
+              ],
+            },
+          };
+        });
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({ layers: updateLayer(layers, layer.id, (l) => ({ ...l, effectTracks: addTrackToBlock(l.effectTracks) })) });
+          return ptId;
+        }
+      }
+
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({ layerGroups: layerGroups.map((g) => g.id === group.id ? { ...g, effectTracks: addTrackToBlock(g.effectTracks) } : g) });
+          return ptId;
+        }
+      }
+
+      set({ globalEffects: addTrackToBlock(globalEffects) });
+      return ptId;
     },
 
     addEffectKeyframe: (blockId, trackId, frame, value) => {
