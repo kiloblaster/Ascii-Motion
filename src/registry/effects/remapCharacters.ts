@@ -7,7 +7,7 @@ import type { EffectRegistryEntry } from '../effectRegistry';
 import type { EffectPropertyDefinition } from '../../types/effectBlock';
 import type { RemapCharactersEffectSettings } from '../../types/effects';
 import { DEFAULT_REMAP_CHARACTERS_SETTINGS } from '../../constants/effectsDefaults';
-import { processEffect } from '../../utils/effectsProcessing';
+import { processRemapCharactersEffect } from '../../utils/effectsProcessing';
 
 const propertyDefinitions: EffectPropertyDefinition[] = [
   {
@@ -36,17 +36,16 @@ export const remapCharactersEffect: EffectRegistryEntry = {
   description: 'Replace characters with visual character selector',
   defaultSettings: { ...DEFAULT_REMAP_CHARACTERS_SETTINGS } as unknown as Record<string, unknown>,
   propertyDefinitions,
-  process: async (cells, settings, options) => {
-    const result = await processEffect(
-      'remap-characters',
-      cells,
-      settings as unknown as RemapCharactersEffectSettings,
-      options?.canvasBackgroundColor ?? '#000000',
-      options?.selectionMask ? { selectionMask: options.selectionMask } : undefined,
-    );
-    return {
-      processedCells: result.processedCells ?? new Map(cells),
-      affectedCells: result.affectedCells,
-    };
+  process: (cells, settings, options) => {
+    const cellsToProcess = options?.selectionMask?.size
+      ? new Map([...cells].filter(([key]) => options.selectionMask!.has(key)))
+      : cells;
+    const result = processRemapCharactersEffect(cellsToProcess, settings as unknown as RemapCharactersEffectSettings);
+    if (options?.selectionMask?.size) {
+      const merged = new Map(cells);
+      result.processedCells.forEach((cell, key) => merged.set(key, cell));
+      return { processedCells: merged, affectedCells: result.affectedCells };
+    }
+    return result;
   },
 };

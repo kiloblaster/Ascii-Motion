@@ -19,9 +19,11 @@ import type {
   ContentFrame,
   PropertyPath,
 } from '../types/timeline';
+import type { EffectTrack } from '../types/effectBlock';
 import { PROPERTY_DEFINITIONS } from '../types/timeline';
 import { interpolateKeyframes } from '../types/easing';
 import { CELL_ASPECT_RATIO } from '../utils/fontMetrics';
+import { applyEffectsToLayer, hasActiveEffectsAtFrame } from './effectsPipeline';
 
 // ============================================
 // MAIN COMPOSITING FUNCTION
@@ -46,6 +48,7 @@ export function compositeLayersAtFrame(
   cellAspectRatio: number = CELL_ASPECT_RATIO,
   clip: boolean = true,
   groups?: LayerGroup[],
+  globalEffectTracks?: EffectTrack[],
 ): Map<string, Cell> {
   const result = new Map<string, Cell>();
 
@@ -63,6 +66,15 @@ export function compositeLayersAtFrame(
     // Get content frame at this time
     const contentFrame = getContentFrameAtTime(layer, frame);
     if (!contentFrame) continue;
+
+    // Apply per-layer procedural effects (non-destructive, in local space)
+    let cellData = contentFrame.data;
+    if (layer.effectTracks?.length > 0 && hasActiveEffectsAtFrame(layer.effectTracks, frame)) {
+      cellData = applyEffectsToLayer(cellData, layer.effectTracks, frame, {
+        canvasBackgroundColor: '#000000',
+        frame,
+      });
+    }
 
     // Get transform values at this frame via keyframe interpolation
     let posX = getPropertyValueAtFrame(layer, 'transform.position.x', frame);
@@ -123,7 +135,7 @@ export function compositeLayersAtFrame(
       // Find local-space content bounds
       let localMinX = Infinity, localMaxX = -Infinity;
       let localMinY = Infinity, localMaxY = -Infinity;
-      for (const coordKey of contentFrame.data.keys()) {
+      for (const coordKey of cellData.keys()) {
         const commaIdx = coordKey.indexOf(',');
         const x = parseInt(coordKey.substring(0, commaIdx), 10);
         const y = parseInt(coordKey.substring(commaIdx + 1), 10);
@@ -173,7 +185,7 @@ export function compositeLayersAtFrame(
           // Inverse-transform to find the source cell
           const source = inverseTransformPoint(sx, sy, transform);
           const sourceKey = `${source.x},${source.y}`;
-          const cell = contentFrame.data.get(sourceKey);
+          const cell = cellData.get(sourceKey);
 
           if (cell && cell.char && cell.char !== ' ') {
             result.set(`${sx},${sy}`, cell);
@@ -195,7 +207,7 @@ export function compositeLayersAtFrame(
       }
     } else {
       // No transform — use coordinates directly (fast path, forward mapping is fine)
-      for (const [coordKey, cell] of contentFrame.data) {
+      for (const [coordKey, cell] of cellData) {
         if (!cell.char || cell.char === ' ') continue;
 
         const commaIdx = coordKey.indexOf(',');
@@ -209,6 +221,15 @@ export function compositeLayersAtFrame(
         result.set(coordKey, cell);
       }
     }
+  }
+
+  // Apply global effects post-compositing (screen space)
+  if (globalEffectTracks && globalEffectTracks.length > 0 && hasActiveEffectsAtFrame(globalEffectTracks, frame)) {
+    const globalResult = applyEffectsToLayer(result, globalEffectTracks, frame, {
+      canvasBackgroundColor: '#000000',
+      frame,
+    });
+    return globalResult;
   }
 
   return result;

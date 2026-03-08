@@ -70,6 +70,7 @@ export interface EffectRegistryEntry {
   /**
    * Process function — applies the effect to a set of cells.
    * Must return a NEW Map (never mutate the input).
+   * Synchronous for compositing pipeline compatibility.
    *
    * @param cells - Input cell data
    * @param settings - Resolved settings (after keyframe interpolation)
@@ -80,7 +81,7 @@ export interface EffectRegistryEntry {
     cells: Map<string, Cell>,
     settings: Record<string, unknown>,
     options?: EffectProcessOptions,
-  ) => Promise<EffectProcessResult>;
+  ) => EffectProcessResult;
 }
 
 // ============================================

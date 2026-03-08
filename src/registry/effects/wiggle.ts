@@ -125,7 +125,7 @@ export const wiggleEffect: EffectRegistryEntry = {
     noiseSeed: 0,
   },
   propertyDefinitions,
-  process: async (cells, settings, options) => {
+  process: (cells, settings, options) => {
     const frame = options?.frame ?? 0;
     const frameRate = options?.frameRate ?? 12;
 

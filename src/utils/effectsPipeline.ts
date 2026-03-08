@@ -81,12 +81,12 @@ function isFrameInRange(block: EffectBlock, frame: number): boolean {
  * @param options - Additional processing context
  * @returns New cell Map with effects applied (original is never mutated)
  */
-export async function applyEffectsToLayer(
+export function applyEffectsToLayer(
   cells: Map<string, Cell>,
   effectTracks: EffectTrack[],
   frame: number,
   options?: EffectProcessOptions,
-): Promise<Map<string, Cell>> {
+): Map<string, Cell> {
   let currentCells = cells;
 
   for (const track of effectTracks) {
@@ -102,7 +102,7 @@ export async function applyEffectsToLayer(
     const resolvedSettings = evaluateEffectBlock(block, frame);
 
     // Apply the effect
-    const result = await entry.process(currentCells, resolvedSettings, options);
+    const result = entry.process(currentCells, resolvedSettings, options);
     currentCells = result.processedCells;
   }
 
@@ -120,12 +120,12 @@ export async function applyEffectsToLayer(
  * @param options - Additional processing context
  * @returns New cell Map with effects applied
  */
-export async function applyEffectsToGroup(
+export function applyEffectsToGroup(
   cells: Map<string, Cell>,
   effectTracks: EffectTrack[],
   frame: number,
   options?: EffectProcessOptions,
-): Promise<Map<string, Cell>> {
+): Map<string, Cell> {
   return applyEffectsToLayer(cells, effectTracks, frame, options);
 }
 
@@ -138,12 +138,12 @@ export async function applyEffectsToGroup(
  * @param options - Additional processing context
  * @returns New cell Map with global effects applied
  */
-export async function applyGlobalEffects(
+export function applyGlobalEffects(
   cells: Map<string, Cell>,
   effectTracks: EffectTrack[],
   frame: number,
   options?: EffectProcessOptions,
-): Promise<Map<string, Cell>> {
+): Map<string, Cell> {
   return applyEffectsToLayer(cells, effectTracks, frame, options);
 }
 
@@ -161,11 +161,11 @@ export async function applyGlobalEffects(
  * @param options - Additional processing context
  * @returns The modified content frames (mutated in place for efficiency — caller should clone if needed)
  */
-export async function bakeEffectBlock(
+export function bakeEffectBlock(
   block: EffectBlock,
   contentFrames: ContentFrame[],
   options?: EffectProcessOptions,
-): Promise<ContentFrame[]> {
+): ContentFrame[] {
   const entry = getEffect(block.effectType);
   if (!entry) return contentFrames;
 
@@ -183,7 +183,7 @@ export async function bakeEffectBlock(
     const evalFrame = Math.max(cf.startFrame, block.startFrame);
     const resolvedSettings = evaluateEffectBlock(block, evalFrame);
 
-    const result = await entry.process(cf.data, resolvedSettings, {
+    const result = entry.process(cf.data, resolvedSettings, {
       ...options,
       frame: evalFrame,
     });

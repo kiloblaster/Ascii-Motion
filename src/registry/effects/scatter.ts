@@ -7,7 +7,7 @@ import type { EffectRegistryEntry } from '../effectRegistry';
 import type { EffectPropertyDefinition } from '../../types/effectBlock';
 import type { ScatterEffectSettings } from '../../types/effects';
 import { DEFAULT_SCATTER_SETTINGS } from '../../constants/effectsDefaults';
-import { processEffect } from '../../utils/effectsProcessing';
+import { processScatterEffect } from '../../utils/effectsProcessing';
 
 const propertyDefinitions: EffectPropertyDefinition[] = [
   {
@@ -65,17 +65,16 @@ export const scatterEffect: EffectRegistryEntry = {
   description: 'Randomly scatter characters with customizable patterns',
   defaultSettings: { ...DEFAULT_SCATTER_SETTINGS } as unknown as Record<string, unknown>,
   propertyDefinitions,
-  process: async (cells, settings, options) => {
-    const result = await processEffect(
-      'scatter',
-      cells,
-      settings as unknown as ScatterEffectSettings,
-      options?.canvasBackgroundColor ?? '#000000',
-      options?.selectionMask ? { selectionMask: options.selectionMask } : undefined,
-    );
-    return {
-      processedCells: result.processedCells ?? new Map(cells),
-      affectedCells: result.affectedCells,
-    };
+  process: (cells, settings, options) => {
+    const cellsToProcess = options?.selectionMask?.size
+      ? new Map([...cells].filter(([key]) => options.selectionMask!.has(key)))
+      : cells;
+    const result = processScatterEffect(cellsToProcess, settings as unknown as ScatterEffectSettings, options?.canvasBackgroundColor ?? '#000000');
+    if (options?.selectionMask?.size) {
+      const merged = new Map(cells);
+      result.processedCells.forEach((cell, key) => merged.set(key, cell));
+      return { processedCells: merged, affectedCells: result.affectedCells };
+    }
+    return result;
   },
 };
