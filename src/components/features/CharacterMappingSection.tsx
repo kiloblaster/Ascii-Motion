@@ -356,7 +356,7 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
                       <Label className="text-xs font-medium">Character Set</Label>
                       <Select 
                         value={settings.autoModeCharacterSet} 
-                        onValueChange={(value: 'basic-ascii' | 'block-characters') => {
+                        onValueChange={(value: 'basic-ascii' | 'block-characters' | 'braille') => {
                           updateSettings({ autoModeCharacterSet: value });
                           onSettingsChange?.();
                         }}
@@ -367,6 +367,7 @@ export function CharacterMappingSection({ onSettingsChange }: CharacterMappingSe
                         <SelectContent>
                           <SelectItem value="basic-ascii" className="text-xs">Basic ASCII</SelectItem>
                           <SelectItem value="block-characters" className="text-xs">Block Characters</SelectItem>
+                          <SelectItem value="braille" className="text-xs">Braille</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

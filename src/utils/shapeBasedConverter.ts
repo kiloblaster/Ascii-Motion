@@ -26,7 +26,7 @@ import {
   type CharacterShapeEntry,
 } from '../constants/shapeVectors';
 
-export type AutoModeCharacterSet = 'basic-ascii' | 'block-characters';
+export type AutoModeCharacterSet = 'basic-ascii' | 'block-characters' | 'braille';
 
 /** Mapping methods that control how RGB pixels are reduced to a scalar for shape analysis. */
 export type ShapeMappingMethod = 'brightness' | 'luminance' | 'saturation' | 'red-channel' | 'green-channel' | 'blue-channel';
@@ -57,6 +57,14 @@ export class ShapeBasedConverter {
 
   constructor(options: ShapeConverterOptions) {
     this.options = options;
+
+    // Braille mode uses direct 2×4 dot sampling — no k-d tree needed
+    if (options.characterSet === 'braille') {
+      this.entries = [];
+      this.kdTree = new KdTree([]);
+      return;
+    }
+
     this.entries = options.characterSet === 'block-characters'
       ? getNormalizedBlockVectors()
       : getNormalizedAsciiVectors();
@@ -80,6 +88,11 @@ export class ShapeBasedConverter {
     gridWidth: number,
     gridHeight: number
   ): Map<string, string> {
+    // Braille uses a dedicated 2×4 dot sampling path
+    if (this.options.characterSet === 'braille') {
+      return this.convertImageBraille(imageData, gridWidth, gridHeight);
+    }
+
     const { width: imgWidth, height: imgHeight, data } = imageData;
     const cellW = imgWidth / gridWidth;
     const cellH = imgHeight / gridHeight;
@@ -127,6 +140,106 @@ export class ShapeBasedConverter {
         if (char !== ' ') {
           result.set(`${gx},${gy}`, char);
         }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Braille dot positions within a cell (2 columns × 4 rows).
+   * Each dot has a fractional (x, y) position and its Unicode bit index.
+   *
+   * Braille bit layout:
+   *   Dot1 (bit0) | Dot4 (bit3)
+   *   Dot2 (bit1) | Dot5 (bit4)
+   *   Dot3 (bit2) | Dot6 (bit5)
+   *   Dot7 (bit6) | Dot8 (bit7)
+   */
+  private static readonly BRAILLE_DOTS: Array<{ x: number; y: number; bit: number }> = [
+    { x: 0.25, y: 0.125, bit: 0 },  // Dot 1
+    { x: 0.25, y: 0.375, bit: 1 },  // Dot 2
+    { x: 0.25, y: 0.625, bit: 2 },  // Dot 3
+    { x: 0.75, y: 0.125, bit: 3 },  // Dot 4
+    { x: 0.75, y: 0.375, bit: 4 },  // Dot 5
+    { x: 0.75, y: 0.625, bit: 5 },  // Dot 6
+    { x: 0.25, y: 0.875, bit: 6 },  // Dot 7
+    { x: 0.75, y: 0.875, bit: 7 },  // Dot 8
+  ];
+
+  /**
+   * Convert an image to Braille characters using 2×4 dot sampling per cell.
+   *
+   * For each cell, samples 8 dot positions. Each dot's brightness is compared
+   * against a threshold to determine if it's "on". The 8 bits map directly to
+   * a Unicode Braille character (U+2800 + bitmask).
+   */
+  private convertImageBraille(
+    imageData: ImageData,
+    gridWidth: number,
+    gridHeight: number
+  ): Map<string, string> {
+    const { width: imgWidth, height: imgHeight, data } = imageData;
+    const cellW = imgWidth / gridWidth;
+    const cellH = imgHeight / gridHeight;
+    const result = new Map<string, string>();
+
+    // Sampling radius as fraction of cell size for averaging around each dot
+    const sampleRadius = Math.max(1, Math.floor(Math.min(cellW, cellH) * 0.1));
+
+    for (let gy = 0; gy < gridHeight; gy++) {
+      for (let gx = 0; gx < gridWidth; gx++) {
+        const cellX = gx * cellW;
+        const cellY = gy * cellH;
+
+        // Sample brightness at each of the 8 dot positions
+        const dotValues: number[] = new Array(8);
+        for (const dot of ShapeBasedConverter.BRAILLE_DOTS) {
+          const px = Math.floor(cellX + dot.x * cellW);
+          const py = Math.floor(cellY + dot.y * cellH);
+
+          // Average brightness in a small region around the dot center
+          let total = 0;
+          let count = 0;
+          for (let dy = -sampleRadius; dy <= sampleRadius; dy++) {
+            for (let dx = -sampleRadius; dx <= sampleRadius; dx++) {
+              const sx = Math.max(0, Math.min(imgWidth - 1, px + dx));
+              const sy = Math.max(0, Math.min(imgHeight - 1, py + dy));
+              const idx = (sy * imgWidth + sx) * 4;
+              total += this.pixelToScalar(data[idx], data[idx + 1], data[idx + 2]);
+              count++;
+            }
+          }
+          dotValues[dot.bit] = count > 0 ? total / count : 0;
+        }
+
+        // Apply contrast enhancement to dot values
+        if (this.options.globalContrastExponent > 1.0) {
+          const maxVal = Math.max(...dotValues);
+          if (maxVal > 0.001) {
+            for (let i = 0; i < 8; i++) {
+              const normalized = dotValues[i] / maxVal;
+              dotValues[i] = Math.pow(normalized, this.options.globalContrastExponent) * maxVal;
+            }
+          }
+        }
+
+        // Compute threshold from cell mean (adaptive thresholding)
+        const mean = dotValues.reduce((a, b) => a + b, 0) / 8;
+
+        // Build bitmask: dot is "on" if its brightness exceeds the threshold
+        let bits = 0;
+        for (let i = 0; i < 8; i++) {
+          if (dotValues[i] > mean * 0.5 && dotValues[i] > 0.05) {
+            bits |= (1 << i);
+          }
+        }
+
+        // Skip empty cells (blank braille = U+2800)
+        if (bits === 0) continue;
+
+        const char = String.fromCharCode(0x2800 + bits);
+        result.set(`${gx},${gy}`, char);
       }
     }
 

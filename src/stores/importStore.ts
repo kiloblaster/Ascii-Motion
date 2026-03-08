@@ -119,7 +119,7 @@ export interface ImportSettings {
   
   // Auto mode character mapping (shape-vector based)
   characterMappingStyle: 'character-palette' | 'auto-mode' | 'line-art';
-  autoModeCharacterSet: 'basic-ascii' | 'block-characters';
+  autoModeCharacterSet: 'basic-ascii' | 'block-characters' | 'braille';
   autoModeSamplingQuality: 'low' | 'medium' | 'high';
   autoModeGlobalContrast: number;      // 1.0–4.0 exponent
   autoModeDirectionalContrast: number; // 1.0–4.0 exponent
