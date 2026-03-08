@@ -7,6 +7,7 @@
 
 import { BLOCK_CHARACTERS_PALETTE } from './blockCharacters';
 import { ANSI_CHARACTERS_PALETTE } from './ansiCharacters';
+import { BRAILLE_CHARACTERS_PALETTE } from './brailleCharacters';
 import type { AutofillPalette, RegionName, RegionPattern } from './types';
 
 /**
@@ -16,6 +17,7 @@ import type { AutofillPalette, RegionName, RegionPattern } from './types';
 export const AUTOFILL_PALETTES: AutofillPalette[] = [
   BLOCK_CHARACTERS_PALETTE,
   ANSI_CHARACTERS_PALETTE,
+  BRAILLE_CHARACTERS_PALETTE,
 ];
 
 /**

@@ -239,3 +239,75 @@ export function cleanupSharedCanvas(): void {
   sharedCanvas = null;
   sharedCtx = null;
 }
+
+/**
+ * Unicode Braille dot layout (2 columns × 4 rows):
+ *
+ *   Left  Right
+ *   ┌───┬───┐
+ *   │ 1 │ 4 │  Row 0
+ *   ├───┼───┤
+ *   │ 2 │ 5 │  Row 1
+ *   ├───┼───┤
+ *   │ 3 │ 6 │  Row 2
+ *   ├───┼───┤
+ *   │ 7 │ 8 │  Row 3
+ *   └───┴───┘
+ *
+ * Bit values: dot1=0x01, dot2=0x02, dot3=0x04, dot4=0x08,
+ *             dot5=0x10, dot6=0x20, dot7=0x40, dot8=0x80
+ * Character = U+2800 + (sum of dot bits)
+ */
+
+/** Braille dot definitions: [colOffset, rowOffset, bitValue] */
+const BRAILLE_DOTS: Array<{ col: number; row: number; bit: number }> = [
+  { col: 0, row: 0, bit: 0x01 }, // dot 1 - top-left
+  { col: 0, row: 1, bit: 0x02 }, // dot 2 - upper-mid-left
+  { col: 0, row: 2, bit: 0x04 }, // dot 3 - lower-mid-left
+  { col: 1, row: 0, bit: 0x08 }, // dot 4 - top-right
+  { col: 1, row: 1, bit: 0x10 }, // dot 5 - upper-mid-right
+  { col: 1, row: 2, bit: 0x20 }, // dot 6 - lower-mid-right
+  { col: 0, row: 3, bit: 0x40 }, // dot 7 - bottom-left
+  { col: 1, row: 3, bit: 0x80 }, // dot 8 - bottom-right
+];
+
+/**
+ * Detect which Braille dots are covered by a bezier path within a cell.
+ * Samples a 2×4 grid matching the Braille dot layout for pixel-perfect mapping.
+ *
+ * @returns A bitmask representing the raised dots (0x00-0xFF)
+ */
+export function detectBrailleDots(
+  cellX: number,
+  cellY: number,
+  path: Path2D,
+  ctx: CanvasRenderingContext2D,
+  cellWidth: number,
+  cellHeight: number,
+  zoom: number,
+  panOffset: { x: number; y: number }
+): number {
+  let bits = 0;
+
+  for (const dot of BRAILLE_DOTS) {
+    // Map 2 columns to x offsets: col 0 → -0.25, col 1 → +0.25
+    const sampleX = cellX + (dot.col === 0 ? -0.25 : 0.25);
+    // Map 4 rows to y offsets: row 0 → -3/8, row 1 → -1/8, row 2 → +1/8, row 3 → +3/8
+    const sampleY = cellY + (dot.row - 1.5) / 4;
+
+    if (isPointInPath(sampleX, sampleY, path, ctx, cellWidth, cellHeight, zoom, panOffset)) {
+      bits |= dot.bit;
+    }
+  }
+
+  return bits;
+}
+
+/**
+ * Convert a Braille dot bitmask to its Unicode character.
+ * @param bits - Bitmask (0x00-0xFF) where each bit represents a raised dot
+ * @returns The corresponding Unicode Braille character (U+2800-U+28FF)
+ */
+export function brailleBitsToChar(bits: number): string {
+  return String.fromCharCode(0x2800 + (bits & 0xFF));
+}

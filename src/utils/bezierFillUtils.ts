@@ -18,6 +18,8 @@ import {
   isCellInside,
   calculateCellOverlap,
   detectCellRegions,
+  detectBrailleDots,
+  brailleBitsToChar,
 } from './bezierAutofillUtils';
 import { getCharacterForPattern } from '../constants/bezierAutofill';
 import { generateStrokeOutline } from './bezierStrokeUtils';
@@ -280,39 +282,49 @@ export function fillAutofill(
   // Get shared canvas
   const { ctx } = getSharedCanvas(canvasWidth * cellWidth, canvasHeight * cellHeight);
 
-  // Test each cell with 9-region detection
+  // Use Braille-specific 2×4 dot sampling or standard 9-region detection
+  const isBraille = paletteId === 'braille';
+
   for (let y = bounds.minY; y <= bounds.maxY; y++) {
     for (let x = bounds.minX; x <= bounds.maxX; x++) {
-      const filledRegions = detectCellRegions(
-        x,
-        y,
-        path,
-        ctx,
-        cellWidth,
-        cellHeight,
-        zoom,
-        panOffset
-      );
-
-      // Only fill cells that have at least one region covered
-      if (filledRegions.size > 0) {
-        const character = getCharacterForPattern(paletteId, filledRegions);
-
-        // Determine color based on fill color mode
-        let color = selectedColor;
-        if (fillColorMode === 'palette' && colorPalette) {
-          // For autofill, use number of filled regions as approximation of overlap
-          // 9 regions total, so percentage = (filled / 9) * 100
-          const overlapPercentage = (filledRegions.size / 9) * 100;
-          color = mapOverlapToColor(overlapPercentage, colorPalette);
+      if (isBraille) {
+        const bits = detectBrailleDots(x, y, path, ctx, cellWidth, cellHeight, zoom, panOffset);
+        if (bits > 0) {
+          let color = selectedColor;
+          if (fillColorMode === 'palette' && colorPalette) {
+            // Count set bits for coverage approximation (8 dots total)
+            let bitCount = bits;
+            bitCount = bitCount - ((bitCount >> 1) & 0x55);
+            bitCount = (bitCount & 0x33) + ((bitCount >> 2) & 0x33);
+            bitCount = (bitCount + (bitCount >> 4)) & 0x0F;
+            const overlapPercentage = (bitCount / 8) * 100;
+            color = mapOverlapToColor(overlapPercentage, colorPalette);
+          }
+          const key = `${x},${y}`;
+          filledCells.set(key, {
+            char: brailleBitsToChar(bits),
+            color,
+            bgColor: selectedBgColor,
+          });
         }
-
-        const key = `${x},${y}`;
-        filledCells.set(key, {
-          char: character,
-          color,
-          bgColor: selectedBgColor,
-        });
+      } else {
+        const filledRegions = detectCellRegions(
+          x, y, path, ctx, cellWidth, cellHeight, zoom, panOffset
+        );
+        if (filledRegions.size > 0) {
+          const character = getCharacterForPattern(paletteId, filledRegions);
+          let color = selectedColor;
+          if (fillColorMode === 'palette' && colorPalette) {
+            const overlapPercentage = (filledRegions.size / 9) * 100;
+            color = mapOverlapToColor(overlapPercentage, colorPalette);
+          }
+          const key = `${x},${y}`;
+          filledCells.set(key, {
+            char: character,
+            color,
+            bgColor: selectedBgColor,
+          });
+        }
       }
     }
   }
