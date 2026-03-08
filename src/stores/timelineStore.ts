@@ -2741,6 +2741,32 @@ export const useTimelineStore = create<TimelineState>()(
             ? { ...layer.staticProperties }
             : undefined,
           syncKeyframesToFrames: layer.syncKeyframesToFrames || undefined,
+          effectTracks: (layer.effectTracks ?? []).length > 0
+            ? (layer.effectTracks ?? []).map((et) => ({
+                id: et.id as string,
+                ownerId: et.ownerId as string | null,
+                effectBlock: {
+                  id: et.effectBlock.id as string,
+                  effectType: et.effectBlock.effectType,
+                  startFrame: et.effectBlock.startFrame,
+                  durationFrames: et.effectBlock.durationFrames,
+                  enabled: et.effectBlock.enabled,
+                  settings: { ...et.effectBlock.settings },
+                  propertyTracks: et.effectBlock.propertyTracks.map((pt) => ({
+                    id: pt.id as string,
+                    propertyPath: pt.propertyPath,
+                    keyframes: pt.keyframes.map((kf) => ({
+                      id: kf.id as string,
+                      frame: kf.frame,
+                      value: kf.value,
+                      easing: kf.easing,
+                    })),
+                    loopKeyframes: pt.loopKeyframes,
+                  })),
+                },
+                collapsed: et.collapsed,
+              }))
+            : undefined,
         })),
         layerGroups: layerGroups.length > 0
           ? layerGroups.map((group) => ({
@@ -2764,6 +2790,32 @@ export const useTimelineStore = create<TimelineState>()(
               })),
               staticProperties: Object.keys(group.staticProperties).length > 0
                 ? { ...group.staticProperties }
+                : undefined,
+              effectTracks: (group.effectTracks ?? []).length > 0
+                ? (group.effectTracks ?? []).map((et) => ({
+                    id: et.id as string,
+                    ownerId: et.ownerId as string | null,
+                    effectBlock: {
+                      id: et.effectBlock.id as string,
+                      effectType: et.effectBlock.effectType,
+                      startFrame: et.effectBlock.startFrame,
+                      durationFrames: et.effectBlock.durationFrames,
+                      enabled: et.effectBlock.enabled,
+                      settings: { ...et.effectBlock.settings },
+                      propertyTracks: et.effectBlock.propertyTracks.map((pt) => ({
+                        id: pt.id as string,
+                        propertyPath: pt.propertyPath,
+                        keyframes: pt.keyframes.map((kf) => ({
+                          id: kf.id as string,
+                          frame: kf.frame,
+                          value: kf.value,
+                          easing: kf.easing,
+                        })),
+                        loopKeyframes: pt.loopKeyframes,
+                      })),
+                    },
+                    collapsed: et.collapsed,
+                  }))
                 : undefined,
             }))
           : undefined,

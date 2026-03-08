@@ -482,7 +482,30 @@ export class SessionImporter {
       })),
       staticProperties: sessionLayer.staticProperties ?? {},
       syncKeyframesToFrames: sessionLayer.syncKeyframesToFrames,
-      effectTracks: [],
+      effectTracks: (sessionLayer.effectTracks ?? []).map((et) => ({
+        id: et.id as import('../types/effectBlock').EffectTrackId,
+        ownerId: et.ownerId as import('../types/timeline').LayerId | import('../types/timeline').LayerGroupId | null,
+        effectBlock: {
+          id: et.effectBlock.id as import('../types/effectBlock').EffectBlockId,
+          effectType: et.effectBlock.effectType,
+          startFrame: et.effectBlock.startFrame,
+          durationFrames: et.effectBlock.durationFrames,
+          enabled: et.effectBlock.enabled,
+          settings: et.effectBlock.settings ?? {},
+          propertyTracks: (et.effectBlock.propertyTracks ?? []).map((pt) => ({
+            id: pt.id as import('../types/effectBlock').EffectPropertyTrackId,
+            propertyPath: pt.propertyPath,
+            keyframes: pt.keyframes.map((kf) => ({
+              id: kf.id as KeyframeId,
+              frame: kf.frame,
+              value: kf.value,
+              easing: kf.easing,
+            })),
+            loopKeyframes: pt.loopKeyframes,
+          })),
+        },
+        collapsed: et.collapsed,
+      })),
     }));
 
     // Deserialize layer groups
@@ -506,7 +529,30 @@ export class SessionImporter {
         })),
       })),
       staticProperties: sessionGroup.staticProperties ?? {},
-      effectTracks: [],
+      effectTracks: (sessionGroup.effectTracks ?? []).map((et) => ({
+        id: et.id as import('../types/effectBlock').EffectTrackId,
+        ownerId: et.ownerId as import('../types/timeline').LayerId | import('../types/timeline').LayerGroupId | null,
+        effectBlock: {
+          id: et.effectBlock.id as import('../types/effectBlock').EffectBlockId,
+          effectType: et.effectBlock.effectType,
+          startFrame: et.effectBlock.startFrame,
+          durationFrames: et.effectBlock.durationFrames,
+          enabled: et.effectBlock.enabled,
+          settings: et.effectBlock.settings ?? {},
+          propertyTracks: (et.effectBlock.propertyTracks ?? []).map((pt) => ({
+            id: pt.id as import('../types/effectBlock').EffectPropertyTrackId,
+            propertyPath: pt.propertyPath,
+            keyframes: pt.keyframes.map((kf) => ({
+              id: kf.id as KeyframeId,
+              frame: kf.frame,
+              value: kf.value,
+              easing: kf.easing,
+            })),
+            loopKeyframes: pt.loopKeyframes,
+          })),
+        },
+        collapsed: et.collapsed,
+      })),
     }));
 
     // Load layers and groups into timeline store.
