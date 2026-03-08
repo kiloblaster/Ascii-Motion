@@ -482,6 +482,7 @@ export class SessionImporter {
       })),
       staticProperties: sessionLayer.staticProperties ?? {},
       syncKeyframesToFrames: sessionLayer.syncKeyframesToFrames,
+      effectTracks: [],
     }));
 
     // Deserialize layer groups
@@ -505,6 +506,7 @@ export class SessionImporter {
         })),
       })),
       staticProperties: sessionGroup.staticProperties ?? {},
+      effectTracks: [],
     }));
 
     // Load layers and groups into timeline store.

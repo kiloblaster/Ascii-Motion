@@ -472,6 +472,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': anchorX,
           'transform.anchorPoint.y': anchorY,
         },
+        effectTracks: [],
       };
 
       // Insert above active layer (or at top if none active)
@@ -1897,6 +1898,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
           'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
         },
+        effectTracks: [],
       };
 
       const newLayers = [
@@ -1955,6 +1957,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
           'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
         },
+        effectTracks: [],
       };
 
       // Remove all visible layers; keep invisible ones; insert merged at top visible position
@@ -2058,6 +2061,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': anchorX,
           'transform.anchorPoint.y': anchorY,
         },
+        effectTracks: [],
       };
 
       // Update layers to reference the group

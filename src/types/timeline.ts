@@ -6,6 +6,7 @@
  */
 
 import type { Cell } from './index';
+import type { EffectTrack, SessionEffectTrackV2 } from './effectBlock';
 
 // ============================================
 // BRANDED ID TYPES
@@ -97,6 +98,9 @@ export interface Layer {
 
   // Group membership (optional)
   parentGroupId?: LayerGroupId;
+
+  // Procedural effect tracks (non-destructive, timeline-based)
+  effectTracks: EffectTrack[];
 }
 
 /**
@@ -118,6 +122,9 @@ export interface LayerGroup {
   // Group-level transform tracks
   propertyTracks: PropertyTrack[];
   staticProperties: Record<string, number>;
+
+  // Procedural effect tracks (applied to intermediate group composite)
+  effectTracks: EffectTrack[];
 }
 
 /**
@@ -513,6 +520,9 @@ export interface SessionLayerV2 {
 
   // When true, keyframes within a content frame's time range move with the frame during drag
   syncKeyframesToFrames?: boolean;
+
+  // Procedural effect tracks
+  effectTracks?: SessionEffectTrackV2[];
 }
 
 /**
@@ -561,6 +571,9 @@ export interface SessionLayerGroupV2 {
   collapsed: boolean;
   propertyTracks: SessionPropertyTrackV2[];
   staticProperties?: Record<string, number>;
+
+  // Procedural effect tracks
+  effectTracks?: SessionEffectTrackV2[];
 }
 
 /**
@@ -604,6 +617,7 @@ export function createDefaultLayer(id?: LayerId, name?: string, canvasWidth = 80
       'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
       'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
     },
+    effectTracks: [],
   };
 }
 
