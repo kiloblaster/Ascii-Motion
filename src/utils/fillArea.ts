@@ -49,8 +49,16 @@ export const findFillArea = (options: FillAreaOptions): Set<string> => {
   const targetCell = getCell(startX, startY);
   if (!targetCell) return new Set();
 
+  const isCellEmpty = (cell: Cell) => !cell.char || cell.char === '' || cell.char === ' ';
+  const targetEmpty = isCellEmpty(targetCell);
+
   // Function to check if a cell matches the target based on criteria
   const matchesTarget = (cell: Cell): boolean => {
+    const cellEmpty = isCellEmpty(cell);
+    // Both empty: only match if char criterion is enabled
+    if (cellEmpty && targetEmpty) return fillMatchChar;
+    // One empty, one not: never match (prevents default color on empty cells from leaking)
+    if (cellEmpty || targetEmpty) return false;
     if (fillMatchChar && cell.char !== targetCell.char) return false;
     if (fillMatchColor && cell.color !== targetCell.color) return false;
     if (fillMatchBgColor && cell.bgColor !== targetCell.bgColor) return false;

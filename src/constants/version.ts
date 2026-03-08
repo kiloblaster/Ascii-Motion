@@ -1,12 +1,37 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.0.4";
-export const BUILD_DATE = "2026-03-01T23:53:23.774Z";
-export const BUILD_HASH = "72923a4";
+export const VERSION = "2.0.6";
+export const BUILD_DATE = "2026-03-08T05:50:33.330Z";
+export const BUILD_HASH = "eacbb64";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.6",
+    "date": "2026-03-08T05:50:33.330Z",
+    "commits": [
+      "Initial version"
+    ]
+  },
+  {
+    "version": "2.0.5",
+    "date": "2026-03-08T04:08:41.113Z",
+    "commits": [
+      "Merge pull request #81 from CameronFoxly/vector-rect-ellipse-tools",
+      "Fixed bug with bezier lines",
+      "Braille characters to import media automap settings",
+      "Added braille mode to autofill",
+      "Merge remote-tracking branch 'origin/main' into vector-rect-ellipse-tools",
+      "Fixed bugs with irregular corners.",
+      "Fixed bug and added fille option for filled or unfilled",
+      "Merge pull request #80 from CameronFoxly/add-braille-chars",
+      "feat: update rectangle and ellipse tools to use bezier vector engine",
+      "Add Braille characters (U+2800-U+28FF) to Misc section in character picker",
+      "Update version in readme",
+      "Fixed some build errors after deploy"
+    ]
+  },
   {
     "version": "2.0.4",
     "date": "2026-03-01T23:53:23.774Z",

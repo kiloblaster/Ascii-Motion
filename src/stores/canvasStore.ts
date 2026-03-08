@@ -156,7 +156,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
     }
 
+    const isCellEmpty = (cell: Cell) => !cell.char || cell.char === '' || cell.char === ' ';
+    const targetEmpty = isCellEmpty(targetCell);
+
     const matchesTarget = (cell: Cell) => {
+      const cellEmpty = isCellEmpty(cell);
+      // Both empty: only match if char criterion is enabled
+      if (cellEmpty && targetEmpty) return fillMatchChar;
+      // One empty, one not: never match (prevents default color on empty cells from leaking)
+      if (cellEmpty || targetEmpty) return false;
       if (fillMatchChar && cell.char !== targetCell.char) return false;
       if (fillMatchColor && cell.color !== targetCell.color) return false;
       if (fillMatchBgColor && cell.bgColor !== targetCell.bgColor) return false;
