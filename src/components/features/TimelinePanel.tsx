@@ -21,6 +21,7 @@ import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { OnionSkinControls } from './OnionSkinControls';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { GroupPropertiesPanel } from './timeline/GroupPropertiesPanel';
+import { EffectPropertiesPanel } from './timeline/EffectPropertiesPanel';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Slider } from '../ui/slider';
@@ -165,6 +166,7 @@ const TimelineFooter = React.memo(function TimelineFooter({
 
 export const TimelinePanel: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
+  const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
   const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
   const setShowLayerProperties = useTimelineStore((s) => s.setShowLayerProperties);
   const activeTool = useToolStore((s) => s.activeTool);
@@ -241,7 +243,7 @@ export const TimelinePanel: React.FC = () => {
             </div>
 
             {/* Right: Keyframe editor or Layer/Group properties */}
-            {editingKeyframeId ? <KeyframeEditorPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : <GroupPropertiesPanel />}
+            {editingKeyframeId ? <KeyframeEditorPanel /> : selectedEffectBlockId ? <EffectPropertiesPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : <GroupPropertiesPanel />}
           </div>
         </div>
   );
