@@ -237,6 +237,7 @@ export const InteractiveVectorShapeOverlay: React.FC = () => {
       lineArtEdgeThreshold,
       lineArtSdfBlur,
       lineArtInverseMatch,
+      shapeFilled,
     );
 
     updatePreview(previewCells, affectedCount);
@@ -247,7 +248,7 @@ export const InteractiveVectorShapeOverlay: React.FC = () => {
     activePalette.characters, autofillPaletteId, fillColorMode,
     colorPalette, strokeWidth, strokeTaperStart, strokeTaperEnd,
     lineArtEdgeThreshold, lineArtSdfBlur, lineArtInverseMatch,
-    updatePreview,
+    shapeFilled, updatePreview,
   ]);
 
   // ────────── Coordinate conversion ──────────

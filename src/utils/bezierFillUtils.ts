@@ -364,35 +364,58 @@ export function generateBezierPreview(
   strokeTaperEnd: number = 0.0,
   lineArtEdgeThreshold: number = 0.15,
   lineArtSdfBlur: number = 3,
-  lineArtInverseMatch: number = 8
+  lineArtInverseMatch: number = 8,
+  filled: boolean = true,
 ): { previewCells: Map<string, Cell>; affectedCount: number } {
-  console.log(`[bezierPreview] fillMode=${fillMode}, points=${anchorPoints.length}, isClosed=${isClosed}`);
-  // If path is open and has stroke, convert stroke to closed polygon for filling
-  // (skip for lineart mode which renders the path directly)
+  console.log(`[bezierPreview] fillMode=${fillMode}, points=${anchorPoints.length}, isClosed=${isClosed}, filled=${filled}`);
   let effectiveAnchorPoints = anchorPoints;
   let effectiveIsClosed = isClosed;
 
-  if (fillMode !== 'lineart' && !isClosed && strokeWidth > 0 && anchorPoints.length >= 2) {
-    // Generate stroke outline as a closed polygon
-    const strokeOutline = generateStrokeOutline(
-      anchorPoints,
-      strokeWidth,
-      strokeTaperStart,
-      strokeTaperEnd,
-      32 // segments per curve for smooth stroke
-    );
+  if (fillMode !== 'lineart') {
+    if (!filled && isClosed && anchorPoints.length >= 3) {
+      // Closed + Not Filled: duplicate first point to create an open perimeter path,
+      // then let stroke outline logic render it as an outline
+      const firstPoint = anchorPoints[0];
+      effectiveAnchorPoints = [
+        ...anchorPoints,
+        {
+          ...firstPoint,
+          id: `${firstPoint.id}_dup`,
+          hasHandles: false,
+          handleIn: null,
+          handleOut: null,
+          handleSymmetric: false,
+        },
+      ];
+      effectiveIsClosed = false;
+    } else if (filled && !isClosed && anchorPoints.length >= 2) {
+      // Open + Filled: treat as closed to fill the area between start and end
+      effectiveIsClosed = true;
+    }
 
-    // Convert outline points back to anchor points format for filling
-    effectiveAnchorPoints = strokeOutline.map((point, index) => ({
-      id: `stroke_${index}`,
-      position: point,
-      handleIn: index > 0 ? strokeOutline[index - 1] : point,
-      handleOut: index < strokeOutline.length - 1 ? strokeOutline[index + 1] : point,
-      hasHandles: false,
-      handleSymmetric: false,
-      selected: false,
-    }));
-    effectiveIsClosed = true; // Stroke outline is always closed
+    // For non-filled (stroke outline) rendering of open paths
+    if (!effectiveIsClosed && strokeWidth > 0 && effectiveAnchorPoints.length >= 2) {
+      // Generate stroke outline as a closed polygon
+      const strokeOutline = generateStrokeOutline(
+        effectiveAnchorPoints,
+        strokeWidth,
+        strokeTaperStart,
+        strokeTaperEnd,
+        32 // segments per curve for smooth stroke
+      );
+
+      // Convert outline points back to anchor points format for filling
+      effectiveAnchorPoints = strokeOutline.map((point, index) => ({
+        id: `stroke_${index}`,
+        position: point,
+        handleIn: index > 0 ? strokeOutline[index - 1] : point,
+        handleOut: index < strokeOutline.length - 1 ? strokeOutline[index + 1] : point,
+        hasHandles: false,
+        handleSymmetric: false,
+        selected: false,
+      }));
+      effectiveIsClosed = true; // Stroke outline is always closed
+    }
   }
 
   let previewCells: Map<string, Cell>;

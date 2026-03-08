@@ -264,7 +264,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({ className = '' }) => {
 export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }) => {
   const { paintBucketContiguous, setPaintBucketContiguous, magicWandContiguous, setMagicWandContiguous, toolAffectsChar, toolAffectsColor, toolAffectsBgColor, eyedropperPicksChar, eyedropperPicksColor, eyedropperPicksBgColor, setToolAffectsChar, setToolAffectsColor, setToolAffectsBgColor, setEyedropperPicksChar, setEyedropperPicksColor, setEyedropperPicksBgColor, fillMatchChar, fillMatchColor, fillMatchBgColor, setFillMatchChar, setFillMatchColor, setFillMatchBgColor, magicMatchChar, magicMatchColor, magicMatchBgColor, setMagicMatchChar, setMagicMatchColor, setMagicMatchBgColor, pushToHistory, layerTransformAutoKeyframe, selection: _selection, lassoSelection: _lassoSelection, magicWandSelection: _magicWandSelection, selectionAffectsAllLayers, setSelectionAffectsAllLayers } = useToolStore();
   const { contiguous, matchChar, matchColor, matchBgColor, setContiguous, setMatchCriteria } = useGradientStore();
-  const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape, shapeFilled, setShapeFilled } = useBezierStore();
+  const { fillMode, autofillPaletteId, setFillMode, setAutofillPaletteId, fillColorMode, setFillColorMode, strokeWidth, strokeTaperStart, strokeTaperEnd, setStrokeWidth, setStrokeTaperStart, setStrokeTaperEnd, isClosed, toggleClosedShape, shapeFilled, setShapeFilled, bezierFilled, setBezierFilled } = useBezierStore();
   const { canCrop, cropToSelection } = useCropToSelection();
 
   const effectiveTool = activeTool;
@@ -557,7 +557,11 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
             <Label className="text-[10px] text-muted-foreground">Closed</Label>
             <Switch checked={isClosed} onCheckedChange={handleCloseShapeToggle} className="scale-75" tabIndex={-1} onKeyDown={(e) => { e.preventDefault(); e.stopPropagation(); }} />
           </div>
-          {(!isClosed || fillMode === 'lineart') && (
+          <div className="flex items-center gap-1.5">
+            <Label className="text-[10px] text-muted-foreground">Filled</Label>
+            <Switch checked={bezierFilled} onCheckedChange={setBezierFilled} className="scale-75" tabIndex={-1} onKeyDown={(e) => { e.preventDefault(); e.stopPropagation(); }} />
+          </div>
+          {(!bezierFilled || !isClosed || fillMode === 'lineart') && (
             <>
               <div className="flex items-center gap-1">
                 <Label className="text-[10px] text-muted-foreground">Width:</Label>

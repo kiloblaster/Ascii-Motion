@@ -153,7 +153,14 @@ function generateSegmentStroke(
     
     // Get point and tangent on curve
     const point = cubicBezierPoint(tLocal, p0, cp1, cp2, p1);
-    const tangent = cubicBezierTangent(tLocal, p0, cp1, cp2, p1);
+    let tangent = cubicBezierTangent(tLocal, p0, cp1, cp2, p1);
+    
+    // For degenerate cubics (straight lines where cp1=p0 and cp2=p1),
+    // the tangent is zero at endpoints. Fall back to chord direction.
+    const tangentLen = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y);
+    if (tangentLen < 0.001) {
+      tangent = { x: p1.x - p0.x, y: p1.y - p0.y };
+    }
     
     // Get normal (perpendicular to tangent)
     const normal = perpendicular(normalize(tangent));
@@ -178,8 +185,59 @@ function generateSegmentStroke(
 }
 
 /**
+ * Compute a miter join point at a path junction.
+ * Given two offset points on the same side of a corner, computes the
+ * intersection point of the two offset lines (miter join).
+ */
+function computeMiterPoint(
+  center: Point,
+  offsetA: Point,
+  offsetB: Point,
+): Point {
+  const dA = { x: offsetA.x - center.x, y: offsetA.y - center.y };
+  const dB = { x: offsetB.x - center.x, y: offsetB.y - center.y };
+
+  const lenA = Math.sqrt(dA.x * dA.x + dA.y * dA.y);
+  const lenB = Math.sqrt(dB.x * dB.x + dB.y * dB.y);
+
+  if (lenA < 0.001 || lenB < 0.001) {
+    return { x: (offsetA.x + offsetB.x) / 2, y: (offsetA.y + offsetB.y) / 2 };
+  }
+
+  const avgLen = (lenA + lenB) / 2;
+  const nA = { x: dA.x / lenA, y: dA.y / lenA };
+  const nB = { x: dB.x / lenB, y: dB.y / lenB };
+
+  // Compute bisector direction
+  const bisect = { x: nA.x + nB.x, y: nA.y + nB.y };
+  const bisectLen = Math.sqrt(bisect.x * bisect.x + bisect.y * bisect.y);
+
+  if (bisectLen < 0.001) {
+    // Offset directions are opposite (180° turn), use midpoint
+    return { x: (offsetA.x + offsetB.x) / 2, y: (offsetA.y + offsetB.y) / 2 };
+  }
+
+  const nBisect = { x: bisect.x / bisectLen, y: bisect.y / bisectLen };
+  const cosHalfAngle = nA.x * nBisect.x + nA.y * nBisect.y;
+
+  // Limit miter for very sharp angles to avoid extreme spikes
+  if (cosHalfAngle < 0.25) {
+    return { x: (offsetA.x + offsetB.x) / 2, y: (offsetA.y + offsetB.y) / 2 };
+  }
+
+  const miterDist = avgLen / cosHalfAngle;
+
+  return {
+    x: center.x + nBisect.x * miterDist,
+    y: center.y + nBisect.y * miterDist,
+  };
+}
+
+/**
  * Generate stroke outline points for an entire bezier path
- * Creates a closed polygon representing the stroke area
+ * Creates a closed polygon representing the stroke area.
+ * Uses miter joins at all segment junctions and handles virtually-closed
+ * paths (where first and last anchor overlap) to avoid self-intersection.
  * 
  * @param anchorPoints - Bezier anchor points
  * @param strokeWidth - Base width of the stroke in grid units
@@ -199,47 +257,41 @@ export function generateStrokeOutline(
     return [];
   }
 
-  const allLeftPoints: Point[] = [];
-  const allRightPoints: Point[] = [];
-  
   // Calculate total number of segments for global t calculation
   const totalSegments = anchorPoints.length - 1;
 
-  // Generate stroke for each segment
-  for (let i = 0; i < anchorPoints.length - 1; i++) {
+  // Generate stroke for each segment separately
+  const segmentStrokes: { left: Point[]; right: Point[] }[] = [];
+
+  for (let i = 0; i < totalSegments; i++) {
     const p0 = anchorPoints[i];
     const p1 = anchorPoints[i + 1];
-    
+
     // Calculate global t range for this segment
     const tStart = i / totalSegments;
     const tEnd = (i + 1) / totalSegments;
-    
+
     // Determine control points
     let cp1: Point, cp2: Point;
-    
+
     if (p0.hasHandles && p0.handleOut) {
-      // Use outgoing handle from p0
       cp1 = {
         x: p0.position.x + p0.handleOut.x,
         y: p0.position.y + p0.handleOut.y,
       };
     } else {
-      // No handle, use point position (creates straight line)
       cp1 = { x: p0.position.x, y: p0.position.y };
     }
-    
+
     if (p1.hasHandles && p1.handleIn) {
-      // Use incoming handle to p1
       cp2 = {
         x: p1.position.x + p1.handleIn.x,
         y: p1.position.y + p1.handleIn.y,
       };
     } else {
-      // No handle, use point position
       cp2 = { x: p1.position.x, y: p1.position.y };
     }
-    
-    // Generate stroke for this segment
+
     const { left, right } = generateSegmentStroke(
       { x: p0.position.x, y: p0.position.y },
       cp1,
@@ -252,16 +304,66 @@ export function generateStrokeOutline(
       tStart,
       tEnd
     );
-    
-    // For first segment, include all points
-    // For subsequent segments, skip first point to avoid duplicates
+
+    segmentStrokes.push({ left, right });
+  }
+
+  // Check if path is virtually closed (first and last anchor at same position)
+  const firstPos = anchorPoints[0].position;
+  const lastPos = anchorPoints[anchorPoints.length - 1].position;
+  const isVirtuallyClosed =
+    Math.abs(firstPos.x - lastPos.x) < 0.001 &&
+    Math.abs(firstPos.y - lastPos.y) < 0.001;
+
+  // Build final arrays with miter joins at junctions
+  const allLeftPoints: Point[] = [];
+  const allRightPoints: Point[] = [];
+
+  for (let i = 0; i < segmentStrokes.length; i++) {
+    const { left, right } = segmentStrokes[i];
+
     if (i === 0) {
       allLeftPoints.push(...left);
       allRightPoints.push(...right);
     } else {
+      // Compute miter join at junction between segment i-1 and segment i
+      const junctionPos = anchorPoints[i].position;
+
+      const prevLastLeft = allLeftPoints[allLeftPoints.length - 1];
+      const currFirstLeft = left[0];
+      const prevLastRight = allRightPoints[allRightPoints.length - 1];
+      const currFirstRight = right[0];
+
+      const leftMiter = computeMiterPoint(junctionPos, prevLastLeft, currFirstLeft);
+      const rightMiter = computeMiterPoint(junctionPos, prevLastRight, currFirstRight);
+
+      // Replace the last point of previous segment with miter
+      allLeftPoints[allLeftPoints.length - 1] = leftMiter;
+      allRightPoints[allRightPoints.length - 1] = rightMiter;
+
+      // Skip first point of current segment (replaced by miter above)
       allLeftPoints.push(...left.slice(1));
       allRightPoints.push(...right.slice(1));
     }
+  }
+
+  // Handle virtually-closed path: miter join at start/end overlap
+  if (isVirtuallyClosed && segmentStrokes.length >= 2) {
+    const leftMiter = computeMiterPoint(
+      { x: firstPos.x, y: firstPos.y },
+      allLeftPoints[allLeftPoints.length - 1],
+      allLeftPoints[0],
+    );
+    const rightMiter = computeMiterPoint(
+      { x: firstPos.x, y: firstPos.y },
+      allRightPoints[allRightPoints.length - 1],
+      allRightPoints[0],
+    );
+
+    allLeftPoints[0] = leftMiter;
+    allLeftPoints[allLeftPoints.length - 1] = leftMiter;
+    allRightPoints[0] = rightMiter;
+    allRightPoints[allRightPoints.length - 1] = rightMiter;
   }
 
   // Create closed polygon: left side forward, right side backward
