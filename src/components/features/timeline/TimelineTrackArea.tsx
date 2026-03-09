@@ -382,7 +382,21 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
           // Global effects track rows at top (always render header spacer)
           items.push(
-            <div key="global-effects-header-spacer" className="border-b border-border/50 bg-muted/20" style={{ minHeight: 28 }} />
+            <div key="global-effects-header-spacer" className="relative border-b border-border/50 bg-muted/20" style={{ minHeight: 28 }}>
+              {/* Keyframe dots on collapsed global effects section */}
+              {!globalEffectsExpanded && globalEffects.length > 0 && (() => {
+                const kfFrames = new Set<number>();
+                for (const et of globalEffects) {
+                  for (const pt of et.effectBlock.propertyTracks) {
+                    for (const kf of pt.keyframes) kfFrames.add(kf.frame);
+                  }
+                }
+                if (kfFrames.size === 0) return null;
+                return [...kfFrames].map((frame) => (
+                  <div key={`gkf-dot-${frame}`} className="absolute w-[6px] h-[6px] rounded-full bg-yellow-500/80 pointer-events-none z-10" style={{ left: frame * pxPerFrame - 3, top: '50%', transform: 'translateY(-50%)' }} />
+                ));
+              })()}
+            </div>
           );
           // Global effect track rows (only when expanded and tracks exist)
           if (globalEffectsExpanded && globalEffects.length > 0) {
@@ -391,6 +405,17 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
               items.push(
                 <div key={`global-et-${track.id}`} className="relative border-b border-border/30 min-h-[24px] bg-muted/10">
                   <EffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
+                  {/* Keyframe dots on collapsed effect track */}
+                  {!expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.length > 0 && (() => {
+                    const kfFrames = new Set<number>();
+                    for (const pt of track.effectBlock.propertyTracks) {
+                      for (const kf of pt.keyframes) kfFrames.add(kf.frame);
+                    }
+                    if (kfFrames.size === 0) return null;
+                    return [...kfFrames].map((frame) => (
+                      <div key={`gekf-dot-${frame}`} className="absolute w-[5px] h-[5px] rounded-full bg-yellow-500/70 pointer-events-none z-10" style={{ left: frame * pxPerFrame - 2, bottom: 2 }} />
+                    ));
+                  })()}
                 </div>
               );
               // Effect property keyframe sub-rows (when expanded)
@@ -574,8 +599,17 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 for (const et of (group.effectTracks ?? [])) {
                   items.push(
                     <div key={`group-et-${et.id}`} className="relative border-b border-border/30 min-h-[24px] bg-muted/5">
-                      <EffectBlockComponent track={et} pxPerFrame={pxPerFrame} />
-                    </div>
+                      <EffectBlockComponent track={et} pxPerFrame={pxPerFrame} />                    {/* Keyframe dots on collapsed group effect track */}
+                    {!expandedEffectTrackIds.has(et.effectBlock.id) && et.effectBlock.propertyTracks.length > 0 && (() => {
+                      const kfFrames = new Set<number>();
+                      for (const pt of et.effectBlock.propertyTracks) {
+                        for (const kf of pt.keyframes) kfFrames.add(kf.frame);
+                      }
+                      if (kfFrames.size === 0) return null;
+                      return [...kfFrames].map((frame) => (
+                        <div key={`grpekf-dot-${frame}`} className="absolute w-[5px] h-[5px] rounded-full bg-yellow-500/70 pointer-events-none z-10" style={{ left: frame * pxPerFrame - 2, bottom: 2 }} />
+                      ));
+                    })()}                    </div>
                   );
                   if (expandedEffectTrackIds.has(et.effectBlock.id)) {
                     for (const pt of et.effectBlock.propertyTracks) {
@@ -892,6 +926,17 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
               <React.Fragment key={`et-${track.id}`}>
                 <div className="relative border-b border-border/30 min-h-[24px] bg-muted/5">
                   <EffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
+                  {/* Keyframe dots on collapsed layer effect track */}
+                  {!expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.length > 0 && (() => {
+                    const kfFrames = new Set<number>();
+                    for (const pt of track.effectBlock.propertyTracks) {
+                      for (const kf of pt.keyframes) kfFrames.add(kf.frame);
+                    }
+                    if (kfFrames.size === 0) return null;
+                    return [...kfFrames].map((frame) => (
+                      <div key={`lekf-dot-${frame}`} className="absolute w-[5px] h-[5px] rounded-full bg-yellow-500/70 pointer-events-none z-10" style={{ left: frame * pxPerFrame - 2, bottom: 2 }} />
+                    ));
+                  })()}
                 </div>
                 {/* Effect property keyframe sub-rows (when effect block is expanded) */}
                 {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
