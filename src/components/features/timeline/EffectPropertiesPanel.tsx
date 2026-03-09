@@ -529,6 +529,7 @@ export const EffectPropertiesPanel: React.FC = () => {
   const selectEffectBlock = useTimelineStore((s) => s.selectEffectBlock);
   const updateEffectBlockSettings = useTimelineStore((s) => s.updateEffectBlockSettings);
   const updateEffectKeyframe = useTimelineStore((s) => s.updateEffectKeyframe);
+  const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
   const toggleEffectBlockEnabled = useTimelineStore((s) => s.toggleEffectBlockEnabled);
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
@@ -615,15 +616,23 @@ export const EffectPropertiesPanel: React.FC = () => {
                 value={resolvedSettings[def.path]}
                 onChange={(newValue) => {
                   if (kfAtFrame && propTrack) {
-                    // Update the keyframe value directly
+                    // Update the existing keyframe value directly
                     updateEffectKeyframe(
                       block.id,
                       propTrack.id,
                       kfAtFrame.id as import('../../../types/timeline').KeyframeId,
                       { value: newValue as import('../../../types/effectBlock').EffectKeyframe['value'] },
                     );
+                  } else if (propTrack) {
+                    // Property is keyframed but no keyframe at playhead — auto-key: create one
+                    addEffectKeyframe(
+                      block.id,
+                      propTrack.id,
+                      currentFrame,
+                      newValue as import('../../../types/effectBlock').EffectKeyframe['value'],
+                    );
                   } else {
-                    // No keyframe at current frame — update block settings
+                    // No property track at all (static property) — update block settings
                     updateEffectBlockSettings(block.id, { [def.path]: newValue });
                   }
                 }}
