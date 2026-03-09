@@ -55,7 +55,7 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
   return (
     <div
       className={cn(
-        'flex items-center px-1.5 min-h-[24px] border-b border-border/30 text-[10px] cursor-pointer',
+        'flex items-center pl-4 pr-1.5 min-h-[24px] border-b border-border/30 text-[10px] cursor-pointer',
         'hover:bg-muted/30',
         isSelected && 'bg-accent/30',
         !block.enabled && 'opacity-50',

@@ -10,7 +10,7 @@ import { useTimelineStore } from '../../../stores/timelineStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond, RectangleEllipsis, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, Diamond, RectangleEllipsis } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import { EffectTrackRow } from './EffectTrackRow';
@@ -462,7 +462,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
               {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
                 <div
                   key={pt.id}
-                  className="flex items-center px-3 min-h-[20px] border-b border-border/20 text-[9px] text-muted-foreground/60"
+                  className="flex items-center pl-6 pr-1.5 min-h-[20px] border-b border-border/20 text-[9px] text-muted-foreground/60"
                 >
                   {pt.propertyPath}
                 </div>
@@ -474,10 +474,10 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="flex items-center gap-1 px-1.5 py-0.5 min-h-[20px] text-xs text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 w-full"
+                className="flex items-center gap-1 px-1.5 py-0.5 min-h-[24px] text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 w-full"
                 onClick={(e) => e.stopPropagation()}
               >
-                <Sparkles className="w-2.5 h-2.5" />
+                <Plus className="w-3 h-3" />
                 Add Effect
               </button>
             </DropdownMenuTrigger>
