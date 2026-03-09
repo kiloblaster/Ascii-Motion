@@ -1881,6 +1881,59 @@ export const useTimelineStore = create<TimelineState>()(
           }
         }
       }
+      // Search effect property tracks across layers, groups, and global
+      for (const layer of get().layers) {
+        for (const et of (layer.effectTracks ?? [])) {
+          for (const pt of et.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (keyframeIds.includes(kf.id as KeyframeId)) {
+                entries.push({
+                  layerId: layer.id as string,
+                  trackId: pt.id as string,
+                  propertyPath: pt.propertyPath,
+                  frame: kf.frame,
+                  value: kf.value as number,
+                  easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+                });
+              }
+            }
+          }
+        }
+      }
+      for (const group of get().layerGroups) {
+        for (const et of (group.effectTracks ?? [])) {
+          for (const pt of et.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (keyframeIds.includes(kf.id as KeyframeId)) {
+                entries.push({
+                  layerId: (group.childLayerIds[0] ?? group.id) as string,
+                  trackId: pt.id as string,
+                  propertyPath: pt.propertyPath,
+                  frame: kf.frame,
+                  value: kf.value as number,
+                  easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+                });
+              }
+            }
+          }
+        }
+      }
+      for (const et of (get().globalEffects ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          for (const kf of pt.keyframes) {
+            if (keyframeIds.includes(kf.id as KeyframeId)) {
+              entries.push({
+                layerId: (get().layers[0]?.id ?? '') as string,
+                trackId: pt.id as string,
+                propertyPath: pt.propertyPath,
+                frame: kf.frame,
+                value: kf.value as number,
+                easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+              });
+            }
+          }
+        }
+      }
       if (entries.length === 0) return;
 
       // Sort all entries by frame to find the global first frame
@@ -1930,6 +1983,31 @@ export const useTimelineStore = create<TimelineState>()(
             targetPath = track.propertyPath;
             break;
           }
+        }
+      }
+      // Search effect property tracks
+      if (!targetPath) {
+        for (const layer of layers) {
+          for (const et of (layer.effectTracks ?? [])) {
+            const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+            if (pt) { targetPath = pt.propertyPath; break; }
+          }
+          if (targetPath) break;
+        }
+      }
+      if (!targetPath) {
+        for (const group of layerGroups) {
+          for (const et of (group.effectTracks ?? [])) {
+            const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+            if (pt) { targetPath = pt.propertyPath; break; }
+          }
+          if (targetPath) break;
+        }
+      }
+      if (!targetPath) {
+        for (const et of (get().globalEffects ?? [])) {
+          const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+          if (pt) { targetPath = pt.propertyPath; break; }
         }
       }
       if (!targetPath) return;
