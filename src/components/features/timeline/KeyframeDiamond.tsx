@@ -93,6 +93,8 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
         selectKeyframes([keyframe.id]);
       }
       setEditingKeyframe(keyframe.id);
+      // Clear effect block selection so keyframe editor takes priority
+      useTimelineStore.getState().selectEffectBlock(null);
     },
     [keyframe.id, selectKeyframes, addKeyframesToSelection, setEditingKeyframe],
   );

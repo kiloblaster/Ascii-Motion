@@ -2220,7 +2220,7 @@ export const useKeyboardShortcuts = () => {
         if (tl.layers.length > 0) {
           event.preventDefault();
           // Capture the current state NOW (before any async delay)
-          const shouldExpand = tl.view.expandedLayerIds.size === 0;
+          const shouldExpand = tl.view.expandedLayerIds.size === 0 && tl.view.expandedEffectTrackIds.size === 0;
           // Use setTimeout to escape the keyboard event handler's execution context.
           setTimeout(() => {
             const current = useTimelineStore.getState();
@@ -2255,8 +2255,15 @@ export const useKeyboardShortcuts = () => {
                 }
               }
             } else {
-              // Collapse all
+              // Collapse all (layers and effect tracks)
               current.setExpandedLayerIds(new Set());
+              // Also collapse all expanded effect tracks
+              const expandedEffects = current.view.expandedEffectTrackIds;
+              if (expandedEffects.size > 0) {
+                for (const blockId of expandedEffects) {
+                  current.toggleEffectTrackExpanded(blockId);
+                }
+              }
             }
           }, 0);
           return;

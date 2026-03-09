@@ -2812,7 +2812,7 @@ export const useTimelineStore = create<TimelineState>()(
 
     selectEffectBlock: (blockId) => {
       set((state) => ({
-        view: { ...state.view, selectedEffectBlockId: blockId },
+        view: { ...state.view, selectedEffectBlockId: blockId, editingKeyframeId: blockId ? null : state.view.editingKeyframeId },
       }));
     },
 
