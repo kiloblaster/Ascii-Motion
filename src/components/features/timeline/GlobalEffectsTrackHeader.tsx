@@ -73,7 +73,10 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
                   const start = currentFrame;
                   const duration = Math.max(1, durationFrames - start);
                   const blockId = addEffectBlock(null, effect.type, start, duration);
-                  if (blockId) recordAdd(null, blockId);
+                  if (blockId) {
+                    recordAdd(null, blockId);
+                    if (!isExpanded) toggleExpanded();
+                  }
                 }}
               >
                 <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
