@@ -150,10 +150,34 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
       const CONTENT_ROW_H = 32; // content frame row height
       const TRACK_ROW_H = 24;   // property track row height
       const ADD_PROP_ROW_H = 24; // "+ Add Property" spacer
+      const EFFECT_TRACK_ROW_H = 24; // effect track row height
+      const EFFECT_PT_ROW_H = 20; // effect property track row height
+      const EFFECT_ADD_ROW_H = 20; // "+ Add Effect" spacer
 
       const result: KeyframeId[] = [];
       let yOffset = 0;
       const renderedGroupIds = new Set<string>();
+
+      // Global effects rows at top
+      if (globalEffects.length > 0) {
+        yOffset += 28; // Global header
+        for (const track of globalEffects) {
+          yOffset += EFFECT_TRACK_ROW_H; // effect block row
+          if (expandedEffectTrackIds.has(track.effectBlock.id)) {
+            for (const pt of track.effectBlock.propertyTracks) {
+              const trackTop = yOffset;
+              const trackBottom = yOffset + EFFECT_PT_ROW_H;
+              for (const kf of pt.keyframes) {
+                const kfX = kf.frame * pxPerFrame;
+                if (kfX >= left - 6 && kfX <= right + 6 && trackBottom > top && trackTop < bottom) {
+                  result.push(kf.id);
+                }
+              }
+              yOffset += EFFECT_PT_ROW_H;
+            }
+          }
+        }
+      }
 
       for (const layer of displayLayers) {
         // Check for group header
@@ -206,12 +230,32 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
           }
           // Add Property spacer
           yOffset += ADD_PROP_ROW_H;
+
+          // Effect track rows
+          for (const et of (layer.effectTracks ?? [])) {
+            yOffset += EFFECT_TRACK_ROW_H; // effect block row
+            if (expandedEffectTrackIds.has(et.effectBlock.id)) {
+              for (const pt of et.effectBlock.propertyTracks) {
+                const trackTop = yOffset;
+                const trackBottom = yOffset + EFFECT_PT_ROW_H;
+                for (const kf of pt.keyframes) {
+                  const kfX = kf.frame * pxPerFrame;
+                  if (kfX >= left - 6 && kfX <= right + 6 && trackBottom > top && trackTop < bottom) {
+                    result.push(kf.id);
+                  }
+                }
+                yOffset += EFFECT_PT_ROW_H;
+              }
+            }
+          }
+          // Add Effect spacer
+          yOffset += EFFECT_ADD_ROW_H;
         }
       }
 
       return result;
     },
-    [displayLayers, expandedLayerIds, pxPerFrame, layerGroups],
+    [displayLayers, expandedLayerIds, expandedEffectTrackIds, globalEffects, pxPerFrame, layerGroups],
   );
 
   const handleTrackAreaMouseDown = useCallback(
@@ -332,8 +376,34 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 const proxyLayerId = layers.length > 0 ? layers[0].id : ('' as LayerId);
                 for (const pt of track.effectBlock.propertyTracks) {
                   items.push(
-                    <div key={`global-ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair">
-                      {pt.keyframes.map((kf) => (
+                    <div
+                      key={`global-ept-${pt.id}`}
+                      className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair"
+                      onDoubleClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left;
+                        const frame = Math.max(0, Math.round(clickX / pxPerFrame));
+                        const currentValue = 0;
+                        const kfId = useTimelineStore.getState().addEffectKeyframe(
+                          track.effectBlock.id,
+                          pt.id,
+                          frame,
+                          currentValue,
+                        );
+                        if (kfId) {
+                          selectKeyframes([kfId]);
+                          setEditingKeyframe(kfId);
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        if ((e.target as HTMLElement).closest('[data-keyframe]')) return;
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0);
+                        const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+                        setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'property-track', layerId: proxyLayerId, trackId: pt.id as unknown as import('../../../types/timeline').PropertyTrackId, clickFrame } });
+                      }}
+                    >                      {pt.keyframes.map((kf) => (
                         <KeyframeDiamond
                           key={kf.id}
                           layerId={proxyLayerId}
@@ -744,7 +814,33 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 </div>
                 {/* Effect property keyframe sub-rows (when effect block is expanded) */}
                 {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
-                  <div key={`ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair">
+                  <div
+                    key={`ept-${pt.id}`}
+                    className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair"
+                    onDoubleClick={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const clickX = e.clientX - rect.left;
+                      const frame = Math.max(0, Math.round(clickX / pxPerFrame));
+                      const kfId = useTimelineStore.getState().addEffectKeyframe(
+                        track.effectBlock.id,
+                        pt.id,
+                        frame,
+                        0,
+                      );
+                      if (kfId) {
+                        selectKeyframes([kfId]);
+                        setEditingKeyframe(kfId);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      if ((e.target as HTMLElement).closest('[data-keyframe]')) return;
+                      e.preventDefault();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const clickX = e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0);
+                      const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+                      setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'property-track', layerId: layer.id, trackId: pt.id as unknown as import('../../../types/timeline').PropertyTrackId, clickFrame } });
+                    }}
+                  >
                     {pt.keyframes.map((kf) => (
                       <KeyframeDiamond
                         key={kf.id}
