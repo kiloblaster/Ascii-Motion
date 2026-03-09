@@ -6,7 +6,7 @@
  * Replaces the LayerPropertiesPanel in the right sidebar.
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef, createRef } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useCanvasStore } from '../../../stores/canvasStore';
 import { usePaletteStore } from '../../../stores/paletteStore';
@@ -16,7 +16,8 @@ import { mapCanvasColorsToPalette } from '../../../utils/effectsProcessing';
 import { Button } from '../../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
-import { Trash2, Eye, EyeOff, X, Diamond, Plus, RotateCcw } from 'lucide-react';
+import { ColorPickerOverlay } from '../ColorPickerOverlay';
+import { Trash2, Eye, EyeOff, X, Diamond, RotateCcw } from 'lucide-react';
 import type { EffectTrack, EffectPropertyDefinition, EffectBlock } from '../../../types/effectBlock';
 import type { KeyframeId } from '../../../types/timeline';
 
@@ -251,8 +252,17 @@ interface MappingEditorProps {
 
 const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChange, keyframeDiamond }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [newFromValue, setNewFromValue] = useState('');
   const [mode, setMode] = useState<'manual' | 'palette'>('manual');
+  const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
+
+  // Refs for color picker positioning (one per mapping key)
+  const swatchRefs = useRef<Map<string, React.RefObject<HTMLDivElement | null>>>(new Map());
+  const getSwatchRef = useCallback((key: string) => {
+    if (!swatchRefs.current.has(key)) {
+      swatchRefs.current.set(key, createRef<HTMLDivElement>());
+    }
+    return swatchRefs.current.get(key)!;
+  }, []);
 
   const canvasCells = useCanvasStore((s) => s.cells);
   const palettes = usePaletteStore((s) => s.palettes);
@@ -320,14 +330,6 @@ const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChan
     delete updated[fromKey];
     onChange(updated);
   }, [mappings, onChange]);
-
-  const addMapping = useCallback(() => {
-    if (!newFromValue.trim()) return;
-    const key = isColorMapping ? (newFromValue.startsWith('#') ? newFromValue : `#${newFromValue}`) : newFromValue;
-    const updated = { ...mappings, [key]: key };
-    onChange(updated);
-    setNewFromValue('');
-  }, [newFromValue, mappings, onChange, isColorMapping]);
 
   // Apply palette-based remapping
   const applyPaletteMapping = useCallback(() => {
@@ -428,12 +430,22 @@ const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChan
                     title={fromKey}
                   />
                   <span className="text-[9px] text-muted-foreground">→</span>
-                  {/* Color swatch: to (with native color picker) */}
-                  <input
-                    type="color"
-                    value={/^#[0-9a-fA-F]{6}$/.test(toVal) ? toVal : '#000000'}
-                    onChange={(e) => updateMapping(fromKey, e.target.value)}
-                    className="w-4 h-4 rounded border border-border/50 flex-shrink-0 cursor-pointer p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded"
+                  {/* Color swatch: to (clickable, opens ColorPickerOverlay) */}
+                  <div
+                    ref={getSwatchRef(fromKey) as React.RefObject<HTMLDivElement>}
+                    className="w-4 h-4 rounded border border-border/50 flex-shrink-0 cursor-pointer hover:ring-1 hover:ring-primary"
+                    style={{ backgroundColor: toVal }}
+                    title={toVal}
+                    onClick={() => setPickerOpenFor(pickerOpenFor === fromKey ? null : fromKey)}
+                  />
+                  <ColorPickerOverlay
+                    isOpen={pickerOpenFor === fromKey}
+                    onOpenChange={(open) => { if (!open) setPickerOpenFor(null); }}
+                    onColorSelect={(color) => { updateMapping(fromKey, color); setPickerOpenFor(null); }}
+                    onColorChange={(color) => updateMapping(fromKey, color)}
+                    initialColor={/^#[0-9a-fA-F]{6}$/.test(toVal) ? toVal : '#000000'}
+                    triggerRef={getSwatchRef(fromKey) as React.RefObject<HTMLElement | null>}
+                    anchorPosition="bottom-left"
                   />
                   {/* Hex input for to color */}
                   <input
@@ -481,25 +493,6 @@ const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChan
               </button>
             </div>
           ))}
-
-          {/* Add mapping row */}
-          <div className="flex items-center gap-1 mt-1 pt-1 border-t border-border/20">
-            <input
-              type="text"
-              placeholder={isColorMapping ? '#ff0000' : 'A'}
-              value={newFromValue}
-              onChange={(e) => setNewFromValue(isColorMapping ? e.target.value : e.target.value.slice(0, 1))}
-              onKeyDown={(e) => e.key === 'Enter' && addMapping()}
-              className="h-4 flex-1 text-[9px] px-1 rounded border border-border/50 bg-background text-foreground outline-none"
-            />
-            <button
-              className="p-0.5 text-muted-foreground hover:text-foreground"
-              onClick={addMapping}
-              title="Add mapping"
-            >
-              <Plus className="w-3 h-3" />
-            </button>
-          </div>
         </div>
       )}
     </div>
