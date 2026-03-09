@@ -329,15 +329,28 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
               );
               // Effect property keyframe sub-rows (when expanded)
               if (expandedEffectTrackIds.has(track.effectBlock.id)) {
+                const proxyLayerId = layers.length > 0 ? layers[0].id : ('' as LayerId);
                 for (const pt of track.effectBlock.propertyTracks) {
                   items.push(
                     <div key={`global-ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5">
                       {pt.keyframes.map((kf) => (
-                        <div
+                        <KeyframeDiamond
                           key={kf.id}
-                          className="absolute w-2.5 h-2.5 rotate-45 bg-yellow-500/80 z-10"
-                          style={{ left: kf.frame * pxPerFrame - 4, top: 5 }}
-                          title={`${pt.propertyPath}: ${kf.value} @ frame ${kf.frame}`}
+                          layerId={proxyLayerId}
+                          trackId={pt.id as unknown as import('../../../types/timeline').PropertyTrackId}
+                          keyframe={kf as unknown as import('../../../types/timeline').Keyframe}
+                          pxPerFrame={pxPerFrame}
+                          scrollX={scrollX}
+                          isSelected={selectedKeyframeIds.has(kf.id)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const selKfIds = useTimelineStore.getState().view.selectedKeyframeIds;
+                            const kfIds = selKfIds.has(kf.id) && selKfIds.size > 0
+                              ? [...selKfIds]
+                              : [kf.id];
+                            setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'keyframe', layerId: proxyLayerId, trackId: pt.id as unknown as import('../../../types/timeline').PropertyTrackId, keyframeIds: kfIds } });
+                          }}
                         />
                       ))}
                     </div>
@@ -501,15 +514,23 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 />
               ))}
 
-              {/* Keyframe dots on collapsed layers */}
-              {!expandedLayerIds.has(layer.id) && layer.propertyTracks.length > 0 && (() => {
-                // Collect unique frame positions across all property tracks
+              {/* Keyframe dots on collapsed layers (includes both property track and effect keyframes) */}
+              {!expandedLayerIds.has(layer.id) && (() => {
+                // Collect unique frame positions across all property tracks and effect keyframes
                 const kfFrames = new Set<number>();
                 for (const track of layer.propertyTracks) {
                   for (const kf of track.keyframes) {
                     kfFrames.add(kf.frame);
                   }
                 }
+                for (const et of (layer.effectTracks ?? [])) {
+                  for (const pt of et.effectBlock.propertyTracks) {
+                    for (const kf of pt.keyframes) {
+                      kfFrames.add(kf.frame);
+                    }
+                  }
+                }
+                if (kfFrames.size === 0) return null;
                 return [...kfFrames].map((frame) => (
                   <div
                     key={`kf-dot-${frame}`}
@@ -725,11 +746,23 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
                   <div key={`ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5">
                     {pt.keyframes.map((kf) => (
-                      <div
+                      <KeyframeDiamond
                         key={kf.id}
-                        className="absolute w-2.5 h-2.5 rotate-45 bg-yellow-500/80 z-10"
-                        style={{ left: kf.frame * pxPerFrame - 4, top: 5 }}
-                        title={`${pt.propertyPath}: ${kf.value} @ frame ${kf.frame}`}
+                        layerId={layer.id}
+                        trackId={pt.id as unknown as import('../../../types/timeline').PropertyTrackId}
+                        keyframe={kf as unknown as import('../../../types/timeline').Keyframe}
+                        pxPerFrame={pxPerFrame}
+                        scrollX={scrollX}
+                        isSelected={selectedKeyframeIds.has(kf.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const selKfIds = useTimelineStore.getState().view.selectedKeyframeIds;
+                          const kfIds = selKfIds.has(kf.id) && selKfIds.size > 0
+                            ? [...selKfIds]
+                            : [kf.id];
+                          setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'keyframe', layerId: layer.id, trackId: pt.id as unknown as import('../../../types/timeline').PropertyTrackId, keyframeIds: kfIds } });
+                        }}
                       />
                     ))}
                   </div>

@@ -45,13 +45,20 @@ export const KeyframeEditorPanel: React.FC = () => {
 
   const multiSelectCount = selectedKeyframeIds.size;
 
-  // Find the keyframe being edited across all layers/tracks and groups
+  // Find the keyframe being edited across all layers/tracks, groups, and effect blocks
   const kfData = useMemo(() => {
     if (!editingKeyframeId) return null;
     for (const layer of layers) {
       for (const track of layer.propertyTracks) {
         const kf = track.keyframes.find((k) => k.id === editingKeyframeId);
         if (kf) return { layerId: layer.id, trackId: track.id, keyframe: kf, track };
+      }
+      // Search effect block property tracks
+      for (const et of (layer.effectTracks ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          const kf = pt.keyframes.find((k) => k.id === editingKeyframeId);
+          if (kf) return { layerId: layer.id, trackId: pt.id as unknown as typeof layer.propertyTracks[0]['id'], keyframe: kf as unknown as typeof layer.propertyTracks[0]['keyframes'][0], track: pt as unknown as typeof layer.propertyTracks[0] };
+        }
       }
     }
     for (const group of layerGroups) {
@@ -60,6 +67,16 @@ export const KeyframeEditorPanel: React.FC = () => {
         if (kf) {
           const proxyLayerId = group.childLayerIds[0] ?? ('' as typeof layers[0]['id']);
           return { layerId: proxyLayerId, trackId: track.id, keyframe: kf, track };
+        }
+      }
+      // Search group effect block property tracks
+      for (const et of (group.effectTracks ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          const kf = pt.keyframes.find((k) => k.id === editingKeyframeId);
+          if (kf) {
+            const proxyLayerId = group.childLayerIds[0] ?? ('' as typeof layers[0]['id']);
+            return { layerId: proxyLayerId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0], track: pt as unknown as typeof layers[0]['propertyTracks'][0] };
+          }
         }
       }
     }

@@ -8,8 +8,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useTimelineStore } from '../stores/timelineStore';
 import { clearEffectRegistry } from '../registry/effectRegistry';
 import { registerAllEffects } from '../registry/effects';
-import type { LayerId, LayerGroupId } from '../types/timeline';
-import type { EffectBlockId } from '../types/effectBlock';
 
 function resetStore() {
   useTimelineStore.getState().createNewProject();

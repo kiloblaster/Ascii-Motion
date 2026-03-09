@@ -2227,7 +2227,8 @@ export const useKeyboardShortcuts = () => {
             if (shouldExpand) {
               // Expand layers with keyframes; if none, expand all
               const withKfs = current.layers.filter((l) =>
-                l.propertyTracks.some((t) => t.keyframes.length > 0)
+                l.propertyTracks.some((t) => t.keyframes.length > 0) ||
+                (l.effectTracks ?? []).some((et) => et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0))
               );
               const toExpand = withKfs.length > 0 ? withKfs : current.layers;
               current.setExpandedLayerIds(new Set(toExpand.map((l) => l.id)));

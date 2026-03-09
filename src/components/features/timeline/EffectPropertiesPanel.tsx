@@ -243,6 +243,7 @@ export const EffectPropertiesPanel: React.FC = () => {
   const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
   const selectEffectBlock = useTimelineStore((s) => s.selectEffectBlock);
   const updateEffectBlockSettings = useTimelineStore((s) => s.updateEffectBlockSettings);
+  const updateEffectKeyframe = useTimelineStore((s) => s.updateEffectKeyframe);
   const toggleEffectBlockEnabled = useTimelineStore((s) => s.toggleEffectBlockEnabled);
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
@@ -318,18 +319,34 @@ export const EffectPropertiesPanel: React.FC = () => {
             <div className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-0.5">
               {category}
             </div>
-            {defs.map((def) => (
+            {defs.map((def) => {
+              // Check if a keyframe track + keyframe exists at current frame
+              const propTrack = block.propertyTracks.find((pt) => pt.propertyPath === def.path);
+              const kfAtFrame = propTrack?.keyframes.find((kf) => kf.frame === currentFrame);
+              return (
               <EffectPropertyRow
                 key={def.path}
                 definition={def}
                 value={resolvedSettings[def.path]}
                 onChange={(newValue) => {
-                  updateEffectBlockSettings(block.id, { [def.path]: newValue });
+                  if (kfAtFrame && propTrack) {
+                    // Update the keyframe value directly
+                    updateEffectKeyframe(
+                      block.id,
+                      propTrack.id,
+                      kfAtFrame.id as import('../../../types/timeline').KeyframeId,
+                      { value: newValue as import('../../../types/effectBlock').EffectKeyframe['value'] },
+                    );
+                  } else {
+                    // No keyframe at current frame — update block settings
+                    updateEffectBlockSettings(block.id, { [def.path]: newValue });
+                  }
                 }}
                 block={block}
                 currentFrame={currentFrame}
               />
-            ))}
+              );
+            })}
           </div>
         ))}
       </div>
