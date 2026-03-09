@@ -79,6 +79,9 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
   const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
   const { recordAdd: recordEffectAdd } = useEffectBlockHistory();
 
+  const moveEffectTrack = useTimelineStore((s) => s.moveEffectTrack);
+  const [isEffectDragOver, setIsEffectDragOver] = useState(false);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(layer.name);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -131,17 +134,61 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
         isActive && 'bg-accent/50',
         isSelected && !isActive && 'bg-accent/30',
         isInGroup && 'pl-3', // Indent grouped layers
-        isDragOver && 'border-t-2 border-t-primary',
+        isDragOver && !isEffectDragOver && 'border-t-2 border-t-primary',
+        isEffectDragOver && 'ring-1 ring-inset ring-primary bg-primary/10',
       )}
       onClick={onSelect}
       onContextMenu={onContextMenu}
       draggable
       onDragStart={(e) => {
+        // Don't drag layer when starting from an effect track row
+        if ((e.target as HTMLElement).closest('[data-effect-track]')) {
+          return;
+        }
         e.dataTransfer.effectAllowed = 'move';
         onDragStart();
       }}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/effect-block-id')) {
+          // Effect being dragged over this layer — show "onto" highlight
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          setIsEffectDragOver(true);
+        } else {
+          // Layer being dragged — use existing handler
+          onDragOver(e);
+        }
+      }}
+      onDragLeave={(e) => {
+        setIsEffectDragOver(false);
+        // Only call onDragEnd if we're leaving the element entirely
+        if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+          setIsEffectDragOver(false);
+        }
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer.types.includes('application/effect-block-id')) {
+          // Effect dropped on this layer
+          e.preventDefault();
+          e.stopPropagation();
+          setIsEffectDragOver(false);
+          const draggedBlockId = e.dataTransfer.getData('application/effect-block-id');
+          if (draggedBlockId) {
+            moveEffectTrack(
+              draggedBlockId as import('../../../types/effectBlock').EffectBlockId,
+              layer.id,
+              0, // Top of stack
+            );
+            // Auto-expand layer to show the effect
+            if (!useTimelineStore.getState().view.expandedLayerIds.has(layer.id)) {
+              useTimelineStore.getState().toggleLayerExpanded(layer.id);
+            }
+          }
+        } else {
+          onDrop();
+        }
+      }}
       onDragEnd={onDragEnd}
     >
     <TooltipProvider>
