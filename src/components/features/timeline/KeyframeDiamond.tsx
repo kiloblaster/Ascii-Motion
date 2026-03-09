@@ -131,15 +131,45 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
               }
             }
           }
+          // Search effect property tracks
+          for (const et of (layer.effectTracks ?? [])) {
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                if (selectedIds.has(kf.id)) {
+                  entries.push({ layerId: layer.id, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+                }
+              }
+            }
+          }
         }
         // Also search layerGroups
         for (const group of tl.layerGroups) {
           for (const track of group.propertyTracks) {
             for (const kf of track.keyframes) {
               if (selectedIds.has(kf.id)) {
-                // Use first child layer ID as proxy (store actions fall back to groups)
                 const proxyLayerId = group.childLayerIds[0] ?? layerId;
                 entries.push({ layerId: proxyLayerId, trackId: track.id, kfId: kf.id, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+              }
+            }
+          }
+          // Search group effect property tracks
+          for (const et of (group.effectTracks ?? [])) {
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                if (selectedIds.has(kf.id)) {
+                  const proxyLayerId = group.childLayerIds[0] ?? layerId;
+                  entries.push({ layerId: proxyLayerId, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+                }
+              }
+            }
+          }
+        }
+        // Search global effects
+        for (const et of (tl.globalEffects ?? [])) {
+          for (const pt of et.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (selectedIds.has(kf.id)) {
+                entries.push({ layerId: layerId, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
               }
             }
           }

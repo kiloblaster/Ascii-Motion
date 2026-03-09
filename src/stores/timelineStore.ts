@@ -1209,8 +1209,12 @@ export const useTimelineStore = create<TimelineState>()(
             }),
           })),
         }));
-      } else {
-        // Fall back to layerGroups
+        return id;
+      }
+
+      // Try layerGroups
+      const group = get().layerGroups.find((g) => g.propertyTracks.some((pt) => pt.id === trackId));
+      if (group) {
         set((state) => ({
           layerGroups: state.layerGroups.map((g) => {
             const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
@@ -1231,7 +1235,24 @@ export const useTimelineStore = create<TimelineState>()(
             };
           }),
         }));
+        return id;
       }
+
+      // Fallback: effect property tracks
+      const effectUpdate = updateEffectPropertyTrackKeyframes(
+        get(),
+        trackId as string,
+        (kfs) => {
+          const existingIndex = kfs.findIndex((kf) => kf.frame === frame);
+          if (existingIndex !== -1) {
+            const updated = [...kfs];
+            updated[existingIndex] = { ...updated[existingIndex], value };
+            return updated;
+          }
+          return [...kfs, { id, frame, value, easing: defaultEasing() } as EffectKeyframe].sort((a, b) => a.frame - b.frame);
+        },
+      );
+      if (effectUpdate) set(effectUpdate);
 
       return id;
     },
