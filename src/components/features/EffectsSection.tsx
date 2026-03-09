@@ -41,6 +41,11 @@ export function EffectsSection({ className = '' }: EffectsSectionProps) {
     if (blockId) {
       recordAdd(ownerId, blockId);
       selectEffectBlock(blockId);
+      // Auto-expand the layer to show the new effect
+      const tl = useTimelineStore.getState();
+      if (ownerId && !tl.view.expandedLayerIds.has(ownerId as import('../../types/timeline').LayerId)) {
+        tl.toggleLayerExpanded(ownerId as import('../../types/timeline').LayerId);
+      }
     }
   };
 

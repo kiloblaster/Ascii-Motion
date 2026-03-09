@@ -491,7 +491,13 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
                     const start = currentFrame;
                     const duration = Math.max(1, useTimelineStore.getState().config.durationFrames - start);
                     const blockId = addEffectBlock(layer.id, effect.type, start, duration);
-                    if (blockId) recordEffectAdd(layer.id, blockId);
+                    if (blockId) {
+                      recordEffectAdd(layer.id, blockId);
+                      // Auto-expand layer if not already
+                      if (!useTimelineStore.getState().view.expandedLayerIds.has(layer.id)) {
+                        useTimelineStore.getState().toggleLayerExpanded(layer.id);
+                      }
+                    }
                   }}
                 >
                   <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />

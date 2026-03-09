@@ -75,7 +75,10 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
                   const blockId = addEffectBlock(null, effect.type, start, duration);
                   if (blockId) {
                     recordAdd(null, blockId);
-                    if (!isExpanded) toggleExpanded();
+                    // Auto-expand global effects section
+                    if (!useTimelineStore.getState().view.globalEffectsExpanded) {
+                      useTimelineStore.getState().toggleGlobalEffectsExpanded();
+                    }
                   }
                 }}
               >
