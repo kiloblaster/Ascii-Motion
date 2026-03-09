@@ -35,6 +35,7 @@ export const KeyframeEditorPanel: React.FC = () => {
   const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const layers = useTimelineStore((s) => s.layers);
   const layerGroups = useTimelineStore((s) => s.layerGroups);
+  const globalEffects = useTimelineStore((s) => s.globalEffects);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const moveKeyframe = useTimelineStore((s) => s.moveKeyframe);
   const updateKeyframe = useTimelineStore((s) => s.updateKeyframe);
@@ -81,8 +82,16 @@ export const KeyframeEditorPanel: React.FC = () => {
         }
       }
     }
+    // Search global effects
+    const proxyId = layers.length > 0 ? layers[0].id : ('' as typeof layers[0]['id']);
+    for (const et of (globalEffects ?? [])) {
+      for (const pt of et.effectBlock.propertyTracks) {
+        const kf = pt.keyframes.find((k) => k.id === editingKeyframeId);
+        if (kf) return { layerId: proxyId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0], track: pt as unknown as typeof layers[0]['propertyTracks'][0] };
+      }
+    }
     return null;
-  }, [editingKeyframeId, layers, layerGroups]);
+  }, [editingKeyframeId, layers, layerGroups, globalEffects]);
 
   // All selected keyframes (for batch operations)
   const selectedKeyframeEntries = useMemo(() => {

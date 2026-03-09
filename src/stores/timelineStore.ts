@@ -859,7 +859,7 @@ export const useTimelineStore = create<TimelineState>()(
 
     setActiveLayer: (layerId) => {
       set((state) => ({
-        view: { ...state.view, activeLayerId: layerId, activeGroupId: null },
+        view: { ...state.view, activeLayerId: layerId, activeGroupId: null, selectedEffectBlockId: null },
       }));
     },
 
@@ -904,6 +904,7 @@ export const useTimelineStore = create<TimelineState>()(
         view: {
           ...state.view,
           activeGroupId: groupId,
+          selectedEffectBlockId: null,
           // Clear active layer and showLayerProperties when selecting a group
           ...(groupId ? { activeLayerId: null, showLayerProperties: false } : {}),
         },
