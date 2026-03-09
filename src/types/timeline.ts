@@ -416,6 +416,7 @@ export interface TimelineViewState {
   selectedEffectBlockId: import('./effectBlock').EffectBlockId | null;
   expandedEffectTrackIds: Set<import('./effectBlock').EffectBlockId>;
   editingEffectKeyframeId: KeyframeId | null;
+  globalEffectsExpanded: boolean;
 }
 
 /**

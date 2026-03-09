@@ -46,6 +46,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const expandedLayerIds = useTimelineStore((s) => s.view.expandedLayerIds);
   const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
   const globalEffects = useTimelineStore((s) => s.globalEffects);
+  const globalEffectsExpanded = useTimelineStore((s) => s.view.globalEffectsExpanded);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
   const clearContentFrameSelection = useTimelineStore((s) => s.clearContentFrameSelection);
   const clearKeyframeSelection = useTimelineStore((s) => s.clearKeyframeSelection);
@@ -160,7 +161,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
       // Global effects rows at top (always present for header)
       yOffset += 28; // Global header
-      if (globalEffects.length > 0) {
+      if (globalEffectsExpanded && globalEffects.length > 0) {
         for (const track of globalEffects) {
           yOffset += EFFECT_TRACK_ROW_H; // effect block row
           if (expandedEffectTrackIds.has(track.effectBlock.id)) {
@@ -276,7 +277,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
       return result;
     },
-    [displayLayers, expandedLayerIds, expandedEffectTrackIds, globalEffects, pxPerFrame, layerGroups],
+    [displayLayers, expandedLayerIds, expandedEffectTrackIds, globalEffects, globalEffectsExpanded, pxPerFrame, layerGroups],
   );
 
   const handleTrackAreaMouseDown = useCallback(
@@ -383,8 +384,8 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
           items.push(
             <div key="global-effects-header-spacer" className="border-b border-border/50 bg-muted/20" style={{ minHeight: 28 }} />
           );
-          // Global effect track rows (only when tracks exist)
-          if (globalEffects.length > 0) {
+          // Global effect track rows (only when expanded and tracks exist)
+          if (globalEffectsExpanded && globalEffects.length > 0) {
             // Global effect track rows
             for (const track of globalEffects) {
               items.push(

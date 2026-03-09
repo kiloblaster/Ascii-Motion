@@ -54,15 +54,20 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     e.preventDefault();
     const startX = e.clientX;
     const origDuration = block.durationFrames;
+    const origStart = block.startFrame;
     const beforeBlock = structuredClone(block);
+    let lastDuration = origDuration;
     const onMouseMove = (me: MouseEvent) => {
       const newDuration = Math.max(1, origDuration + Math.round((me.clientX - startX) / pxPerFrame));
-      updateEffectBlockTiming(block.id, block.startFrame, newDuration);
+      if (newDuration !== lastDuration) {
+        updateEffectBlockTiming(block.id, origStart, newDuration);
+        lastDuration = newDuration;
+      }
     };
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      if (block.durationFrames !== origDuration) recordUpdate(block.id, beforeBlock);
+      if (lastDuration !== origDuration) recordUpdate(block.id, beforeBlock);
     };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -76,15 +81,19 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     const origDuration = block.durationFrames;
     const endFrame = origStart + origDuration;
     const beforeBlock = structuredClone(block);
+    let lastStart = origStart;
     const onMouseMove = (me: MouseEvent) => {
       const newStart = Math.max(0, Math.min(endFrame - 1, origStart + Math.round((me.clientX - startX) / pxPerFrame)));
       const newDuration = endFrame - newStart;
-      updateEffectBlockTiming(block.id, newStart, newDuration);
+      if (newStart !== lastStart) {
+        updateEffectBlockTiming(block.id, newStart, newDuration);
+        lastStart = newStart;
+      }
     };
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      if (block.startFrame !== origStart) recordUpdate(block.id, beforeBlock);
+      if (lastStart !== origStart) recordUpdate(block.id, beforeBlock);
     };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
@@ -98,19 +107,23 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     const origStart = block.startFrame;
     const beforeBlock = structuredClone(block);
     let didDrag = false;
+    let lastStart = origStart;
     const onMouseMove = (me: MouseEvent) => {
       const dx = me.clientX - startX;
       if (!didDrag && Math.abs(dx) < 4) return;
       didDrag = true;
       const newStart = Math.max(0, origStart + Math.round(dx / pxPerFrame));
-      updateEffectBlockTiming(block.id, newStart, block.durationFrames);
+      if (newStart !== lastStart) {
+        updateEffectBlockTiming(block.id, newStart, block.durationFrames);
+        lastStart = newStart;
+      }
     };
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       if (!didDrag) {
         selectEffectBlock(block.id);
-      } else if (block.startFrame !== origStart) {
+      } else if (lastStart !== origStart) {
         recordUpdate(block.id, beforeBlock);
       }
     };

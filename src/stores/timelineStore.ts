@@ -531,6 +531,9 @@ export interface TimelineState {
   /** Set which effect keyframe is being edited */
   setEditingEffectKeyframe: (keyframeId: KeyframeId | null) => void;
 
+  /** Toggle global effects section expanded/collapsed */
+  toggleGlobalEffectsExpanded: () => void;
+
   // ============================================
   // PROJECT LIFECYCLE
   // ============================================
@@ -580,6 +583,7 @@ const INITIAL_VIEW: TimelineViewState = {
   selectedEffectBlockId: null,
   expandedEffectTrackIds: new Set(),
   editingEffectKeyframeId: null,
+  globalEffectsExpanded: true,
 };
 
 // ============================================
@@ -2909,6 +2913,12 @@ export const useTimelineStore = create<TimelineState>()(
     setEditingEffectKeyframe: (keyframeId) => {
       set((state) => ({
         view: { ...state.view, editingEffectKeyframeId: keyframeId },
+      }));
+    },
+
+    toggleGlobalEffectsExpanded: () => {
+      set((state) => ({
+        view: { ...state.view, globalEffectsExpanded: !state.view.globalEffectsExpanded },
       }));
     },
 

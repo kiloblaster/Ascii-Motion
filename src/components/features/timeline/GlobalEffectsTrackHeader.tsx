@@ -4,7 +4,7 @@
  * Provides "Global Effects" label with expand/collapse and "Add Effect" dropdown.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { cn } from '@/lib/utils';
 import { ChevronRight, Plus, Sparkles } from 'lucide-react';
@@ -27,7 +27,8 @@ interface GlobalEffectsTrackHeaderProps {
 export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> = React.memo(function GlobalEffectsTrackHeader({
   globalEffects,
 }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const isExpanded = useTimelineStore((s) => s.view.globalEffectsExpanded);
+  const toggleExpanded = useTimelineStore((s) => s.toggleGlobalEffectsExpanded);
   const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
   const { recordAdd } = useEffectBlockHistory();
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
@@ -46,7 +47,7 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
           'flex items-center px-2 min-h-[28px] bg-muted/30 cursor-pointer',
           'hover:bg-muted/50 transition-colors',
         )}
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => toggleExpanded()}
       >
         <ChevronRight className={cn('w-3 h-3 mr-1 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
         <Sparkles className="w-3 h-3 mr-1.5 text-muted-foreground" />
