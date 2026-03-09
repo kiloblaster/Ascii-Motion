@@ -69,6 +69,25 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
   const addEffectPropertyTrack = useTimelineStore((s) => s.addEffectPropertyTrack);
   const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
   const removeEffectKeyframe = useTimelineStore((s) => s.removeEffectKeyframe);
+  const toggleEffectTrackExpanded = useTimelineStore((s) => s.toggleEffectTrackExpanded);
+
+  /** Auto-expand the layer and effect track to reveal keyframes */
+  const ensureExpanded = useCallback(() => {
+    const tl = useTimelineStore.getState();
+    // Expand the effect track if not already
+    if (!tl.view.expandedEffectTrackIds.has(block.id)) {
+      toggleEffectTrackExpanded(block.id);
+    }
+    // Find the owning layer and expand it if not already
+    for (const layer of tl.layers) {
+      if ((layer.effectTracks ?? []).some((et) => et.effectBlock.id === block.id)) {
+        if (!tl.view.expandedLayerIds.has(layer.id)) {
+          tl.toggleLayerExpanded(layer.id);
+        }
+        break;
+      }
+    }
+  }, [block.id, toggleEffectTrackExpanded]);
 
   // Find existing property track and keyframe at current frame
   const existingTrack = block.propertyTracks.find((pt) => pt.propertyPath === definition.path);
@@ -84,6 +103,7 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
       if (trackId) {
         const kfValue = (value ?? definition.defaultValue) as import('../../../types/effectBlock').EffectKeyframe['value'];
         addEffectKeyframe(block.id, trackId, currentFrame, kfValue);
+        ensureExpanded();
       }
     } else if (hasKeyframeAtCurrentFrame && existingKf && existingTrack) {
       // Remove keyframe at current frame
@@ -92,6 +112,7 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
       // Add keyframe at current frame
       const kfValue = (value ?? definition.defaultValue) as import('../../../types/effectBlock').EffectKeyframe['value'];
       addEffectKeyframe(block.id, existingTrack.id, currentFrame, kfValue);
+      ensureExpanded();
     }
   }, [isTracked, hasKeyframeAtCurrentFrame, block.id, definition.path, definition.defaultValue, currentFrame, value, existingKf, existingTrack, addEffectPropertyTrack, addEffectKeyframe, removeEffectKeyframe]);
 
