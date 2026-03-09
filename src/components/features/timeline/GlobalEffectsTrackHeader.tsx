@@ -19,11 +19,7 @@ import { getAllEffects } from '../../../registry/effectRegistry';
 import { EffectTrackRow } from './EffectTrackRow';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 
-interface GlobalEffectsTrackHeaderProps {
-  // No props needed — reads from store directly
-}
-
-export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> = function GlobalEffectsTrackHeader() {
+export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHeader() {
   const globalEffects = useTimelineStore((s) => s.globalEffects);
   const isExpanded = useTimelineStore((s) => s.view.globalEffectsExpanded);
   const toggleExpanded = useTimelineStore((s) => s.toggleGlobalEffectsExpanded);

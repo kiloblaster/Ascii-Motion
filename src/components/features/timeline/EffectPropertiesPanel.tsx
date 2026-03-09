@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef, createRef } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { useCanvasStore } from '../../../stores/canvasStore';
 import { usePaletteStore } from '../../../stores/paletteStore';
 import { getEffect } from '../../../registry/effectRegistry';
@@ -72,6 +73,7 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
   const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
   const removeEffectKeyframe = useTimelineStore((s) => s.removeEffectKeyframe);
   const toggleEffectTrackExpanded = useTimelineStore((s) => s.toggleEffectTrackExpanded);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   /** Auto-expand the layer and effect track to reveal keyframes */
   const ensureExpanded = useCallback(() => {
@@ -104,19 +106,34 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
       const trackId = addEffectPropertyTrack(block.id, definition.path);
       if (trackId) {
         const kfValue = (value ?? definition.defaultValue) as import('../../../types/effectBlock').EffectKeyframe['value'];
-        addEffectKeyframe(block.id, trackId, currentFrame, kfValue);
+        const kfId = addEffectKeyframe(block.id, trackId, currentFrame, kfValue);
+        pushToHistory({
+          type: 'effect_keyframe_add', timestamp: Date.now(), description: `Add ${definition.displayName} keyframe`,
+          data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: trackId as string,
+            keyframe: { id: kfId, frame: currentFrame, value: kfValue, easing: { type: 'linear' as const } } },
+        } as import('../../../types').EffectKeyframeAddHistoryAction);
         ensureExpanded();
       }
     } else if (hasKeyframeAtCurrentFrame && existingKf && existingTrack) {
-      // Remove keyframe at current frame
+      // Remove keyframe at current frame — record before removing
+      pushToHistory({
+        type: 'effect_keyframe_remove', timestamp: Date.now(), description: `Remove ${definition.displayName} keyframe`,
+        data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: existingTrack.id as string,
+          keyframe: structuredClone(existingKf) },
+      } as import('../../../types').EffectKeyframeRemoveHistoryAction);
       removeEffectKeyframe(block.id, existingTrack.id, existingKf.id as KeyframeId);
     } else if (existingTrack) {
       // Add keyframe at current frame
       const kfValue = (value ?? definition.defaultValue) as import('../../../types/effectBlock').EffectKeyframe['value'];
-      addEffectKeyframe(block.id, existingTrack.id, currentFrame, kfValue);
+      const kfId = addEffectKeyframe(block.id, existingTrack.id, currentFrame, kfValue);
+      pushToHistory({
+        type: 'effect_keyframe_add', timestamp: Date.now(), description: `Add ${definition.displayName} keyframe`,
+        data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: existingTrack.id as string,
+          keyframe: { id: kfId, frame: currentFrame, value: kfValue, easing: { type: 'linear' as const } } },
+      } as import('../../../types').EffectKeyframeAddHistoryAction);
       ensureExpanded();
     }
-  }, [isTracked, hasKeyframeAtCurrentFrame, block.id, definition.path, definition.defaultValue, currentFrame, value, existingKf, existingTrack, addEffectPropertyTrack, addEffectKeyframe, removeEffectKeyframe, ensureExpanded]);
+  }, [isTracked, hasKeyframeAtCurrentFrame, block.id, definition.path, definition.displayName, definition.defaultValue, currentFrame, value, existingKf, existingTrack, addEffectPropertyTrack, addEffectKeyframe, removeEffectKeyframe, ensureExpanded, pushToHistory]);
 
   // Scrub input hook (must be before any early returns)
   const scrubValue = typeof value === 'number' ? value : (definition.defaultValue as number);
@@ -544,7 +561,8 @@ export const EffectPropertiesPanel: React.FC = () => {
   const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
   const toggleEffectBlockEnabled = useTimelineStore((s) => s.toggleEffectBlockEnabled);
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
-  const { recordRemove: recordEffectRemove } = useEffectBlockHistory();
+  const { recordRemove: recordEffectRemove, recordUpdate: recordEffectUpdate } = useEffectBlockHistory();
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
 
   // Re-read layers/groups/globalEffects to react to changes
@@ -586,7 +604,11 @@ export const EffectPropertiesPanel: React.FC = () => {
             <TooltipTrigger asChild>
               <button
                 className="p-0.5 hover:bg-muted rounded"
-                onClick={() => toggleEffectBlockEnabled(block.id)}
+                onClick={() => {
+                  const beforeBlock = structuredClone(block);
+                  toggleEffectBlockEnabled(block.id);
+                  recordEffectUpdate(block.id, beforeBlock);
+                }}
               >
                 {block.enabled
                   ? <Eye className="w-3 h-3 text-muted-foreground" />
@@ -630,23 +652,37 @@ export const EffectPropertiesPanel: React.FC = () => {
                 onChange={(newValue) => {
                   if (kfAtFrame && propTrack) {
                     // Update the existing keyframe value directly
+                    const previousKf = structuredClone(kfAtFrame);
                     updateEffectKeyframe(
                       block.id,
                       propTrack.id,
                       kfAtFrame.id as import('../../../types/timeline').KeyframeId,
                       { value: newValue as import('../../../types/effectBlock').EffectKeyframe['value'] },
                     );
+                    pushToHistory({
+                      type: 'effect_keyframe_update', timestamp: Date.now(), description: `Update ${def.displayName}`,
+                      data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: propTrack.id as string,
+                        keyframeId: kfAtFrame.id as string, previousKeyframe: previousKf,
+                        newKeyframe: { ...previousKf, value: newValue } },
+                    } as import('../../../types').EffectKeyframeUpdateHistoryAction);
                   } else if (propTrack) {
                     // Property is keyframed but no keyframe at playhead — auto-key: create one
-                    addEffectKeyframe(
+                    const kfId = addEffectKeyframe(
                       block.id,
                       propTrack.id,
                       currentFrame,
                       newValue as import('../../../types/effectBlock').EffectKeyframe['value'],
                     );
+                    pushToHistory({
+                      type: 'effect_keyframe_add', timestamp: Date.now(), description: `Auto-key ${def.displayName}`,
+                      data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: propTrack.id as string,
+                        keyframe: { id: kfId, frame: currentFrame, value: newValue, easing: { type: 'linear' as const } } },
+                    } as import('../../../types').EffectKeyframeAddHistoryAction);
                   } else {
-                    // No property track at all (static property) — update block settings
+                    // No property track at all (static property) — update block settings with undo
+                    const beforeBlock = structuredClone(block);
                     updateEffectBlockSettings(block.id, { [def.path]: newValue });
+                    recordEffectUpdate(block.id, beforeBlock);
                   }
                 }}
                 block={block}
