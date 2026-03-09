@@ -7,6 +7,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import { cn } from '@/lib/utils';
 import { Eye, EyeOff, ChevronRight, X, GripVertical } from 'lucide-react';
@@ -35,6 +36,7 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
   const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
   const { recordUpdate, recordRemove } = useEffectBlockHistory();
   const [isDragOver, setIsDragOver] = useState(false);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   const block = track.effectBlock;
   const entry = getEffect(block.effectType);
@@ -65,6 +67,7 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
 
   // Drag-and-drop for reorder / cross-owner move
   const handleDragStart = useCallback((e: React.DragEvent) => {
+    e.stopPropagation(); // Prevent layer drag from firing
     e.dataTransfer.setData('application/effect-block-id', block.id as string);
     e.dataTransfer.setData('application/effect-owner-id', (track.ownerId ?? '__global__') as string);
     e.dataTransfer.setData('application/effect-index', String(index ?? 0));
@@ -74,6 +77,7 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('application/effect-block-id')) {
       e.preventDefault();
+      e.stopPropagation(); // Don't trigger layer drag-over
       e.dataTransfer.dropEffect = 'move';
       setIsDragOver(true);
     }
@@ -85,6 +89,7 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Don't trigger layer drop
     setIsDragOver(false);
     const draggedBlockId = e.dataTransfer.getData('application/effect-block-id');
     const sourceOwnerStr = e.dataTransfer.getData('application/effect-owner-id');
@@ -99,16 +104,50 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
       const sourceIndex = parseInt(e.dataTransfer.getData('application/effect-index'), 10);
       if (!isNaN(sourceIndex) && sourceIndex !== targetIndex) {
         reorderEffectTracks(targetOwnerId, sourceIndex, targetIndex);
+        pushToHistory({
+          type: 'effect_block_reorder', timestamp: Date.now(), description: 'Reorder effects',
+          data: { ownerId: (targetOwnerId ?? null) as string | null, ownerType: targetOwnerId === null ? 'global' : 'layer', fromIndex: sourceIndex, toIndex: targetIndex },
+        } as import('../../../types').EffectBlockReorderHistoryAction);
       }
     } else {
-      // Cross-owner move
+      // Cross-owner move — snapshot before for undo
+      const tl = useTimelineStore.getState();
+      // Find the track before move
+      let sourceTrack: import('../../../types/effectBlock').EffectTrack | undefined;
+      for (const l of tl.layers) {
+        sourceTrack = (l.effectTracks ?? []).find((t) => (t.effectBlock.id as string) === draggedBlockId);
+        if (sourceTrack) break;
+      }
+      if (!sourceTrack) {
+        for (const g of tl.layerGroups) {
+          sourceTrack = (g.effectTracks ?? []).find((t) => (t.effectBlock.id as string) === draggedBlockId);
+          if (sourceTrack) break;
+        }
+      }
+      if (!sourceTrack) {
+        sourceTrack = tl.globalEffects.find((t) => (t.effectBlock.id as string) === draggedBlockId);
+      }
+
       moveEffectTrack(
         draggedBlockId as import('../../../types/effectBlock').EffectBlockId,
         targetOwnerId,
         targetIndex,
       );
+
+      // Record as block remove (from source) — undo will re-add to source
+      if (sourceTrack) {
+        pushToHistory({
+          type: 'effect_block_remove', timestamp: Date.now(), description: 'Move effect to different owner',
+          data: {
+            ownerId: (sourceOwnerId ?? null) as string | null,
+            ownerType: sourceOwnerId === null ? 'global' : 'layer',
+            trackSnapshot: structuredClone(sourceTrack),
+            trackIndex: 0,
+          },
+        } as import('../../../types').EffectBlockRemoveHistoryAction);
+      }
     }
-  }, [block.id, track.ownerId, index, reorderEffectTracks, moveEffectTrack]);
+  }, [block.id, track.ownerId, index, reorderEffectTracks, moveEffectTrack, pushToHistory]);
 
   return (
     <div

@@ -2931,87 +2931,74 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     moveEffectTrack: (blockId, targetOwnerId, targetIndex) => {
-      const { layers, layerGroups, globalEffects } = get();
+      set((state) => {
+        let movedTrack: EffectTrack | null = null;
+        let newLayers = state.layers;
+        let newLayerGroups = state.layerGroups;
+        let newGlobalEffects = state.globalEffects;
 
-      // Find and remove the track from its current owner
-      let movedTrack: EffectTrack | null = null;
-
-      // Search layers
-      for (const layer of layers) {
-        const idx = (layer.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
-        if (idx !== -1) {
-          movedTrack = (layer.effectTracks ?? [])[idx];
-          set({
-            layers: updateLayer(layers, layer.id, (l) => ({
+        // Remove from source — search layers, groups, global
+        for (const layer of state.layers) {
+          const idx = (layer.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
+          if (idx !== -1) {
+            movedTrack = (layer.effectTracks ?? [])[idx];
+            newLayers = updateLayer(state.layers, layer.id, (l) => ({
               ...l,
               effectTracks: l.effectTracks.filter((t) => t.effectBlock.id !== blockId),
-            })),
-          });
-          break;
-        }
-      }
-      // Search groups
-      if (!movedTrack) {
-        for (const group of layerGroups) {
-          const idx = (group.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
-          if (idx !== -1) {
-            movedTrack = (group.effectTracks ?? [])[idx];
-            set({
-              layerGroups: get().layerGroups.map((g) =>
-                g.id === group.id
-                  ? { ...g, effectTracks: g.effectTracks.filter((t) => t.effectBlock.id !== blockId) }
-                  : g,
-              ),
-            });
+            }));
             break;
           }
         }
-      }
-      // Search global
-      if (!movedTrack) {
-        const idx = globalEffects.findIndex((t) => t.effectBlock.id === blockId);
-        if (idx !== -1) {
-          movedTrack = globalEffects[idx];
-          set({ globalEffects: get().globalEffects.filter((t) => t.effectBlock.id !== blockId) });
+        if (!movedTrack) {
+          for (const group of state.layerGroups) {
+            const idx = (group.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
+            if (idx !== -1) {
+              movedTrack = (group.effectTracks ?? [])[idx];
+              newLayerGroups = state.layerGroups.map((g) =>
+                g.id === group.id ? { ...g, effectTracks: g.effectTracks.filter((t) => t.effectBlock.id !== blockId) } : g,
+              );
+              break;
+            }
+          }
         }
-      }
+        if (!movedTrack) {
+          const idx = state.globalEffects.findIndex((t) => t.effectBlock.id === blockId);
+          if (idx !== -1) {
+            movedTrack = state.globalEffects[idx];
+            newGlobalEffects = state.globalEffects.filter((t) => t.effectBlock.id !== blockId);
+          }
+        }
 
-      if (!movedTrack) return;
+        if (!movedTrack) return {};
 
-      // Update ownerId on the track
-      const updatedTrack: EffectTrack = { ...movedTrack, ownerId: targetOwnerId };
+        const updatedTrack: EffectTrack = { ...movedTrack, ownerId: targetOwnerId };
 
-      // Insert into target owner
-      if (targetOwnerId === null) {
-        // Global
-        const currentGlobal = get().globalEffects;
-        const insertAt = targetIndex ?? currentGlobal.length;
-        const newGlobal = [...currentGlobal];
-        newGlobal.splice(insertAt, 0, updatedTrack);
-        set({ globalEffects: newGlobal });
-      } else {
-        const targetLayer = get().layers.find((l) => l.id === targetOwnerId);
-        if (targetLayer) {
-          set({
-            layers: updateLayer(get().layers, targetOwnerId as LayerId, (l) => {
+        // Insert into target
+        if (targetOwnerId === null) {
+          const arr = [...newGlobalEffects];
+          arr.splice(targetIndex ?? arr.length, 0, updatedTrack);
+          newGlobalEffects = arr;
+        } else {
+          const targetLayerIdx = newLayers.findIndex((l) => l.id === targetOwnerId);
+          if (targetLayerIdx !== -1) {
+            newLayers = newLayers.map((l, i) => {
+              if (i !== targetLayerIdx) return l;
               const newTracks = [...l.effectTracks];
               newTracks.splice(targetIndex ?? newTracks.length, 0, updatedTrack);
               return { ...l, effectTracks: newTracks };
-            }),
-          });
-        } else {
-          const targetGroup = get().layerGroups.find((g) => g.id === targetOwnerId);
-          if (targetGroup) {
-            set({
-              layerGroups: get().layerGroups.map((g) =>
-                g.id === targetOwnerId
-                  ? { ...g, effectTracks: [...(g.effectTracks ?? []).slice(0, targetIndex ?? g.effectTracks.length), updatedTrack, ...(g.effectTracks ?? []).slice(targetIndex ?? g.effectTracks.length)] }
-                  : g,
-              ),
+            });
+          } else {
+            newLayerGroups = newLayerGroups.map((g) => {
+              if (g.id !== targetOwnerId) return g;
+              const newTracks = [...(g.effectTracks ?? [])];
+              newTracks.splice(targetIndex ?? newTracks.length, 0, updatedTrack);
+              return { ...g, effectTracks: newTracks };
             });
           }
         }
-      }
+
+        return { layers: newLayers, layerGroups: newLayerGroups, globalEffects: newGlobalEffects };
+      });
     },
 
     // ============================================
