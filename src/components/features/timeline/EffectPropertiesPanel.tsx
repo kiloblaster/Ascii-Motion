@@ -6,11 +6,15 @@
  * Replaces the LayerPropertiesPanel in the right sidebar.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useCanvasStore } from '../../../stores/canvasStore';
+import { usePaletteStore } from '../../../stores/paletteStore';
 import { getEffect } from '../../../registry/effectRegistry';
 import { evaluateEffectBlock } from '../../../utils/effectsPipeline';
+import { mapCanvasColorsToPalette } from '../../../utils/effectsProcessing';
 import { Button } from '../../ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Trash2, Eye, EyeOff, X, Diamond, Plus, RotateCcw } from 'lucide-react';
 import type { EffectTrack, EffectPropertyDefinition, EffectBlock } from '../../../types/effectBlock';
@@ -248,10 +252,63 @@ interface MappingEditorProps {
 const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChange, keyframeDiamond }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [newFromValue, setNewFromValue] = useState('');
+  const [mode, setMode] = useState<'manual' | 'palette'>('manual');
+
+  const canvasCells = useCanvasStore((s) => s.cells);
+  const palettes = usePaletteStore((s) => s.palettes);
+  const customPalettes = usePaletteStore((s) => s.customPalettes);
+  const [selectedPaletteId, setSelectedPaletteId] = useState<string | null>(null);
+  const [mappingAlgorithm, setMappingAlgorithm] = useState<'closest' | 'by-index'>('closest');
 
   const mappings = useMemo(() => value ?? {}, [value]);
-  const entries = Object.entries(mappings);
   const isColorMapping = definition.path === 'colorMappings';
+
+  // Auto-detect colors or characters from canvas
+  const detectedValues = useMemo(() => {
+    if (isColorMapping) {
+      const colors = new Set<string>();
+      canvasCells.forEach((cell) => {
+        if (cell.color && cell.color !== 'transparent') colors.add(cell.color);
+        if (cell.bgColor && cell.bgColor !== 'transparent') colors.add(cell.bgColor);
+      });
+      return [...colors].sort();
+    } else {
+      const chars = new Set<string>();
+      canvasCells.forEach((cell) => {
+        if (cell.char && cell.char.trim() !== '') chars.add(cell.char);
+      });
+      return [...chars].sort();
+    }
+  }, [canvasCells, isColorMapping]);
+
+  // Auto-populate identity mappings when canvas values change
+  useEffect(() => {
+    if (detectedValues.length === 0) return;
+    const currentKeys = Object.keys(mappings);
+    // Only auto-populate if mappings are empty (first time or canvas changed significantly)
+    if (currentKeys.length > 0) return;
+    const identityMappings: Record<string, string> = {};
+    detectedValues.forEach((val) => {
+      identityMappings[val] = val;
+    });
+    onChange(identityMappings);
+  }, [detectedValues]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ensure all detected values are represented in mappings
+  const displayEntries = useMemo(() => {
+    const result: [string, string][] = [];
+    // Include all detected values (with identity as default)
+    for (const val of detectedValues) {
+      result.push([val, mappings[val] ?? val]);
+    }
+    // Include any manually-added mappings not in detected set
+    for (const [key, val] of Object.entries(mappings)) {
+      if (!detectedValues.includes(key)) {
+        result.push([key, val]);
+      }
+    }
+    return result;
+  }, [detectedValues, mappings]);
 
   const updateMapping = useCallback((fromKey: string, toValue: string) => {
     const updated = { ...mappings, [fromKey]: toValue };
@@ -267,10 +324,22 @@ const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChan
   const addMapping = useCallback(() => {
     if (!newFromValue.trim()) return;
     const key = isColorMapping ? (newFromValue.startsWith('#') ? newFromValue : `#${newFromValue}`) : newFromValue;
-    const updated = { ...mappings, [key]: key }; // Identity mapping by default
+    const updated = { ...mappings, [key]: key };
     onChange(updated);
     setNewFromValue('');
   }, [newFromValue, mappings, onChange, isColorMapping]);
+
+  // Apply palette-based remapping
+  const applyPaletteMapping = useCallback(() => {
+    if (!selectedPaletteId || !isColorMapping) return;
+    const allPalettes = [...palettes, ...customPalettes];
+    const palette = allPalettes.find((p) => p.id === selectedPaletteId);
+    if (!palette) return;
+    const paletteColors = palette.colors.map((c) => c.value);
+    const canvasColors = detectedValues;
+    const newMappings = mapCanvasColorsToPalette(canvasColors, paletteColors, mappingAlgorithm);
+    onChange(newMappings);
+  }, [selectedPaletteId, isColorMapping, palettes, customPalettes, detectedValues, mappingAlgorithm, onChange]);
 
   return (
     <div className="py-0.5">
@@ -281,17 +350,74 @@ const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChan
           className="text-[10px] text-muted-foreground hover:text-foreground flex-1 text-left"
           onClick={() => setIsExpanded(!isExpanded)}
         >
-          {definition.displayName} ({entries.length})
+          {definition.displayName} ({displayEntries.length})
         </button>
       </div>
 
       {/* Expanded mapping list */}
       {isExpanded && (
         <div className="mt-1 ml-4 space-y-0.5">
-          {entries.length === 0 && (
-            <div className="text-[9px] text-muted-foreground/50 py-1">No mappings — add below</div>
+          {/* Mode tabs for color mappings */}
+          {isColorMapping && (
+            <div className="flex gap-1 mb-1">
+              <button
+                className={`text-[9px] px-2 py-0.5 rounded ${mode === 'manual' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setMode('manual')}
+              >
+                Manual
+              </button>
+              <button
+                className={`text-[9px] px-2 py-0.5 rounded ${mode === 'palette' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setMode('palette')}
+              >
+                Palette
+              </button>
+            </div>
           )}
-          {entries.map(([fromKey, toVal]) => (
+
+          {/* Palette mode */}
+          {isColorMapping && mode === 'palette' && (
+            <div className="space-y-1 mb-1 p-1 rounded border border-border/30 bg-muted/10">
+              <Select value={selectedPaletteId ?? ''} onValueChange={setSelectedPaletteId}>
+                <SelectTrigger className="h-5 text-[9px]">
+                  <SelectValue placeholder="Select palette..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...palettes, ...customPalettes].map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="text-[10px]">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex gap-1">
+                <Select value={mappingAlgorithm} onValueChange={(v) => setMappingAlgorithm(v as 'closest' | 'by-index')}>
+                  <SelectTrigger className="h-5 text-[9px] flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="closest" className="text-[10px]">Closest Match</SelectItem>
+                    <SelectItem value="by-index" className="text-[10px]">By Index</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-5 text-[9px] px-2"
+                  onClick={applyPaletteMapping}
+                  disabled={!selectedPaletteId}
+                >
+                  Apply
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Manual mapping list */}
+          {displayEntries.length === 0 && (
+            <div className="text-[9px] text-muted-foreground/50 py-1">No values detected on canvas</div>
+          )}
+          {displayEntries.map(([fromKey, toVal]) => (
             <div key={fromKey} className="flex items-center gap-1 group">
               {isColorMapping ? (
                 <>
@@ -322,7 +448,7 @@ const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChan
                     onBlur={(e) => {
                       const v = e.target.value;
                       if (!/^#[0-9a-fA-F]{6}$/.test(v)) {
-                        updateMapping(fromKey, fromKey); // Reset to from color
+                        updateMapping(fromKey, fromKey);
                       }
                     }}
                     className="h-4 w-16 text-[9px] px-1 rounded border border-border/50 bg-background text-foreground outline-none"
