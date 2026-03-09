@@ -43,7 +43,6 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
   const activeGroupId = useTimelineStore((s) => s.view.activeGroupId);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const { canAddLayer } = useLayerLimit();
-  const globalEffects = useTimelineStore((s) => s.globalEffects);
   const { addLayer } = useTimelineHistory();
 
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -345,7 +344,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
 
         // Global effects track at top (always visible for adding effects)
         items.push(
-          <GlobalEffectsTrackHeader key="global-effects" globalEffects={globalEffects} />
+          <GlobalEffectsTrackHeader key="global-effects" />
         );
 
         displayLayers.forEach((layer, displayIndex) => {

@@ -18,15 +18,13 @@ import { Button } from '../../ui/button';
 import { getAllEffects } from '../../../registry/effectRegistry';
 import { EffectTrackRow } from './EffectTrackRow';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
-import type { EffectTrack } from '../../../types/effectBlock';
 
 interface GlobalEffectsTrackHeaderProps {
-  globalEffects: EffectTrack[];
+  // No props needed — reads from store directly
 }
 
-export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> = React.memo(function GlobalEffectsTrackHeader({
-  globalEffects,
-}) {
+export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> = function GlobalEffectsTrackHeader() {
+  const globalEffects = useTimelineStore((s) => s.globalEffects);
   const isExpanded = useTimelineStore((s) => s.view.globalEffectsExpanded);
   const toggleExpanded = useTimelineStore((s) => s.toggleGlobalEffectsExpanded);
   const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
@@ -75,10 +73,13 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
                   const blockId = addEffectBlock(null, effect.type, start, duration);
                   if (blockId) {
                     recordAdd(null, blockId);
-                    // Auto-expand global effects section
-                    if (!useTimelineStore.getState().view.globalEffectsExpanded) {
-                      useTimelineStore.getState().toggleGlobalEffectsExpanded();
+                    // Force-expand global effects section
+                    const tl = useTimelineStore.getState();
+                    if (!tl.view.globalEffectsExpanded) {
+                      tl.toggleGlobalEffectsExpanded();
                     }
+                    // Select the new block
+                    tl.selectEffectBlock(blockId);
                   }
                 }}
               >
@@ -110,4 +111,4 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
       ))}
     </div>
   );
-});
+};
