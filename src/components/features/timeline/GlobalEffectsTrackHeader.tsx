@@ -73,13 +73,14 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
                   const blockId = addEffectBlock(null, effect.type, start, duration);
                   if (blockId) {
                     recordAdd(null, blockId);
-                    // Force-expand global effects section
-                    const tl = useTimelineStore.getState();
-                    if (!tl.view.globalEffectsExpanded) {
-                      tl.toggleGlobalEffectsExpanded();
-                    }
-                    // Select the new block
-                    tl.selectEffectBlock(blockId);
+                    // Force-expand global effects section after state updates
+                    setTimeout(() => {
+                      const tl = useTimelineStore.getState();
+                      if (!tl.view.globalEffectsExpanded) {
+                        tl.toggleGlobalEffectsExpanded();
+                      }
+                      tl.selectEffectBlock(blockId);
+                    }, 0);
                   }
                 }}
               >

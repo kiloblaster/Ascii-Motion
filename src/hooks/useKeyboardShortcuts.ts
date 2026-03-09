@@ -2316,8 +2316,10 @@ export const useKeyboardShortcuts = () => {
         const tl = useTimelineStore.getState();
         if (tl.layers.length > 0) {
           event.preventDefault();
-          // Capture the current state NOW (before any async delay)
-          const shouldExpand = tl.view.expandedLayerIds.size === 0 && tl.view.expandedEffectTrackIds.size === 0;
+          // Determine if anything is currently expanded
+          const hasExpandedLayers = tl.view.expandedLayerIds.size > 0;
+          const hasExpandedEffects = tl.view.expandedEffectTrackIds.size > 0;
+          const shouldExpand = !hasExpandedLayers && !hasExpandedEffects;
           // Use setTimeout to escape the keyboard event handler's execution context.
           setTimeout(() => {
             const current = useTimelineStore.getState();
@@ -2329,12 +2331,28 @@ export const useKeyboardShortcuts = () => {
               );
               const toExpand = withKfs.length > 0 ? withKfs : current.layers;
               current.setExpandedLayerIds(new Set(toExpand.map((l) => l.id)));
-              // Also expand effect tracks that have keyframes
+              // Also expand effect tracks that have keyframes (on layers)
               for (const layer of toExpand) {
                 for (const et of (layer.effectTracks ?? [])) {
                   if (et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)) {
-                    const expanded = useTimelineStore.getState().view.expandedEffectTrackIds;
-                    if (!expanded.has(et.effectBlock.id)) {
+                    if (!useTimelineStore.getState().view.expandedEffectTrackIds.has(et.effectBlock.id)) {
+                      useTimelineStore.getState().toggleEffectTrackExpanded(et.effectBlock.id);
+                    }
+                  }
+                }
+              }
+              // Expand global effects section if it has keyframed effects
+              const globalHasKfs = current.globalEffects.some((et) =>
+                et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)
+              );
+              if (globalHasKfs || current.globalEffects.length > 0) {
+                if (!useTimelineStore.getState().view.globalEffectsExpanded) {
+                  useTimelineStore.getState().toggleGlobalEffectsExpanded();
+                }
+                // Expand individual global effect tracks with keyframes
+                for (const et of current.globalEffects) {
+                  if (et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)) {
+                    if (!useTimelineStore.getState().view.expandedEffectTrackIds.has(et.effectBlock.id)) {
                       useTimelineStore.getState().toggleEffectTrackExpanded(et.effectBlock.id);
                     }
                   }
@@ -2350,16 +2368,28 @@ export const useKeyboardShortcuts = () => {
                     ),
                   });
                 }
+                // Expand group effect tracks with keyframes
+                for (const group of current.layerGroups) {
+                  for (const et of (group.effectTracks ?? [])) {
+                    if (et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)) {
+                      if (!useTimelineStore.getState().view.expandedEffectTrackIds.has(et.effectBlock.id)) {
+                        useTimelineStore.getState().toggleEffectTrackExpanded(et.effectBlock.id);
+                      }
+                    }
+                  }
+                }
               }
             } else {
-              // Collapse all (layers and effect tracks)
+              // Collapse all (layers, effect tracks, and global effects)
               current.setExpandedLayerIds(new Set());
-              // Also collapse all expanded effect tracks
-              const expandedEffects = current.view.expandedEffectTrackIds;
-              if (expandedEffects.size > 0) {
-                for (const blockId of expandedEffects) {
-                  current.toggleEffectTrackExpanded(blockId);
-                }
+              // Collapse all expanded effect tracks
+              const expandedEffects = new Set(current.view.expandedEffectTrackIds);
+              for (const blockId of expandedEffects) {
+                current.toggleEffectTrackExpanded(blockId);
+              }
+              // Collapse global effects section
+              if (current.view.globalEffectsExpanded) {
+                current.toggleGlobalEffectsExpanded();
               }
             }
           }, 0);
