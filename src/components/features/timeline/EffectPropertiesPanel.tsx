@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { ColorPickerOverlay } from '../ColorPickerOverlay';
 import { Trash2, Eye, EyeOff, X, Diamond, RotateCcw } from 'lucide-react';
 import { useScrubInput } from '../../../hooks/useScrubInput';
+import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import type { EffectTrack, EffectPropertyDefinition, EffectBlock } from '../../../types/effectBlock';
 import type { KeyframeId } from '../../../types/timeline';
 
@@ -115,7 +116,17 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
       addEffectKeyframe(block.id, existingTrack.id, currentFrame, kfValue);
       ensureExpanded();
     }
-  }, [isTracked, hasKeyframeAtCurrentFrame, block.id, definition.path, definition.defaultValue, currentFrame, value, existingKf, existingTrack, addEffectPropertyTrack, addEffectKeyframe, removeEffectKeyframe]);
+  }, [isTracked, hasKeyframeAtCurrentFrame, block.id, definition.path, definition.defaultValue, currentFrame, value, existingKf, existingTrack, addEffectPropertyTrack, addEffectKeyframe, removeEffectKeyframe, ensureExpanded]);
+
+  // Scrub input hook (must be before any early returns)
+  const scrubValue = typeof value === 'number' ? value : (definition.defaultValue as number);
+  const scrub = useScrubInput({
+    value: scrubValue,
+    onChange: (v) => { setLocalValue(String(v)); onChange(v); },
+    step: definition.step ?? 1,
+    min: definition.min,
+    max: definition.max,
+  });
 
   const keyframeDiamond = (
     <TooltipProvider>
@@ -236,14 +247,6 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
   }
 
   // Numeric input (default)
-  const scrub = useScrubInput({
-    value: typeof value === 'number' ? value : (definition.defaultValue as number),
-    onChange: (v) => { setLocalValue(String(v)); onChange(v); },
-    step: definition.step ?? 1,
-    min: definition.min,
-    max: definition.max,
-  });
-
   return (
     <div className="flex items-center gap-1.5 py-0.5">
       {keyframeDiamond}
@@ -541,6 +544,7 @@ export const EffectPropertiesPanel: React.FC = () => {
   const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
   const toggleEffectBlockEnabled = useTimelineStore((s) => s.toggleEffectBlockEnabled);
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
+  const { recordRemove: recordEffectRemove } = useEffectBlockHistory();
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
 
   // Re-read layers/groups/globalEffects to react to changes
@@ -661,6 +665,10 @@ export const EffectPropertiesPanel: React.FC = () => {
           size="sm"
           className="flex-1 h-6 text-[10px]"
           onClick={() => {
+            recordEffectRemove(
+              ownerId as import('../../../types/timeline').LayerId | import('../../../types/timeline').LayerGroupId | null,
+              block.id,
+            );
             removeEffectBlock(
               ownerId as import('../../../types/timeline').LayerId | import('../../../types/timeline').LayerGroupId | null,
               block.id,

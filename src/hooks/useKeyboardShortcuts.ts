@@ -24,7 +24,7 @@ import { useSelectionStore } from '../stores/selectionStore';
 import { ANSI_COLORS } from '../constants/colors';
 import type { AnyHistoryAction, CanvasHistoryAction, CanvasResizeHistoryAction, FrameId, Cell } from '../types';
 import { useTimelineStore } from '../stores/timelineStore';
-import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyPath } from '../types/timeline';
+import type { LayerId, LayerGroupId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyPath } from '../types/timeline';
 import { PROPERTY_DEFINITIONS } from '../types/timeline';
 
 type CanvasStoreState = ReturnType<typeof useCanvasStore.getState>;
@@ -1438,6 +1438,103 @@ const processHistoryAction = (
       break;
     }
       
+    case 'effect_block_add': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectBlockAddHistoryAction;
+      if (isRedo) {
+        // Re-add the effect block
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        tl.addEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.effectType, a.data.trackSnapshot.effectBlock.startFrame, a.data.trackSnapshot.effectBlock.durationFrames);
+      } else {
+        // Remove the added effect block
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        tl.removeEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.id);
+      }
+      break;
+    }
+
+    case 'effect_block_remove': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectBlockRemoveHistoryAction;
+      if (isRedo) {
+        // Re-remove the effect block
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        tl.removeEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.id);
+      } else {
+        // Re-add the effect block by restoring the full track
+        // Use addEffectBlock then restore settings
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        const block = a.data.trackSnapshot.effectBlock;
+        const blockId = tl.addEffectBlock(ownerId, block.effectType, block.startFrame, block.durationFrames);
+        if (blockId) {
+          tl.updateEffectBlockSettings(blockId, block.settings as Record<string, unknown>);
+          if (!block.enabled) tl.toggleEffectBlockEnabled(blockId);
+        }
+      }
+      break;
+    }
+
+    case 'effect_block_update': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectBlockUpdateHistoryAction;
+      const block = isRedo ? a.data.newBlock : a.data.previousBlock;
+      tl.updateEffectBlockTiming(a.data.blockId as import("../types/effectBlock").EffectBlockId, block.startFrame, block.durationFrames);
+      tl.updateEffectBlockSettings(a.data.blockId as import("../types/effectBlock").EffectBlockId, block.settings as Record<string, unknown>);
+      if (block.enabled !== (isRedo ? a.data.previousBlock : a.data.newBlock).enabled) {
+        tl.toggleEffectBlockEnabled(a.data.blockId as import("../types/effectBlock").EffectBlockId);
+      }
+      break;
+    }
+
+    case 'effect_block_reorder': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectBlockReorderHistoryAction;
+      const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+      if (isRedo) {
+        tl.reorderEffectTracks(ownerId, a.data.fromIndex, a.data.toIndex);
+      } else {
+        tl.reorderEffectTracks(ownerId, a.data.toIndex, a.data.fromIndex);
+      }
+      break;
+    }
+
+    case 'effect_keyframe_add': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectKeyframeAddHistoryAction;
+      if (isRedo) {
+        tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+      } else {
+        tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+      }
+      break;
+    }
+
+    case 'effect_keyframe_remove': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectKeyframeRemoveHistoryAction;
+      if (isRedo) {
+        tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+      } else {
+        tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+      }
+      break;
+    }
+
+    case 'effect_keyframe_update': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectKeyframeUpdateHistoryAction;
+      const kf = isRedo ? a.data.newKeyframe : a.data.previousKeyframe;
+      tl.updateEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframeId as KeyframeId, { frame: kf.frame, value: kf.value, easing: kf.easing });
+      break;
+    }
+
+    case 'effect_bake': {
+      // Bake undo: restore original cell data + re-add the effect block
+      // Not implemented yet — bake feature is not yet wired in UI
+      console.warn('effect_bake undo not yet implemented');
+      break;
+    }
+
     default:
       console.warn('Unknown history action type:', action);
   }

@@ -13,6 +13,7 @@ import {
 } from '../ui/collapsible';
 import { CollapsibleHeader } from '../common/CollapsibleHeader';
 import { useTimelineStore } from '../../stores/timelineStore';
+import { useEffectBlockHistory } from '../../hooks/useEffectBlockHistory';
 import { getAllEffects } from '../../registry/effectRegistry';
 import { Wand2 } from 'lucide-react';
 
@@ -28,6 +29,7 @@ export function EffectsSection({ className = '' }: EffectsSectionProps) {
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const { recordAdd } = useEffectBlockHistory();
 
   const registeredEffects = getAllEffects();
 
@@ -37,6 +39,7 @@ export function EffectsSection({ className = '' }: EffectsSectionProps) {
     const duration = Math.max(1, durationFrames - start);
     const blockId = addEffectBlock(ownerId, effectType, start, duration);
     if (blockId) {
+      recordAdd(ownerId, blockId);
       selectEffectBlock(blockId);
     }
   };

@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
 import { EffectTrackRow } from './EffectTrackRow';
+import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import { getAllEffects } from '../../../registry/effectRegistry';
 import { getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
@@ -74,6 +75,7 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
   const ungroupLayers = useTimelineStore((s) => s.ungroupLayers);
   const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
   const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
+  const { recordAdd: recordEffectAdd } = useEffectBlockHistory();
 
   // Groups show property tracks when not collapsed (unlike layers which use expandedLayerIds)
   const isExpanded = !group.collapsed;
@@ -421,7 +423,8 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
                   onClick={() => {
                     const start = currentFrame;
                     const duration = Math.max(1, useTimelineStore.getState().config.durationFrames - start);
-                    addEffectBlock(group.id, effect.type, start, duration);
+                    const blockId = addEffectBlock(group.id, effect.type, start, duration);
+                    if (blockId) recordEffectAdd(group.id, blockId);
                   }}
                 >
                   <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />

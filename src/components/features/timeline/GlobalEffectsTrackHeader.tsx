@@ -17,6 +17,7 @@ import {
 import { Button } from '../../ui/button';
 import { getAllEffects } from '../../../registry/effectRegistry';
 import { EffectTrackRow } from './EffectTrackRow';
+import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import type { EffectTrack } from '../../../types/effectBlock';
 
 interface GlobalEffectsTrackHeaderProps {
@@ -28,6 +29,7 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
   const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
+  const { recordAdd } = useEffectBlockHistory();
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
   const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
@@ -69,7 +71,8 @@ export const GlobalEffectsTrackHeader: React.FC<GlobalEffectsTrackHeaderProps> =
                 onClick={() => {
                   const start = currentFrame;
                   const duration = Math.max(1, durationFrames - start);
-                  addEffectBlock(null, effect.type, start, duration);
+                  const blockId = addEffectBlock(null, effect.type, start, duration);
+                  if (blockId) recordAdd(null, blockId);
                 }}
               >
                 <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />

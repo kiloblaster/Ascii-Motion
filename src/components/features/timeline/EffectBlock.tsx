@@ -7,6 +7,7 @@
 
 import React, { useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import { cn } from '@/lib/utils';
 import type { EffectTrack } from '../../../types/effectBlock';
 import { getEffect } from '../../../registry/effectRegistry';
@@ -33,6 +34,7 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
   const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
   const selectEffectBlock = useTimelineStore((s) => s.selectEffectBlock);
   const updateEffectBlockTiming = useTimelineStore((s) => s.updateEffectBlockTiming);
+  const { recordUpdate } = useEffectBlockHistory();
 
   const isSelected = selectedEffectBlockId === block.id;
   const entry = getEffect(block.effectType);
@@ -52,6 +54,7 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     e.preventDefault();
     const startX = e.clientX;
     const origDuration = block.durationFrames;
+    const beforeBlock = structuredClone(block);
     const onMouseMove = (me: MouseEvent) => {
       const newDuration = Math.max(1, origDuration + Math.round((me.clientX - startX) / pxPerFrame));
       updateEffectBlockTiming(block.id, block.startFrame, newDuration);
@@ -59,10 +62,11 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      if (block.durationFrames !== origDuration) recordUpdate(block.id, beforeBlock);
     };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [block, pxPerFrame, updateEffectBlockTiming]);
+  }, [block, pxPerFrame, updateEffectBlockTiming, recordUpdate]);
 
   const handleResizeLeft = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -71,6 +75,7 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     const origStart = block.startFrame;
     const origDuration = block.durationFrames;
     const endFrame = origStart + origDuration;
+    const beforeBlock = structuredClone(block);
     const onMouseMove = (me: MouseEvent) => {
       const newStart = Math.max(0, Math.min(endFrame - 1, origStart + Math.round((me.clientX - startX) / pxPerFrame)));
       const newDuration = endFrame - newStart;
@@ -79,10 +84,11 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      if (block.startFrame !== origStart) recordUpdate(block.id, beforeBlock);
     };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [block, pxPerFrame, updateEffectBlockTiming]);
+  }, [block, pxPerFrame, updateEffectBlockTiming, recordUpdate]);
 
   const handleDrag = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -90,6 +96,7 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
     e.preventDefault();
     const startX = e.clientX;
     const origStart = block.startFrame;
+    const beforeBlock = structuredClone(block);
     let didDrag = false;
     const onMouseMove = (me: MouseEvent) => {
       const dx = me.clientX - startX;
@@ -103,11 +110,13 @@ export const EffectBlockComponent: React.FC<EffectBlockProps> = React.memo(funct
       document.removeEventListener('mouseup', onMouseUp);
       if (!didDrag) {
         selectEffectBlock(block.id);
+      } else if (block.startFrame !== origStart) {
+        recordUpdate(block.id, beforeBlock);
       }
     };
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [block, pxPerFrame, updateEffectBlockTiming, selectEffectBlock]);
+  }, [block, pxPerFrame, updateEffectBlockTiming, selectEffectBlock, recordUpdate]);
 
   return (
     <div

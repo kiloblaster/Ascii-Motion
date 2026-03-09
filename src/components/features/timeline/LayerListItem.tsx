@@ -14,6 +14,7 @@ import { Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronLeft, Trash2, Plus, X, 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import { EffectTrackRow } from './EffectTrackRow';
+import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import { getAllEffects } from '../../../registry/effectRegistry';
 import {
   DropdownMenu,
@@ -76,6 +77,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
   const goToFrame = useTimelineStore((s) => s.goToFrame);
   const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
   const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
+  const { recordAdd: recordEffectAdd } = useEffectBlockHistory();
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(layer.name);
@@ -488,7 +490,8 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
                   onClick={() => {
                     const start = currentFrame;
                     const duration = Math.max(1, useTimelineStore.getState().config.durationFrames - start);
-                    addEffectBlock(layer.id, effect.type, start, duration);
+                    const blockId = addEffectBlock(layer.id, effect.type, start, duration);
+                    if (blockId) recordEffectAdd(layer.id, blockId);
                   }}
                 >
                   <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />

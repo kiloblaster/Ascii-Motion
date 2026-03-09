@@ -7,6 +7,7 @@
 
 import React, { useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import { cn } from '@/lib/utils';
 import { Eye, EyeOff, ChevronRight, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
@@ -27,6 +28,7 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
   const selectEffectBlock = useTimelineStore((s) => s.selectEffectBlock);
   const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
+  const { recordUpdate, recordRemove } = useEffectBlockHistory();
 
   const block = track.effectBlock;
   const entry = getEffect(block.effectType);
@@ -35,8 +37,10 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
 
   const handleToggleEnabled = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    const beforeBlock = structuredClone(block);
     toggleEffectBlockEnabled(block.id);
-  }, [block.id, toggleEffectBlockEnabled]);
+    recordUpdate(block.id, beforeBlock);
+  }, [block, toggleEffectBlockEnabled, recordUpdate]);
 
   const handleToggleExpanded = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -45,8 +49,9 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
 
   const handleRemove = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
+    recordRemove(track.ownerId, block.id);
     removeEffectBlock(track.ownerId, block.id);
-  }, [track.ownerId, block.id, removeEffectBlock]);
+  }, [track.ownerId, block.id, removeEffectBlock, recordRemove]);
 
   const handleSelect = useCallback(() => {
     selectEffectBlock(block.id);
