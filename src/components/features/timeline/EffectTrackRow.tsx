@@ -5,11 +5,11 @@
  * Supports drag-and-drop reorder via parent.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, ChevronRight, X } from 'lucide-react';
+import { Eye, EyeOff, ChevronRight, X, GripVertical } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import type { EffectTrack } from '../../../types/effectBlock';
 import { getEffect } from '../../../registry/effectRegistry';
@@ -17,18 +17,24 @@ import { getEffect } from '../../../registry/effectRegistry';
 interface EffectTrackRowProps {
   track: EffectTrack;
   isExpanded: boolean;
+  /** Index within the owner's effectTracks array */
+  index?: number;
 }
 
 export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function EffectTrackRow({
   track,
   isExpanded,
+  index,
 }) {
   const toggleEffectBlockEnabled = useTimelineStore((s) => s.toggleEffectBlockEnabled);
   const toggleEffectTrackExpanded = useTimelineStore((s) => s.toggleEffectTrackExpanded);
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
   const selectEffectBlock = useTimelineStore((s) => s.selectEffectBlock);
+  const reorderEffectTracks = useTimelineStore((s) => s.reorderEffectTracks);
+  const moveEffectTrack = useTimelineStore((s) => s.moveEffectTrack);
   const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
   const { recordUpdate, recordRemove } = useEffectBlockHistory();
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const block = track.effectBlock;
   const entry = getEffect(block.effectType);
@@ -57,17 +63,73 @@ export const EffectTrackRow: React.FC<EffectTrackRowProps> = React.memo(function
     selectEffectBlock(block.id);
   }, [block.id, selectEffectBlock]);
 
+  // Drag-and-drop for reorder / cross-owner move
+  const handleDragStart = useCallback((e: React.DragEvent) => {
+    e.dataTransfer.setData('application/effect-block-id', block.id as string);
+    e.dataTransfer.setData('application/effect-owner-id', (track.ownerId ?? '__global__') as string);
+    e.dataTransfer.setData('application/effect-index', String(index ?? 0));
+    e.dataTransfer.effectAllowed = 'move';
+  }, [block.id, track.ownerId, index]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/effect-block-id')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const draggedBlockId = e.dataTransfer.getData('application/effect-block-id');
+    const sourceOwnerStr = e.dataTransfer.getData('application/effect-owner-id');
+    if (!draggedBlockId || draggedBlockId === (block.id as string)) return;
+
+    const sourceOwnerId = sourceOwnerStr === '__global__' ? null : sourceOwnerStr;
+    const targetOwnerId = track.ownerId;
+    const targetIndex = index ?? 0;
+
+    if ((sourceOwnerId ?? '') === ((targetOwnerId ?? '') as string)) {
+      // Same owner — reorder
+      const sourceIndex = parseInt(e.dataTransfer.getData('application/effect-index'), 10);
+      if (!isNaN(sourceIndex) && sourceIndex !== targetIndex) {
+        reorderEffectTracks(targetOwnerId, sourceIndex, targetIndex);
+      }
+    } else {
+      // Cross-owner move
+      moveEffectTrack(
+        draggedBlockId as import('../../../types/effectBlock').EffectBlockId,
+        targetOwnerId,
+        targetIndex,
+      );
+    }
+  }, [block.id, track.ownerId, index, reorderEffectTracks, moveEffectTrack]);
+
   return (
     <div
       className={cn(
-        'flex items-center pl-4 pr-1.5 min-h-[24px] border-b border-border/30 text-[10px] cursor-pointer',
+        'flex items-center pl-2 pr-1.5 min-h-[24px] border-b border-border/30 text-[10px] cursor-pointer',
         'hover:bg-muted/30',
         isSelected && 'bg-accent/30',
         !block.enabled && 'opacity-50',
+        isDragOver && 'border-t-2 border-t-primary',
       )}
       onClick={handleSelect}
+      draggable
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      data-effect-track="true"
+      data-effect-owner-id={(track.ownerId ?? '__global__') as string}
     >
-      {/* Expand arrow */}
+      {/* Drag handle */}
+      <GripVertical className="w-2.5 h-2.5 text-muted-foreground/30 hover:text-muted-foreground cursor-grab mr-0.5 shrink-0" />      {/* Expand arrow */}
       <button
         className="w-3 h-3 flex items-center justify-center text-muted-foreground hover:text-foreground mr-0.5 shrink-0"
         onClick={handleToggleExpanded}

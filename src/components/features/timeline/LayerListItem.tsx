@@ -454,11 +454,12 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
       {isExpanded && (
         <div className="ml-5">
           {/* Existing effect tracks */}
-          {(layer.effectTracks ?? []).map((track) => (
+          {(layer.effectTracks ?? []).map((track, idx) => (
             <React.Fragment key={track.id}>
               <EffectTrackRow
                 track={track}
                 isExpanded={expandedEffectTrackIds.has(track.effectBlock.id)}
+                index={idx}
               />
               {/* Effect property track labels when expanded */}
               {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (

@@ -390,11 +390,12 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
       {/* Effect track rows + Add Effect (when expanded) */}
       {isExpanded && (
         <div className="ml-5">
-          {(group.effectTracks ?? []).map((track) => (
+          {(group.effectTracks ?? []).map((track, idx) => (
             <React.Fragment key={track.id}>
               <EffectTrackRow
                 track={track}
                 isExpanded={expandedEffectTrackIds.has(track.effectBlock.id)}
+                index={idx}
               />
               {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
                 <div

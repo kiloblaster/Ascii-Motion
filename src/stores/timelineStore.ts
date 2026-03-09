@@ -534,6 +534,13 @@ export interface TimelineState {
   /** Toggle global effects section expanded/collapsed */
   toggleGlobalEffectsExpanded: () => void;
 
+  /** Move an effect track from one owner to another (for cross-layer drag) */
+  moveEffectTrack: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    targetOwnerId: LayerId | LayerGroupId | null,
+    targetIndex?: number,
+  ) => void;
+
   // ============================================
   // PROJECT LIFECYCLE
   // ============================================
@@ -2921,6 +2928,90 @@ export const useTimelineStore = create<TimelineState>()(
       set((state) => ({
         view: { ...state.view, globalEffectsExpanded: !state.view.globalEffectsExpanded },
       }));
+    },
+
+    moveEffectTrack: (blockId, targetOwnerId, targetIndex) => {
+      const { layers, layerGroups, globalEffects } = get();
+
+      // Find and remove the track from its current owner
+      let movedTrack: EffectTrack | null = null;
+
+      // Search layers
+      for (const layer of layers) {
+        const idx = (layer.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
+        if (idx !== -1) {
+          movedTrack = (layer.effectTracks ?? [])[idx];
+          set({
+            layers: updateLayer(layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: l.effectTracks.filter((t) => t.effectBlock.id !== blockId),
+            })),
+          });
+          break;
+        }
+      }
+      // Search groups
+      if (!movedTrack) {
+        for (const group of layerGroups) {
+          const idx = (group.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
+          if (idx !== -1) {
+            movedTrack = (group.effectTracks ?? [])[idx];
+            set({
+              layerGroups: get().layerGroups.map((g) =>
+                g.id === group.id
+                  ? { ...g, effectTracks: g.effectTracks.filter((t) => t.effectBlock.id !== blockId) }
+                  : g,
+              ),
+            });
+            break;
+          }
+        }
+      }
+      // Search global
+      if (!movedTrack) {
+        const idx = globalEffects.findIndex((t) => t.effectBlock.id === blockId);
+        if (idx !== -1) {
+          movedTrack = globalEffects[idx];
+          set({ globalEffects: get().globalEffects.filter((t) => t.effectBlock.id !== blockId) });
+        }
+      }
+
+      if (!movedTrack) return;
+
+      // Update ownerId on the track
+      const updatedTrack: EffectTrack = { ...movedTrack, ownerId: targetOwnerId };
+
+      // Insert into target owner
+      if (targetOwnerId === null) {
+        // Global
+        const currentGlobal = get().globalEffects;
+        const insertAt = targetIndex ?? currentGlobal.length;
+        const newGlobal = [...currentGlobal];
+        newGlobal.splice(insertAt, 0, updatedTrack);
+        set({ globalEffects: newGlobal });
+      } else {
+        const targetLayer = get().layers.find((l) => l.id === targetOwnerId);
+        if (targetLayer) {
+          set({
+            layers: updateLayer(get().layers, targetOwnerId as LayerId, (l) => {
+              const newTracks = [...l.effectTracks];
+              newTracks.splice(targetIndex ?? newTracks.length, 0, updatedTrack);
+              return { ...l, effectTracks: newTracks };
+            }),
+          });
+        } else {
+          const targetGroup = get().layerGroups.find((g) => g.id === targetOwnerId);
+          if (targetGroup) {
+            set({
+              layerGroups: get().layerGroups.map((g) =>
+                g.id === targetOwnerId
+                  ? { ...g, effectTracks: [...(g.effectTracks ?? []).slice(0, targetIndex ?? g.effectTracks.length), updatedTrack, ...(g.effectTracks ?? []).slice(targetIndex ?? g.effectTracks.length)] }
+                  : g,
+              ),
+            });
+          }
+        }
+      }
     },
 
     // ============================================
