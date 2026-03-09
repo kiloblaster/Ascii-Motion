@@ -6,13 +6,13 @@
  * Replaces the LayerPropertiesPanel in the right sidebar.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { getEffect } from '../../../registry/effectRegistry';
 import { evaluateEffectBlock } from '../../../utils/effectsPipeline';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
-import { Trash2, Eye, EyeOff, X, Diamond } from 'lucide-react';
+import { Trash2, Eye, EyeOff, X, Diamond, Plus, RotateCcw } from 'lucide-react';
 import type { EffectTrack, EffectPropertyDefinition, EffectBlock } from '../../../types/effectBlock';
 import type { KeyframeId } from '../../../types/timeline';
 
@@ -196,20 +196,15 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
     );
   }
 
-  // Mapping type — show as read-only count
+  // Mapping type — inline mapping editor
   if (definition.valueType === 'mapping') {
-    const mappingValue = value as Record<string, string> | undefined;
-    const count = mappingValue ? Object.keys(mappingValue).length : 0;
     return (
-      <div className="flex items-center gap-1.5 py-0.5">
-        {keyframeDiamond}
-        <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
-          {definition.displayName}
-        </span>
-        <span className="text-[10px] text-foreground/60">
-          {count} mapping{count !== 1 ? 's' : ''}
-        </span>
-      </div>
+      <MappingEditor
+        definition={definition}
+        value={value as Record<string, string> | undefined}
+        onChange={onChange}
+        keyframeDiamond={keyframeDiamond}
+      />
     );
   }
 
@@ -238,6 +233,156 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
     </div>
   );
 };
+
+// ============================================
+// MAPPING EDITOR COMPONENT
+// ============================================
+
+interface MappingEditorProps {
+  definition: EffectPropertyDefinition;
+  value: Record<string, string> | undefined;
+  onChange: (value: unknown) => void;
+  keyframeDiamond: React.ReactNode;
+}
+
+const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChange, keyframeDiamond }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [newFromValue, setNewFromValue] = useState('');
+
+  const mappings = useMemo(() => value ?? {}, [value]);
+  const entries = Object.entries(mappings);
+  const isColorMapping = definition.path === 'colorMappings';
+
+  const updateMapping = useCallback((fromKey: string, toValue: string) => {
+    const updated = { ...mappings, [fromKey]: toValue };
+    onChange(updated);
+  }, [mappings, onChange]);
+
+  const removeMapping = useCallback((fromKey: string) => {
+    const updated = { ...mappings };
+    delete updated[fromKey];
+    onChange(updated);
+  }, [mappings, onChange]);
+
+  const addMapping = useCallback(() => {
+    if (!newFromValue.trim()) return;
+    const key = isColorMapping ? (newFromValue.startsWith('#') ? newFromValue : `#${newFromValue}`) : newFromValue;
+    const updated = { ...mappings, [key]: key }; // Identity mapping by default
+    onChange(updated);
+    setNewFromValue('');
+  }, [newFromValue, mappings, onChange, isColorMapping]);
+
+  return (
+    <div className="py-0.5">
+      {/* Header row */}
+      <div className="flex items-center gap-1.5">
+        {keyframeDiamond}
+        <button
+          className="text-[10px] text-muted-foreground hover:text-foreground flex-1 text-left"
+          onClick={() => setIsExpanded(!isExpanded)}
+        >
+          {definition.displayName} ({entries.length})
+        </button>
+      </div>
+
+      {/* Expanded mapping list */}
+      {isExpanded && (
+        <div className="mt-1 ml-4 space-y-0.5">
+          {entries.length === 0 && (
+            <div className="text-[9px] text-muted-foreground/50 py-1">No mappings — add below</div>
+          )}
+          {entries.map(([fromKey, toVal]) => (
+            <div key={fromKey} className="flex items-center gap-1 group">
+              {isColorMapping ? (
+                <>
+                  {/* Color swatch: from */}
+                  <div
+                    className="w-4 h-4 rounded border border-border/50 flex-shrink-0"
+                    style={{ backgroundColor: fromKey }}
+                    title={fromKey}
+                  />
+                  <span className="text-[9px] text-muted-foreground">→</span>
+                  {/* Color swatch: to (with native color picker) */}
+                  <input
+                    type="color"
+                    value={/^#[0-9a-fA-F]{6}$/.test(toVal) ? toVal : '#000000'}
+                    onChange={(e) => updateMapping(fromKey, e.target.value)}
+                    className="w-4 h-4 rounded border border-border/50 flex-shrink-0 cursor-pointer p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded"
+                  />
+                  {/* Hex input for to color */}
+                  <input
+                    type="text"
+                    value={toVal}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (/^#[0-9a-fA-F]{0,6}$/.test(v) || v === '') {
+                        updateMapping(fromKey, v);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const v = e.target.value;
+                      if (!/^#[0-9a-fA-F]{6}$/.test(v)) {
+                        updateMapping(fromKey, fromKey); // Reset to from color
+                      }
+                    }}
+                    className="h-4 w-16 text-[9px] px-1 rounded border border-border/50 bg-background text-foreground outline-none"
+                  />
+                </>
+              ) : (
+                <>
+                  {/* Character: from */}
+                  <div className="w-5 h-5 rounded border border-border/50 flex items-center justify-center text-[10px] flex-shrink-0 bg-muted/30">
+                    {fromKey === ' ' ? '␣' : fromKey}
+                  </div>
+                  <span className="text-[9px] text-muted-foreground">→</span>
+                  {/* Character: to (editable) */}
+                  <input
+                    type="text"
+                    value={toVal}
+                    maxLength={1}
+                    onChange={(e) => updateMapping(fromKey, e.target.value || fromKey)}
+                    className="w-5 h-5 text-center text-[10px] rounded border border-border/50 bg-background text-foreground outline-none"
+                  />
+                </>
+              )}
+              {/* Reset button */}
+              <button
+                className="p-0.5 text-muted-foreground/30 hover:text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => fromKey !== toVal ? updateMapping(fromKey, fromKey) : removeMapping(fromKey)}
+                title={fromKey !== toVal ? 'Reset to original' : 'Remove mapping'}
+              >
+                {fromKey !== toVal ? <RotateCcw className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+              </button>
+            </div>
+          ))}
+
+          {/* Add mapping row */}
+          <div className="flex items-center gap-1 mt-1 pt-1 border-t border-border/20">
+            <input
+              type="text"
+              placeholder={isColorMapping ? '#ff0000' : 'A'}
+              value={newFromValue}
+              onChange={(e) => setNewFromValue(isColorMapping ? e.target.value : e.target.value.slice(0, 1))}
+              onKeyDown={(e) => e.key === 'Enter' && addMapping()}
+              className="h-4 flex-1 text-[9px] px-1 rounded border border-border/50 bg-background text-foreground outline-none"
+            />
+            <button
+              className="p-0.5 text-muted-foreground hover:text-foreground"
+              onClick={addMapping}
+              title="Add mapping"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================
+// MAIN PANEL COMPONENT
+// ============================================
 
 export const EffectPropertiesPanel: React.FC = () => {
   const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
