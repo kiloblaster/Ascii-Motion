@@ -332,7 +332,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 const proxyLayerId = layers.length > 0 ? layers[0].id : ('' as LayerId);
                 for (const pt of track.effectBlock.propertyTracks) {
                   items.push(
-                    <div key={`global-ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5">
+                    <div key={`global-ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair">
                       {pt.keyframes.map((kf) => (
                         <KeyframeDiamond
                           key={kf.id}
@@ -744,7 +744,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 </div>
                 {/* Effect property keyframe sub-rows (when effect block is expanded) */}
                 {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
-                  <div key={`ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5">
+                  <div key={`ept-${pt.id}`} className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair">
                     {pt.keyframes.map((kf) => (
                       <KeyframeDiamond
                         key={kf.id}

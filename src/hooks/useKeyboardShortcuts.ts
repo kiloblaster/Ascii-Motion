@@ -2232,6 +2232,17 @@ export const useKeyboardShortcuts = () => {
               );
               const toExpand = withKfs.length > 0 ? withKfs : current.layers;
               current.setExpandedLayerIds(new Set(toExpand.map((l) => l.id)));
+              // Also expand effect tracks that have keyframes
+              for (const layer of toExpand) {
+                for (const et of (layer.effectTracks ?? [])) {
+                  if (et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)) {
+                    const expanded = useTimelineStore.getState().view.expandedEffectTrackIds;
+                    if (!expanded.has(et.effectBlock.id)) {
+                      useTimelineStore.getState().toggleEffectTrackExpanded(et.effectBlock.id);
+                    }
+                  }
+                }
+              }
               // Also expand any collapsed groups so their children are visible
               if (current.layerGroups.length > 0) {
                 const hasCollapsed = current.layerGroups.some((g) => g.collapsed);
