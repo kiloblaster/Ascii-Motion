@@ -450,7 +450,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
 
       {/* Effect track rows + Add Effect (when expanded) */}
       {isExpanded && (
-        <div>
+        <div className="ml-5">
           {/* Existing effect tracks */}
           {(layer.effectTracks ?? []).map((track) => (
             <React.Fragment key={track.id}>
