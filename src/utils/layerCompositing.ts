@@ -89,6 +89,14 @@ export function compositeLayersAtFrame(
     if (layer.parentGroupId && groups) {
       const group = groups.find((g) => g.id === layer.parentGroupId);
       if (group) {
+        // Apply group-level effects to this layer's cell data (before transforms)
+        if (group.effectTracks?.length > 0 && hasActiveEffectsAtFrame(group.effectTracks, frame)) {
+          cellData = applyEffectsToLayer(cellData, group.effectTracks, frame, {
+            canvasBackgroundColor: '#000000',
+            frame,
+          });
+        }
+
         const gPosX = getGroupPropertyValue(group, 'transform.position.x', frame);
         const gPosY = getGroupPropertyValue(group, 'transform.position.y', frame);
         const gScaleX = getGroupPropertyValue(group, 'transform.scale.x', frame);
