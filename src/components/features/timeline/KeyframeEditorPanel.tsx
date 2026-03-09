@@ -18,6 +18,7 @@ import React, { useMemo, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
 import { EasingCurveEditor } from './EasingCurveEditor';
+import { useScrubInput } from '../../../hooks/useScrubInput';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Switch } from '../../ui/switch';
@@ -107,10 +108,30 @@ export const KeyframeEditorPanel: React.FC = () => {
     return entries;
   }, [selectedKeyframeIds, layers, layerGroups]);
 
+  const frameScrub = useScrubInput({
+    value: kfData?.keyframe.frame ?? 0,
+    onChange: (v) => {
+      if (kfData) moveKeyframe(kfData.layerId, kfData.trackId, kfData.keyframe.id, Math.max(0, Math.round(v)));
+    },
+    step: 1,
+    min: 0,
+  });
+
+  const kfDef = kfData ? PROPERTY_DEFINITIONS[kfData.track.propertyPath] : undefined;
+  const valueScrub = useScrubInput({
+    value: (kfData?.keyframe.value as number) ?? 0,
+    onChange: (v) => {
+      if (kfData) updateKeyframe(kfData.layerId, kfData.trackId, kfData.keyframe.id, { value: v });
+    },
+    step: kfDef?.step ?? 1,
+    min: kfDef?.min,
+    max: kfDef?.max,
+  });
+
   if (!kfData) return null;
 
   const { layerId, trackId, keyframe, track } = kfData;
-  const definition = PROPERTY_DEFINITIONS[track.propertyPath];
+  const definition = kfDef;
 
   const handleFrameChange = (value: string) => {
     const frame = parseInt(value, 10);
@@ -181,12 +202,12 @@ export const KeyframeEditorPanel: React.FC = () => {
         {/* Frame + Value */}
         <div className="flex gap-1.5">
           <div className="flex-1">
-            <Label className="text-[10px] text-muted-foreground">Frame</Label>
+            <Label className="text-[10px] text-muted-foreground cursor-ew-resize" onMouseDown={frameScrub.onMouseDown}>Frame</Label>
             <Input type="number" value={keyframe.frame} onChange={(e) => handleFrameChange(e.target.value)}
               className="h-6 text-xs mt-0.5" min={0} />
           </div>
           <div className="flex-1">
-            <Label className="text-[10px] text-muted-foreground">
+            <Label className="text-[10px] text-muted-foreground cursor-ew-resize" onMouseDown={valueScrub.onMouseDown}>
               Value{definition?.unit ? ` (${definition.unit})` : ''}
             </Label>
             <Input type="number" value={keyframe.value as number} onChange={(e) => handleValueChange(e.target.value)}

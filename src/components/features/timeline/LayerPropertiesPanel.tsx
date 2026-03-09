@@ -13,6 +13,7 @@ import React, { useState, useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useCanvasStore } from '../../../stores/canvasStore';
 import { useKeyframeableProperty } from '../../../hooks/useKeyframeableProperty';
+import { useScrubInput } from '../../../hooks/useScrubInput';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { useToolStore } from '../../../stores/toolStore';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
@@ -61,6 +62,14 @@ const PropertyRow: React.FC<PropertyRowProps> = ({ layerId, propertyPath }) => {
 
   const [localValue, setLocalValue] = useState<string>(String(value));
   const [isFocused, setIsFocused] = useState(false);
+
+  const scrub = useScrubInput({
+    value,
+    onChange: (v) => { setLocalValue(String(v)); setValue(v); },
+    step: definition?.step ?? 1,
+    min: definition?.min,
+    max: definition?.max,
+  });
 
   // Sync local value when the store value changes (and input is not focused)
   const displayValue = isFocused ? localValue : String(value);
@@ -141,7 +150,7 @@ const PropertyRow: React.FC<PropertyRowProps> = ({ layerId, propertyPath }) => {
         </Tooltip>
       </TooltipProvider>
 
-      <span className="text-[10px] text-muted-foreground w-14 truncate flex-shrink-0">
+      <span className="text-[10px] text-muted-foreground w-14 truncate flex-shrink-0 cursor-ew-resize" onMouseDown={scrub.onMouseDown}>
         {definition?.displayName ?? propertyPath.split('.').pop()}
       </span>
 

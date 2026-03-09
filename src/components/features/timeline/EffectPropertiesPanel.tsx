@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { ColorPickerOverlay } from '../ColorPickerOverlay';
 import { Trash2, Eye, EyeOff, X, Diamond, RotateCcw } from 'lucide-react';
+import { useScrubInput } from '../../../hooks/useScrubInput';
 import type { EffectTrack, EffectPropertyDefinition, EffectBlock } from '../../../types/effectBlock';
 import type { KeyframeId } from '../../../types/timeline';
 
@@ -235,10 +236,18 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
   }
 
   // Numeric input (default)
+  const scrub = useScrubInput({
+    value: typeof value === 'number' ? value : (definition.defaultValue as number),
+    onChange: (v) => { setLocalValue(String(v)); onChange(v); },
+    step: definition.step ?? 1,
+    min: definition.min,
+    max: definition.max,
+  });
+
   return (
     <div className="flex items-center gap-1.5 py-0.5">
       {keyframeDiamond}
-      <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
+      <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0 cursor-ew-resize" onMouseDown={scrub.onMouseDown}>
         {definition.displayName}
       </span>
       <input
