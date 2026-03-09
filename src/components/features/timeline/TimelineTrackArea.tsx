@@ -158,9 +158,9 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
       let yOffset = 0;
       const renderedGroupIds = new Set<string>();
 
-      // Global effects rows at top
+      // Global effects rows at top (always present for header)
+      yOffset += 28; // Global header
       if (globalEffects.length > 0) {
-        yOffset += 28; // Global header
         for (const track of globalEffects) {
           yOffset += EFFECT_TRACK_ROW_H; // effect block row
           if (expandedEffectTrackIds.has(track.effectBlock.id)) {
@@ -358,12 +358,12 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
           const renderedGroupIds = new Set<string>();
           const items: React.ReactNode[] = [];
 
-          // Global effects track rows at top
+          // Global effects track rows at top (always render header spacer)
+          items.push(
+            <div key="global-effects-header-spacer" className="border-b border-border/50 bg-muted/20" style={{ minHeight: 28 }} />
+          );
+          // Global effect track rows (only when tracks exist)
           if (globalEffects.length > 0) {
-            // Global header spacer (matches GlobalEffectsTrackHeader height)
-            items.push(
-              <div key="global-effects-header-spacer" className="border-b border-border/50 bg-muted/20" style={{ minHeight: 28 }} />
-            );
             // Global effect track rows
             for (const track of globalEffects) {
               items.push(

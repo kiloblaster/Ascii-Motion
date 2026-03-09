@@ -22,8 +22,17 @@ import {
   Trash2,
   Diamond,
   X,
+  Plus,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../ui/dropdown-menu';
+import { EffectTrackRow } from './EffectTrackRow';
+import { getAllEffects } from '../../../registry/effectRegistry';
 import { getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
 import { defaultEasing } from '../../../types/easing';
@@ -63,6 +72,8 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
   const setLayerVisible = useTimelineStore((s) => s.setLayerVisible);
   const setLayerLocked = useTimelineStore((s) => s.setLayerLocked);
   const ungroupLayers = useTimelineStore((s) => s.ungroupLayers);
+  const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
+  const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
 
   // Groups show property tracks when not collapsed (unlike layers which use expandedLayerIds)
   const isExpanded = !group.collapsed;
@@ -371,6 +382,54 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
                 </div>
               );
             })}
+        </div>
+      )}
+
+      {/* Effect track rows + Add Effect (when expanded) */}
+      {isExpanded && (
+        <div className="ml-5">
+          {(group.effectTracks ?? []).map((track) => (
+            <React.Fragment key={track.id}>
+              <EffectTrackRow
+                track={track}
+                isExpanded={expandedEffectTrackIds.has(track.effectBlock.id)}
+              />
+              {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
+                <div
+                  key={pt.id}
+                  className="flex items-center pl-6 pr-1.5 min-h-[20px] border-b border-border/20 text-[9px] text-muted-foreground/60"
+                >
+                  {pt.propertyPath}
+                </div>
+              ))}
+            </React.Fragment>
+          ))}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-1 px-1.5 py-0.5 min-h-[24px] text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 w-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Plus className="w-3 h-3" />
+                Add Effect
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[160px]">
+              {getAllEffects().map((effect) => (
+                <DropdownMenuItem
+                  key={effect.type}
+                  onClick={() => {
+                    const start = currentFrame;
+                    const duration = Math.max(1, useTimelineStore.getState().config.durationFrames - start);
+                    addEffectBlock(group.id, effect.type, start, duration);
+                  }}
+                >
+                  <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+                  {effect.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
       </TooltipProvider>

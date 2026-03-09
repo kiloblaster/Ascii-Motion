@@ -343,12 +343,10 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
         const renderedGroupIds = new Set<string>();
         const items: React.ReactNode[] = [];
 
-        // Global effects track at top
-        if (globalEffects.length > 0) {
-          items.push(
-            <GlobalEffectsTrackHeader key="global-effects" globalEffects={globalEffects} />
-          );
-        }
+        // Global effects track at top (always visible for adding effects)
+        items.push(
+          <GlobalEffectsTrackHeader key="global-effects" globalEffects={globalEffects} />
+        );
 
         displayLayers.forEach((layer, displayIndex) => {
           // Check if this layer belongs to a group
