@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
 import { ChevronRight, Plus, Sparkles } from 'lucide-react';
 import {
@@ -58,10 +59,44 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
           setIsDragOverHeader(false);
           const draggedBlockId = e.dataTransfer.getData('application/effect-block-id');
           if (!draggedBlockId) return;
+
+          // Snapshot before move for undo
+          const tl = useTimelineStore.getState();
+          let sourceTrack: import('../../../types/effectBlock').EffectTrack | undefined;
+          let sourceOwnerId: string | null = null;
+          for (const l of tl.layers) {
+            const t = (l.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+            if (t) { sourceTrack = t; sourceOwnerId = l.id as string; break; }
+          }
+          if (!sourceTrack) {
+            for (const g of tl.layerGroups) {
+              const t = (g.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+              if (t) { sourceTrack = t; sourceOwnerId = g.id as string; break; }
+            }
+          }
+          if (!sourceTrack) {
+            sourceTrack = tl.globalEffects.find((et) => (et.effectBlock.id as string) === draggedBlockId);
+            if (sourceTrack) sourceOwnerId = null;
+          }
+
           moveEffectTrack(
             draggedBlockId as import('../../../types/effectBlock').EffectBlockId,
             null,
           );
+
+          // Record undo history
+          if (sourceTrack) {
+            useToolStore.getState().pushToHistory({
+              type: 'effect_block_remove', timestamp: Date.now(), description: 'Move effect to global',
+              data: {
+                ownerId: sourceOwnerId,
+                ownerType: sourceOwnerId === null ? 'global' : 'layer',
+                trackSnapshot: structuredClone(sourceTrack),
+                trackIndex: 0,
+              },
+            } as import('../../../types').EffectBlockRemoveHistoryAction);
+          }
+
           if (!isExpanded) toggleExpanded();
         }}
       >

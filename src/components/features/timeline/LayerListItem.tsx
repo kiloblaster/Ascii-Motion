@@ -7,6 +7,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { getPropertyValueAtFrame } from '../../../utils/layerCompositing';
 import { cn } from '@/lib/utils';
@@ -175,11 +176,44 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
           setIsEffectDragOver(false);
           const draggedBlockId = e.dataTransfer.getData('application/effect-block-id');
           if (draggedBlockId) {
+            // Snapshot before move for undo
+            const tl = useTimelineStore.getState();
+            let sourceTrack: import('../../../types/effectBlock').EffectTrack | undefined;
+            let sourceOwnerId: string | null = null;
+            for (const l of tl.layers) {
+              const t = (l.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+              if (t) { sourceTrack = t; sourceOwnerId = l.id as string; break; }
+            }
+            if (!sourceTrack) {
+              for (const g of tl.layerGroups) {
+                const t = (g.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+                if (t) { sourceTrack = t; sourceOwnerId = g.id as string; break; }
+              }
+            }
+            if (!sourceTrack) {
+              sourceTrack = tl.globalEffects.find((et) => (et.effectBlock.id as string) === draggedBlockId);
+              if (sourceTrack) sourceOwnerId = null;
+            }
+
             moveEffectTrack(
               draggedBlockId as import('../../../types/effectBlock').EffectBlockId,
               layer.id,
-              0, // Top of stack
+              0,
             );
+
+            // Record undo history
+            if (sourceTrack) {
+              useToolStore.getState().pushToHistory({
+                type: 'effect_block_remove', timestamp: Date.now(), description: 'Move effect to layer',
+                data: {
+                  ownerId: sourceOwnerId,
+                  ownerType: sourceOwnerId === null ? 'global' : 'layer',
+                  trackSnapshot: structuredClone(sourceTrack),
+                  trackIndex: 0,
+                },
+              } as import('../../../types').EffectBlockRemoveHistoryAction);
+            }
+
             // Auto-expand layer to show the effect
             if (!useTimelineStore.getState().view.expandedLayerIds.has(layer.id)) {
               useTimelineStore.getState().toggleLayerExpanded(layer.id);
