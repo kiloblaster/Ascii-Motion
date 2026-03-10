@@ -175,6 +175,9 @@ export interface EffectPropertyDefinition {
 
   // Select options (for valueType: 'select')
   options?: Array<{ label: string; value: string }>;
+
+  /** Conditional visibility — only show this property when another property matches one of the given values */
+  visibleWhen?: { path: string; values: string[] };
 }
 
 // ============================================

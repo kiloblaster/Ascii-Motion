@@ -641,12 +641,20 @@ export const EffectPropertiesPanel: React.FC = () => {
 
       {/* Properties by category */}
       <div className="flex-1 overflow-y-auto px-2 py-1">
-        {[...categories.entries()].map(([category, defs]) => (
+        {[...categories.entries()].map(([category, defs]) => {
+          // Filter definitions by visibleWhen condition
+          const visibleDefs = defs.filter((def) => {
+            if (!def.visibleWhen) return true;
+            const depValue = resolvedSettings[def.visibleWhen.path];
+            return def.visibleWhen.values.includes(String(depValue));
+          });
+          if (visibleDefs.length === 0) return null;
+          return (
           <div key={category} className="mb-2">
             <div className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-0.5">
               {category}
             </div>
-            {defs.map((def) => {
+            {visibleDefs.map((def) => {
               // Check if a keyframe track + keyframe exists at current frame
               const propTrack = block.propertyTracks.find((pt) => pt.propertyPath === def.path);
               const kfAtFrame = propTrack?.keyframes.find((kf) => kf.frame === currentFrame);
@@ -697,7 +705,8 @@ export const EffectPropertiesPanel: React.FC = () => {
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Footer actions */}

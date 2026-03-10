@@ -8,7 +8,7 @@ import React from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
-import { ChevronRight, Plus, Sparkles } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Plus, Sparkles, Diamond } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
 import { Button } from '../../ui/button';
-import { getAllEffects } from '../../../registry/effectRegistry';
+import { getAllEffects, getEffect } from '../../../registry/effectRegistry';
 import { EffectTrackRow } from './EffectTrackRow';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 
@@ -154,14 +154,43 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
             index={idx}
           />
           {/* Effect property track labels when expanded */}
-          {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
+          {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => {
+            const effectEntry = getEffect(track.effectBlock.effectType);
+            const propDef = effectEntry?.propertyDefinitions.find((d) => d.path === pt.propertyPath);
+            const currentFrame = useTimelineStore.getState().view.currentFrame;
+            const existingKfAtFrame = pt.keyframes.find((kf) => kf.frame === currentFrame);
+            return (
             <div
               key={pt.id}
-              className="flex items-center px-3 min-h-[20px] border-b border-border/20 text-[9px] text-muted-foreground/60"
+              className="flex items-center px-3 min-h-[24px] border-b border-border/30 text-[10px] text-muted-foreground group/effprop"
             >
-              {pt.propertyPath}
+              <span className="flex-1 truncate">{propDef?.displayName ?? pt.propertyPath}</span>
+              <button
+                className="p-0.5 hover:bg-muted rounded"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const prev = [...pt.keyframes].map((kf) => kf.frame).filter((f) => f < currentFrame).sort((a, b) => b - a)[0];
+                  if (prev !== undefined) useTimelineStore.getState().goToFrame(prev);
+                }}
+                disabled={!pt.keyframes.some((kf) => kf.frame < currentFrame)}
+              >
+                <ChevronLeft className="w-3 h-3" />
+              </button>
+              <Diamond className={`w-3 h-3 ${existingKfAtFrame ? 'text-yellow-400 fill-yellow-400' : 'text-muted-foreground/40'}`} />
+              <button
+                className="p-0.5 hover:bg-muted rounded"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const next = [...pt.keyframes].map((kf) => kf.frame).filter((f) => f > currentFrame).sort((a, b) => a - b)[0];
+                  if (next !== undefined) useTimelineStore.getState().goToFrame(next);
+                }}
+                disabled={!pt.keyframes.some((kf) => kf.frame > currentFrame)}
+              >
+                <ChevronRight className="w-3 h-3" />
+              </button>
             </div>
-          ))}
+            );
+          })}
         </React.Fragment>
       ))}
     </div>

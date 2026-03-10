@@ -45,11 +45,12 @@ export const DEFAULT_WIGGLE_SETTINGS: WiggleSettings = {
   // Wave settings
   waveFrequency: 1.0,
   waveAmplitude: 3,
-  waveSpeed: 100,
   // Noise settings
   noiseOctaves: 4,
-  noiseFrequency: 0.01,
-  noiseAmplitude: 10,
+  noiseHFrequency: 1.0,
+  noiseHAmplitude: 10,
+  noiseVFrequency: 1.0,
+  noiseVAmplitude: 10,
   noiseSeed: 1234
 };
 
@@ -62,12 +63,13 @@ export const WIGGLE_RANGES = {
   // Wave mode ranges
   WAVE_FREQUENCY: { min: 0.1, max: 5.0, step: 0.1 },
   WAVE_AMPLITUDE: { min: 1, max: 20, step: 1 },
-  WAVE_SPEED: { min: 10, max: 500, step: 10 },
   
   // Noise mode ranges
   NOISE_OCTAVES: { min: 1, max: 8, step: 1 },
-  NOISE_FREQUENCY: { min: 0.001, max: 0.1, step: 0.001 },
-  NOISE_AMPLITUDE: { min: 1, max: 50, step: 1 },
+  NOISE_H_FREQUENCY: { min: 0, max: 5, step: 0.1 },
+  NOISE_H_AMPLITUDE: { min: 0, max: 50, step: 1 },
+  NOISE_V_FREQUENCY: { min: 0, max: 5, step: 0.1 },
+  NOISE_V_AMPLITUDE: { min: 0, max: 50, step: 1 },
   NOISE_SEED: { min: 0, max: 9999, step: 1 }
 } as const;
 

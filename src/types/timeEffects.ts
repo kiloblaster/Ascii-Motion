@@ -42,12 +42,13 @@ export interface WiggleSettings {
   // Wave mode settings (horizontal-wave, vertical-wave)
   waveFrequency: number;    // 0.1 - 5.0
   waveAmplitude: number;    // 1 - 20 cells
-  waveSpeed: number;        // 10 - 500 pixels/second
   
-  // Noise mode settings (Perlin noise)
+  // Noise mode settings (Perlin noise) — independent axes
   noiseOctaves: number;     // 1 - 8 layers
-  noiseFrequency: number;   // 0.001 - 0.1
-  noiseAmplitude: number;   // 1 - 50 cells
+  noiseHFrequency: number;  // 0 - 5
+  noiseHAmplitude: number;  // 0 - 50 cells
+  noiseVFrequency: number;  // 0 - 5
+  noiseVAmplitude: number;  // 0 - 50 cells
   noiseSeed: number;        // Random seed (0 - 9999)
 }
 

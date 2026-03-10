@@ -2364,6 +2364,15 @@ export const useKeyboardShortcuts = () => {
                 keyframeFrames.add(kf.frame);
               }
             }
+            // Include effect keyframes from expanded effect tracks
+            for (const et of (layer.effectTracks ?? [])) {
+              if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+              for (const pt of et.effectBlock.propertyTracks) {
+                for (const kf of pt.keyframes) {
+                  keyframeFrames.add(kf.frame);
+                }
+              }
+            }
           }
 
           // Also include keyframes from non-collapsed groups
@@ -2372,6 +2381,27 @@ export const useKeyboardShortcuts = () => {
             for (const track of (g.propertyTracks ?? [])) {
               for (const kf of track.keyframes) {
                 keyframeFrames.add(kf.frame);
+              }
+            }
+            // Include group effect keyframes from expanded effect tracks
+            for (const et of (g.effectTracks ?? [])) {
+              if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+              for (const pt of et.effectBlock.propertyTracks) {
+                for (const kf of pt.keyframes) {
+                  keyframeFrames.add(kf.frame);
+                }
+              }
+            }
+          }
+
+          // Include global effect keyframes from expanded effect tracks
+          if (tl.view.globalEffectsExpanded) {
+            for (const et of tl.globalEffects) {
+              if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+              for (const pt of et.effectBlock.propertyTracks) {
+                for (const kf of pt.keyframes) {
+                  keyframeFrames.add(kf.frame);
+                }
               }
             }
           }
@@ -2543,6 +2573,27 @@ export const useKeyboardShortcuts = () => {
           for (const track of layer.propertyTracks) {
             for (const kf of track.keyframes) {
               keyframeFrames.add(kf.frame);
+            }
+          }
+          // Include effect keyframes from expanded effect tracks
+          for (const et of (layer.effectTracks ?? [])) {
+            if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
+            }
+          }
+        }
+
+        // Include global effect keyframes
+        if (tl.view.globalEffectsExpanded) {
+          for (const et of tl.globalEffects) {
+            if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
             }
           }
         }
