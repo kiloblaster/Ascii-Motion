@@ -86,6 +86,12 @@ export interface EffectRegistryEntry {
     settings: Record<string, unknown>,
     options?: EffectProcessOptions,
   ) => EffectProcessResult;
+
+  /**
+   * When true, baking this effect always produces per-frame output even without keyframes.
+   * Use for time-dependent effects (e.g., wave warp, wiggle) whose output varies per frame.
+   */
+  perFrameBake?: boolean;
 }
 
 // ============================================

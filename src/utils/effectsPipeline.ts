@@ -171,8 +171,11 @@ export function bakeEffectIntoFrames(
   const blockStart = block.startFrame;
   const blockEnd = block.startFrame + block.durationFrames;
 
-  // Check if the effect has keyframed properties (needs per-frame evaluation)
+  // Check if the effect needs per-frame evaluation:
+  // - Keyframed properties that change over time
+  // - Effects flagged as time-dependent (e.g., wave warp, wiggle)
   const hasKeyframes = block.propertyTracks.some((pt) => pt.keyframes.length > 1);
+  const needsPerFrame = hasKeyframes || !!entry.perFrameBake;
 
   const result: ContentFrame[] = [];
 
@@ -202,7 +205,7 @@ export function bakeEffectIntoFrames(
     const overlapStart = Math.max(cf.startFrame, blockStart);
     const overlapEnd = Math.min(cfEnd, blockEnd);
 
-    if (hasKeyframes) {
+    if (needsPerFrame) {
       // Per-frame processing for keyframed effects
       for (let frame = overlapStart; frame < overlapEnd; frame++) {
         const resolvedSettings = evaluateEffectBlock(block, frame);

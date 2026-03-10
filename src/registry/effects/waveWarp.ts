@@ -79,6 +79,7 @@ export const waveWarpEffect: EffectRegistryEntry = {
   icon: Waves,
   category: 'distortion',
   description: 'Apply sine wave distortion to cell positions',
+  perFrameBake: true,
   defaultSettings: {
     axis: 'horizontal',
     frequency: 1.0,

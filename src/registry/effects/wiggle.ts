@@ -114,6 +114,7 @@ export const wiggleEffect: EffectRegistryEntry = {
   icon: Vibrate,
   category: 'distortion',
   description: 'Apply global displacement via wave or noise functions',
+  perFrameBake: true,
   defaultSettings: {
     mode: 'horizontal-wave' as const,
     waveFrequency: 1.0,
