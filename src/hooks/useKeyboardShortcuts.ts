@@ -1555,14 +1555,22 @@ const processHistoryAction = (
       } else {
         // Undo bake: restore entire content frames arrays from snapshots
 
-        // Restore each affected layer's content frames wholesale
-        useTimelineStore.setState((state) => ({
-          layers: state.layers.map((layer) => {
-            const snapshot = a.data.layerSnapshots.find((s) => s.layerId === (layer.id as string));
-            if (!snapshot) return layer;
-            return { ...layer, contentFrames: snapshot.contentFrames };
-          }),
-        }));
+        // Build the restored layers array
+        const currentLayers = useTimelineStore.getState().layers;
+        const restoredLayers = currentLayers.map((layer) => {
+          const snapshot = a.data.layerSnapshots.find((s) => s.layerId === (layer.id as string));
+          if (!snapshot) return layer;
+          // Deep clone the snapshot content frames to ensure independence
+          const restoredFrames = snapshot.contentFrames.map((cf) => {
+            const clonedData = new Map<string, import('../types').Cell>();
+            cf.data.forEach((cell, key) => clonedData.set(key, { ...cell }));
+            return { ...cf, data: clonedData };
+          });
+          return { ...layer, contentFrames: restoredFrames };
+        });
+
+        // Set all at once
+        useTimelineStore.setState({ layers: restoredLayers });
 
         // Re-add the effect block
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;

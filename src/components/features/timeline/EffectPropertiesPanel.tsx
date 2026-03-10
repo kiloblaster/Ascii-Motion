@@ -734,9 +734,15 @@ export const EffectPropertiesPanel: React.FC = () => {
                   // For the active layer's current frame, use canvas store cells
                   const isActiveFrame = (layer.id as string) === (activeLayerId as string) &&
                     currentFrame >= cf.startFrame && currentFrame < cf.startFrame + cf.durationFrames;
+                  const sourceData = isActiveFrame ? canvasCellsNow : cf.data;
+                  // Deep clone: new Map + new Cell objects for each entry
+                  const clonedData = new Map<string, import('../../../types').Cell>();
+                  sourceData.forEach((cell, key) => {
+                    clonedData.set(key, { ...cell });
+                  });
                   return {
                     ...cf,
-                    data: isActiveFrame ? new Map(canvasCellsNow) : new Map(cf.data),
+                    data: clonedData,
                   };
                 }),
               };
