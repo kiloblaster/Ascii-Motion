@@ -152,8 +152,8 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
       const TRACK_ROW_H = 24;   // property track row height
       const ADD_PROP_ROW_H = 24; // "+ Add Property" spacer
       const EFFECT_TRACK_ROW_H = 24; // effect track row height
-      const EFFECT_PT_ROW_H = 20; // effect property track row height
-      const EFFECT_ADD_ROW_H = 20; // "+ Add Effect" spacer
+      const EFFECT_PT_ROW_H = 24; // effect property track row height
+      const EFFECT_ADD_ROW_H = 24; // "+ Add Effect" spacer
 
       const result: KeyframeId[] = [];
       let yOffset = 0;
@@ -371,7 +371,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   return (
     <div
       ref={setRefs}
-      className="flex-1 overflow-x-auto overflow-y-auto"
+      className="flex-1 overflow-x-auto overflow-y-hidden"
       onScroll={handleScroll}
       onMouseDown={handleTrackAreaMouseDown}
     >
@@ -425,7 +425,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                   items.push(
                     <div
                       key={`global-ept-${pt.id}`}
-                      className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair"
+                      className="relative border-b border-border/20 min-h-[24px] bg-muted/5 cursor-crosshair"
                       onDoubleClick={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
                         const clickX = e.clientX - rect.left;
@@ -616,7 +616,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                       items.push(
                         <div
                           key={`group-ept-${pt.id}`}
-                          className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair"
+                          className="relative border-b border-border/20 min-h-[24px] bg-muted/5 cursor-crosshair"
                           onDoubleClick={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect();
                             const clickX = e.clientX - rect.left;
@@ -942,7 +942,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                 {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => (
                   <div
                     key={`ept-${pt.id}`}
-                    className="relative border-b border-border/20 min-h-[20px] bg-muted/5 cursor-crosshair"
+                    className="relative border-b border-border/20 min-h-[24px] bg-muted/5 cursor-crosshair"
                     onDoubleClick={(e) => {
                       const rect = e.currentTarget.getBoundingClientRect();
                       const clickX = e.clientX - rect.left;
@@ -994,7 +994,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
             {/* Effect "Add Effect" spacer row */}
             {expandedLayerIds.has(layer.id) && (
-              <div className="min-h-[20px] border-b border-border/30 bg-muted/5" />
+              <div className="min-h-[24px] border-b border-border/30 bg-muted/5" />
             )}
           </div>
             );

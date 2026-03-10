@@ -186,36 +186,41 @@ export const TimelinePanel: React.FC = () => {
     }
   }, [activeTool, setShowLayerProperties]);
 
-  // Sync vertical scroll between layer list and track area
+  // Unified vertical scroll: Both panels have overflow-y hidden.
+  // Vertical scrolling is managed manually via wheel events to ensure
+  // both panels update in the exact same frame with zero delay.
   const layerListScrollRef = useRef<HTMLDivElement>(null);
   const trackAreaScrollRef = useRef<HTMLDivElement>(null);
-  const isSyncingScroll = useRef(false);
 
   useEffect(() => {
     const layerEl = layerListScrollRef.current;
     const trackEl = trackAreaScrollRef.current;
     if (!layerEl || !trackEl) return;
 
-    const syncFromLayers = () => {
-      if (isSyncingScroll.current) return;
-      isSyncingScroll.current = true;
-      trackEl.scrollTop = layerEl.scrollTop;
-      requestAnimationFrame(() => { isSyncingScroll.current = false; });
+    // Unified wheel handler: apply deltaY to both panels simultaneously
+    const handleWheel = (e: WheelEvent) => {
+      // Skip if Ctrl/Cmd held (zoom handled separately in TrackArea)
+      if (e.ctrlKey || e.metaKey) return;
+      // Skip pure horizontal scroll
+      if (e.deltaY === 0) return;
+
+      // Calculate new scrollTop clamped to valid range
+      // Use trackEl for max scroll calculation since it has the full content width
+      const maxScroll = Math.max(0, trackEl.scrollHeight - trackEl.clientHeight);
+      const newTop = Math.max(0, Math.min(maxScroll, trackEl.scrollTop + e.deltaY));
+
+      trackEl.scrollTop = newTop;
+      layerEl.scrollTop = newTop;
+
+      e.preventDefault();
     };
 
-    const syncFromTracks = () => {
-      if (isSyncingScroll.current) return;
-      isSyncingScroll.current = true;
-      layerEl.scrollTop = trackEl.scrollTop;
-      requestAnimationFrame(() => { isSyncingScroll.current = false; });
-    };
-
-    layerEl.addEventListener('scroll', syncFromLayers);
-    trackEl.addEventListener('scroll', syncFromTracks);
+    layerEl.addEventListener('wheel', handleWheel, { passive: false });
+    trackEl.addEventListener('wheel', handleWheel, { passive: false });
 
     return () => {
-      layerEl.removeEventListener('scroll', syncFromLayers);
-      trackEl.removeEventListener('scroll', syncFromTracks);
+      layerEl.removeEventListener('wheel', handleWheel);
+      trackEl.removeEventListener('wheel', handleWheel);
     };
   }, []);
 

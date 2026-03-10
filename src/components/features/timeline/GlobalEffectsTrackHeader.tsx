@@ -37,11 +37,11 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
   if (globalEffects.length === 0 && registeredEffects.length === 0) return null;
 
   return (
-    <div className="border-b border-border/60">
+    <div>
       {/* Header row — also a drop target for dragging effects to global */}
       <div
         className={cn(
-          'flex items-center px-2 min-h-[28px] bg-muted/30 cursor-pointer',
+          'flex items-center px-2 min-h-[28px] bg-muted/30 cursor-pointer border-b border-border/50',
           'hover:bg-muted/50 transition-colors',
           isDragOverHeader && 'bg-primary/10 ring-1 ring-primary/40',
         )}

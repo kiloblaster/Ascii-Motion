@@ -132,7 +132,7 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
   return (
     <div
       className={cn(
-        'border-b border-border/50 select-none bg-muted/40 group',
+        'select-none bg-muted/40 group',
         isSelected && 'bg-accent/40',
         isDragOver && !isEffectDragOver && dragOverPosition === 'above' && 'border-t-2 border-t-primary',
         isDragOver && !isEffectDragOver && dragOverPosition === 'into' && 'bg-primary/20',
@@ -204,7 +204,7 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
       onDragEnd={() => onDragEnd?.()}
     >
       <TooltipProvider>
-        <div className="flex items-center gap-0.5 px-1 py-1 min-h-[28px]">
+        <div className="flex items-center gap-0.5 px-1 py-1 min-h-[28px] border-b border-border/50">
           {/* Collapse/expand */}
           <button
             className="p-0.5 hover:bg-muted rounded"
@@ -317,7 +317,7 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
 
       {/* Expanded: group property track labels */}
       {isExpanded && group.propertyTracks.length > 0 && (
-        <div className="ml-5 border-t border-border/30">
+        <div className="ml-5">
           {[...group.propertyTracks]
             .sort((a, b) => {
               const idxA = PROPERTY_DISPLAY_ORDER.indexOf(a.propertyPath);

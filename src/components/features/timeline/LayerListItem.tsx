@@ -131,10 +131,10 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
   return (
     <div
       className={cn(
-        'border-b border-border/50 select-none',
+        'select-none',
         isActive && 'bg-accent/50',
         isSelected && !isActive && 'bg-accent/30',
-        isInGroup && 'pl-3', // Indent grouped layers
+        isInGroup && 'pl-3',
         isDragOver && !isEffectDragOver && 'border-t-2 border-t-primary',
         isEffectDragOver && 'ring-1 ring-inset ring-primary bg-primary/10',
       )}
@@ -226,7 +226,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
       onDragEnd={onDragEnd}
     >
     <TooltipProvider>
-      <div className="flex items-center gap-0.5 px-1.5 py-1 min-h-[32px]">
+      <div className="flex items-center gap-0.5 px-1.5 py-1 min-h-[32px] border-b border-border/50">
         {/* Expand arrow */}
         <button
           className="p-0.5 hover:bg-muted rounded"
@@ -379,7 +379,7 @@ export const LayerListItem: React.FC<LayerListItemProps> = React.memo(function L
 
       {/* Expanded: property track labels + Add Property menu */}
       {isExpanded && (
-        <div className="ml-5 border-t border-border/30">
+        <div className="ml-5">
           {[...layer.propertyTracks]
             .sort((a, b) => {
               const idxA = PROPERTY_DISPLAY_ORDER.indexOf(a.propertyPath);
