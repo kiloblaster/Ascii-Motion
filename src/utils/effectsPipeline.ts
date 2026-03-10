@@ -13,6 +13,7 @@ import type {
   EffectPropertyDefinition,
 } from '../types/effectBlock';
 import type { ContentFrame } from '../types/timeline';
+import { generateContentFrameId } from '../types/timeline';
 import { getEffect } from '../registry/effectRegistry';
 import type { EffectProcessOptions } from '../registry/effectRegistry';
 import { interpolateEffectProperty } from './effectKeyframeInterpolation';
@@ -152,16 +153,14 @@ export function applyGlobalEffects(
 // ============================================
 
 /**
- * Destructively apply an effect block to content frames.
- * Evaluates the effect at each frame within the block's time range,
- * writing processed cells back into the content frame data.
+ * Bake an effect block into content frames, properly handling:
+ * - Splitting frames at effect in/out boundaries
+ * - Per-frame evaluation for keyframed effects
+ * - Creating individual frames when effect properties change over time
  *
- * @param block - The effect block to bake
- * @param contentFrames - The content frames to modify
- * @param options - Additional processing context
- * @returns The modified content frames (mutated in place for efficiency — caller should clone if needed)
+ * @returns New array of content frames with effect baked in
  */
-export function bakeEffectBlock(
+export function bakeEffectIntoFrames(
   block: EffectBlock,
   contentFrames: ContentFrame[],
   options?: EffectProcessOptions,
@@ -169,28 +168,88 @@ export function bakeEffectBlock(
   const entry = getEffect(block.effectType);
   if (!entry) return contentFrames;
 
+  const blockStart = block.startFrame;
+  const blockEnd = block.startFrame + block.durationFrames;
+
+  // Check if the effect has keyframed properties (needs per-frame evaluation)
+  const hasKeyframes = block.propertyTracks.some((pt) => pt.keyframes.length > 1);
+
+  const result: ContentFrame[] = [];
+
   for (const cf of contentFrames) {
-    // Check each frame within the content frame's range against the block's range
     const cfEnd = cf.startFrame + cf.durationFrames;
-    const blockEnd = block.startFrame + block.durationFrames;
 
-    // Skip content frames entirely outside the block's range
-    if (cf.startFrame >= blockEnd || cfEnd <= block.startFrame) continue;
+    // Completely outside effect range — keep as-is
+    if (cf.startFrame >= blockEnd || cfEnd <= blockStart) {
+      result.push(cf);
+      continue;
+    }
 
-    // For each frame in the overlapping range, evaluate and apply
-    // For content frames, cell data is shared across the duration.
-    // Evaluate at the first overlapping frame for the resolved settings.
-    const evalFrame = Math.max(cf.startFrame, block.startFrame);
-    const resolvedSettings = evaluateEffectBlock(block, evalFrame);
+    // Split at effect boundaries if needed
+    // Part before effect starts
+    if (cf.startFrame < blockStart) {
+      result.push({
+        ...cf,
+        id: generateContentFrameId(),
+        name: cf.name,
+        startFrame: cf.startFrame,
+        durationFrames: blockStart - cf.startFrame,
+        data: new Map(cf.data),
+      });
+    }
 
-    const result = entry.process(cf.data, resolvedSettings, {
-      ...options,
-      frame: evalFrame,
-    });
-    cf.data = result.processedCells;
+    // The overlapping region
+    const overlapStart = Math.max(cf.startFrame, blockStart);
+    const overlapEnd = Math.min(cfEnd, blockEnd);
+
+    if (hasKeyframes) {
+      // Per-frame processing for keyframed effects
+      for (let frame = overlapStart; frame < overlapEnd; frame++) {
+        const resolvedSettings = evaluateEffectBlock(block, frame);
+        const processed = entry.process(new Map(cf.data), resolvedSettings, {
+          ...options,
+          frame,
+        });
+        result.push({
+          ...cf,
+          id: generateContentFrameId(),
+          name: `${cf.name} (f${frame})`,
+          startFrame: frame,
+          durationFrames: 1,
+          data: processed.processedCells,
+        });
+      }
+    } else {
+      // Static effect — apply once to the whole overlap region
+      const resolvedSettings = evaluateEffectBlock(block, overlapStart);
+      const processed = entry.process(new Map(cf.data), resolvedSettings, {
+        ...options,
+        frame: overlapStart,
+      });
+      result.push({
+        ...cf,
+        id: generateContentFrameId(),
+        name: cf.name,
+        startFrame: overlapStart,
+        durationFrames: overlapEnd - overlapStart,
+        data: processed.processedCells,
+      });
+    }
+
+    // Part after effect ends
+    if (cfEnd > blockEnd) {
+      result.push({
+        ...cf,
+        id: generateContentFrameId(),
+        name: cf.name,
+        startFrame: blockEnd,
+        durationFrames: cfEnd - blockEnd,
+        data: new Map(cf.data),
+      });
+    }
   }
 
-  return contentFrames;
+  return result;
 }
 
 // ============================================

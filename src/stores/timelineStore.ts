@@ -47,6 +47,7 @@ import {
   generateEffectPropertyTrackId,
 } from '../types/effectBlock';
 import { getEffect } from '../registry/effectRegistry';
+import { bakeEffectIntoFrames } from '../utils/effectsPipeline';
 
 /** Helper: find a track and a keyframe at a specific frame across layers, groups, and effect blocks */
 function findTrackKeyframeByFrame(
@@ -539,6 +540,11 @@ export interface TimelineState {
     blockId: import('../types/effectBlock').EffectBlockId,
     targetOwnerId: LayerId | LayerGroupId | null,
     targetIndex?: number,
+  ) => void;
+
+  /** Bake (apply) an effect destructively to layer canvas data, then remove the effect block */
+  bakeEffect: (
+    blockId: import('../types/effectBlock').EffectBlockId,
   ) => void;
 
   // ============================================
@@ -2998,6 +3004,82 @@ export const useTimelineStore = create<TimelineState>()(
         }
 
         return { layers: newLayers, layerGroups: newLayerGroups, globalEffects: newGlobalEffects };
+      });
+    },
+
+    bakeEffect: (blockId) => {
+      const { layers, layerGroups, globalEffects } = get();
+
+      // Find the effect track and its owner
+      let effectTrack: EffectTrack | null = null;
+      let ownerId: LayerId | LayerGroupId | null = null;
+      let ownerType: 'layer' | 'group' | 'global' = 'layer';
+
+      for (const layer of layers) {
+        const et = (layer.effectTracks ?? []).find((t) => t.effectBlock.id === blockId);
+        if (et) { effectTrack = et; ownerId = layer.id; ownerType = 'layer'; break; }
+      }
+      if (!effectTrack) {
+        for (const group of layerGroups) {
+          const et = (group.effectTracks ?? []).find((t) => t.effectBlock.id === blockId);
+          if (et) { effectTrack = et; ownerId = group.id; ownerType = 'group'; break; }
+        }
+      }
+      if (!effectTrack) {
+        const et = globalEffects.find((t) => t.effectBlock.id === blockId);
+        if (et) { effectTrack = et; ownerId = null; ownerType = 'global'; }
+      }
+
+      if (!effectTrack) return;
+
+      const block = effectTrack.effectBlock;
+
+      // Determine which layers to bake into
+      let targetLayerIds: LayerId[] = [];
+      if (ownerType === 'layer') {
+        targetLayerIds = [ownerId as LayerId];
+      } else if (ownerType === 'group') {
+        const group = layerGroups.find((g) => g.id === ownerId);
+        if (group) targetLayerIds = [...group.childLayerIds];
+      } else {
+        // Global — all layers
+        targetLayerIds = layers.map((l) => l.id);
+      }
+
+      // Bake into each target layer's content frames
+      const newLayers = layers.map((layer) => {
+        if (!targetLayerIds.includes(layer.id)) return layer;
+
+        const bakedFrames = bakeEffectIntoFrames(block, layer.contentFrames, {
+          canvasBackgroundColor: '#000000',
+          frame: block.startFrame,
+        });
+
+        return { ...layer, contentFrames: bakedFrames };
+      });
+
+      // Remove the effect track
+      let newLayersAfterRemove = newLayers;
+      let newLayerGroups = layerGroups;
+      let newGlobalEffects = globalEffects;
+
+      if (ownerType === 'layer') {
+        newLayersAfterRemove = newLayers.map((l) =>
+          l.id === ownerId ? { ...l, effectTracks: l.effectTracks.filter((t) => t.effectBlock.id !== blockId) } : l,
+        );
+      } else if (ownerType === 'group') {
+        newLayerGroups = layerGroups.map((g) =>
+          g.id === ownerId ? { ...g, effectTracks: g.effectTracks.filter((t) => t.effectBlock.id !== blockId) } : g,
+        );
+      } else {
+        newGlobalEffects = globalEffects.filter((t) => t.effectBlock.id !== blockId);
+      }
+
+      set({
+        layers: newLayersAfterRemove,
+        layerGroups: newLayerGroups,
+        globalEffects: newGlobalEffects,
+        view: { ...get().view, selectedEffectBlockId: null },
       });
     },
 

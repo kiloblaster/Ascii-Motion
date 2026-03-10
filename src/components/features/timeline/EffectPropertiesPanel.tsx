@@ -701,6 +701,82 @@ export const EffectPropertiesPanel: React.FC = () => {
           size="sm"
           className="flex-1 h-6 text-[10px]"
           onClick={() => {
+            // Snapshot all affected layers' content frames + the effect track for undo
+            const tl = useTimelineStore.getState();
+            const ownerIdTyped = ownerId as import('../../../types/timeline').LayerId | import('../../../types/timeline').LayerGroupId | null;
+
+            // Determine affected layer IDs
+            let affectedLayerIds: string[] = [];
+            if (ownerId) {
+              const layer = tl.layers.find((l) => l.id === ownerIdTyped);
+              if (layer) {
+                affectedLayerIds = [layer.id as string];
+              } else {
+                const group = tl.layerGroups.find((g) => g.id === ownerIdTyped);
+                if (group) affectedLayerIds = group.childLayerIds.map((id) => id as string);
+              }
+            } else {
+              affectedLayerIds = tl.layers.map((l) => l.id as string);
+            }
+
+            // Snapshot content frames before bake
+            const contentFrameSnapshots = affectedLayerIds.flatMap((layerId) => {
+              const layer = tl.layers.find((l) => (l.id as string) === layerId);
+              if (!layer) return [];
+              return layer.contentFrames.map((cf) => ({
+                layerId,
+                frameId: cf.id as string,
+                previousData: new Map(cf.data),
+              }));
+            });
+
+            // Find the track before removal
+            let trackSnapshot: import('../../../types/effectBlock').EffectTrack | undefined;
+            let trackIndex = 0;
+            for (const l of tl.layers) {
+              const idx = (l.effectTracks ?? []).findIndex((t) => t.effectBlock.id === block.id);
+              if (idx !== -1) { trackSnapshot = structuredClone(l.effectTracks[idx]); trackIndex = idx; break; }
+            }
+            if (!trackSnapshot) {
+              for (const g of tl.layerGroups) {
+                const idx = (g.effectTracks ?? []).findIndex((t) => t.effectBlock.id === block.id);
+                if (idx !== -1) { trackSnapshot = structuredClone(g.effectTracks[idx]); trackIndex = idx; break; }
+              }
+            }
+            if (!trackSnapshot) {
+              const idx = tl.globalEffects.findIndex((t) => t.effectBlock.id === block.id);
+              if (idx !== -1) { trackSnapshot = structuredClone(tl.globalEffects[idx]); trackIndex = idx; }
+            }
+
+            // Bake the effect
+            tl.bakeEffect(block.id);
+            selectEffectBlock(null);
+
+            // Record undo history
+            if (trackSnapshot) {
+              pushToHistory({
+                type: 'effect_bake',
+                timestamp: Date.now(),
+                description: `Apply ${entry.name} effect`,
+                data: {
+                  ownerId: (ownerId ?? null) as string | null,
+                  ownerType: ownerId === null ? 'global' : 'layer',
+                  trackSnapshot,
+                  trackIndex,
+                  contentFrameSnapshots,
+                },
+              } as import('../../../types').EffectBakeHistoryAction);
+            }
+          }}
+        >
+          <Diamond className="w-3 h-3 mr-1" />
+          Apply
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 h-6 text-[10px]"
+          onClick={() => {
             recordEffectRemove(
               ownerId as import('../../../types/timeline').LayerId | import('../../../types/timeline').LayerGroupId | null,
               block.id,
