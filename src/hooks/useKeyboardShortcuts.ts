@@ -1553,46 +1553,18 @@ const processHistoryAction = (
         // Re-bake: apply the effect again
         tl.bakeEffect(a.data.trackSnapshot.effectBlock.id);
       } else {
-        // Undo bake: restore original content frames + re-add the effect block
+        // Undo bake: restore entire content frames arrays from snapshots
 
-        // Group snapshots by layerId and rebuild content frames
-        const layerFrameMap = new Map<string, Array<{ layerId: string; frameId: string; previousData: Map<string, import('../types').Cell> }>>();
-        for (const s of a.data.contentFrameSnapshots) {
-          if (!layerFrameMap.has(s.layerId)) layerFrameMap.set(s.layerId, []);
-          layerFrameMap.get(s.layerId)!.push(s);
-        }
-
-        // For each affected layer, rebuild content frames from snapshots
-        const blockStart = a.data.trackSnapshot.effectBlock.startFrame;
-        const blockEnd = blockStart + a.data.trackSnapshot.effectBlock.durationFrames;
-
+        // Restore each affected layer's content frames wholesale
         useTimelineStore.setState((state) => ({
           layers: state.layers.map((layer) => {
-            const snapshots = layerFrameMap.get(layer.id as string);
-            if (!snapshots) return layer;
-            // Remove any frames that were created by the bake (within effect range)
-            // and restore original frames
-            const framesOutsideEffect = layer.contentFrames.filter((cf) => {
-              const cfEnd = cf.startFrame + cf.durationFrames;
-              // Keep frames completely outside effect range
-              return cf.startFrame >= blockEnd || cfEnd <= blockStart;
-            });
-            // Restore original frames from snapshots
-            const restoredFrames = snapshots.map((s) => {
-              // Find the original frame structure
-              const originalCf = layer.contentFrames.find((cf) => (cf.id as string) === s.frameId);
-              if (originalCf) {
-                return { ...originalCf, data: s.previousData };
-              }
-              // Frame was split/replaced — create from snapshot
-              return null;
-            }).filter(Boolean) as typeof layer.contentFrames;
-
-            return { ...layer, contentFrames: [...framesOutsideEffect, ...restoredFrames].sort((a, b) => a.startFrame - b.startFrame) };
+            const snapshot = a.data.layerSnapshots.find((s) => s.layerId === (layer.id as string));
+            if (!snapshot) return layer;
+            return { ...layer, contentFrames: snapshot.contentFrames };
           }),
         }));
 
-        // 2. Re-add the effect block
+        // Re-add the effect block
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
         const block = a.data.trackSnapshot.effectBlock;
         const newBlockId = tl.addEffectBlock(ownerId, block.effectType, block.startFrame, block.durationFrames);
@@ -1601,9 +1573,10 @@ const processHistoryAction = (
           if (!block.enabled) tl.toggleEffectBlockEnabled(newBlockId);
         }
 
-        // Sync canvas if needed
+        // Sync canvas store with restored data
         const activeLayerId = tl.view.activeLayerId;
-        if (activeLayerId && layerFrameMap.has(activeLayerId as string)) {
+        const restoredSnapshot = a.data.layerSnapshots.find((s) => s.layerId === (activeLayerId as string));
+        if (restoredSnapshot) {
           const layer = useTimelineStore.getState().layers.find((l) => l.id === activeLayerId);
           if (layer) {
             const cf = layer.contentFrames.find((c) => tl.view.currentFrame >= c.startFrame && tl.view.currentFrame < c.startFrame + c.durationFrames);

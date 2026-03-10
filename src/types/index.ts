@@ -1075,11 +1075,10 @@ export interface EffectBakeHistoryAction extends HistoryAction {
     ownerType: 'layer' | 'group' | 'global';
     trackSnapshot: import('../types/effectBlock').EffectTrack;
     trackIndex: number;
-    /** Snapshots of original cell data for affected content frames (for undo) */
-    contentFrameSnapshots: Array<{
+    /** Full content frames snapshot per affected layer (for undo restoration) */
+    layerSnapshots: Array<{
       layerId: string;
-      frameId: string;
-      previousData: Map<string, Cell>;
+      contentFrames: import('../types/timeline').ContentFrame[];
     }>;
   };
 }

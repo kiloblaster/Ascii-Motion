@@ -719,16 +719,18 @@ export const EffectPropertiesPanel: React.FC = () => {
               affectedLayerIds = tl.layers.map((l) => l.id as string);
             }
 
-            // Snapshot content frames before bake
-            const contentFrameSnapshots = affectedLayerIds.flatMap((layerId) => {
+            // Snapshot full content frames per layer before bake
+            const layerSnapshots = affectedLayerIds.map((layerId) => {
               const layer = tl.layers.find((l) => (l.id as string) === layerId);
-              if (!layer) return [];
-              return layer.contentFrames.map((cf) => ({
+              if (!layer) return null;
+              return {
                 layerId,
-                frameId: cf.id as string,
-                previousData: new Map(cf.data),
-              }));
-            });
+                contentFrames: layer.contentFrames.map((cf) => ({
+                  ...cf,
+                  data: new Map(cf.data),
+                })),
+              };
+            }).filter(Boolean) as Array<{ layerId: string; contentFrames: import('../../../types/timeline').ContentFrame[] }>;
 
             // Find the track before removal
             let trackSnapshot: import('../../../types/effectBlock').EffectTrack | undefined;
@@ -763,7 +765,7 @@ export const EffectPropertiesPanel: React.FC = () => {
                   ownerType: ownerId === null ? 'global' : 'layer',
                   trackSnapshot,
                   trackIndex,
-                  contentFrameSnapshots,
+                  layerSnapshots,
                 },
               } as import('../../../types').EffectBakeHistoryAction);
             }
