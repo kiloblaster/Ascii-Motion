@@ -1461,14 +1461,32 @@ const processHistoryAction = (
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
         tl.removeEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.id);
       } else {
-        // Re-add the effect block by restoring the full track
-        // Use addEffectBlock then restore settings
+        // Undo remove/move: first remove the block from wherever it currently is
+        // (handles the case where it was moved, not just deleted)
+        const blockId = a.data.trackSnapshot.effectBlock.id;
+        for (const layer of tl.layers) {
+          if ((layer.effectTracks ?? []).some((t) => t.effectBlock.id === blockId)) {
+            tl.removeEffectBlock(layer.id, blockId);
+            break;
+          }
+        }
+        for (const group of tl.layerGroups) {
+          if ((group.effectTracks ?? []).some((t) => t.effectBlock.id === blockId)) {
+            tl.removeEffectBlock(group.id, blockId);
+            break;
+          }
+        }
+        if (tl.globalEffects.some((t) => t.effectBlock.id === blockId)) {
+          tl.removeEffectBlock(null, blockId);
+        }
+
+        // Re-add the effect block at the original owner
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
         const block = a.data.trackSnapshot.effectBlock;
-        const blockId = tl.addEffectBlock(ownerId, block.effectType, block.startFrame, block.durationFrames);
-        if (blockId) {
-          tl.updateEffectBlockSettings(blockId, block.settings as Record<string, unknown>);
-          if (!block.enabled) tl.toggleEffectBlockEnabled(blockId);
+        const newBlockId = tl.addEffectBlock(ownerId, block.effectType, block.startFrame, block.durationFrames);
+        if (newBlockId) {
+          tl.updateEffectBlockSettings(newBlockId, block.settings as Record<string, unknown>);
+          if (!block.enabled) tl.toggleEffectBlockEnabled(newBlockId);
         }
       }
       break;
