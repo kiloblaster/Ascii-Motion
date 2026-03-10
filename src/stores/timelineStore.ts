@@ -3075,6 +3075,8 @@ export const useTimelineStore = create<TimelineState>()(
         const bakedFrames = bakeEffectIntoFrames(block, clonedFrames, {
           canvasBackgroundColor: '#000000',
           frame: block.startFrame,
+          canvasWidth: useCanvasStore.getState().width,
+          canvasHeight: useCanvasStore.getState().height,
         });
 
         return { ...layer, contentFrames: bakedFrames };

@@ -29,6 +29,10 @@ export interface EffectProcessOptions {
   frame?: number;
   /** Project frame rate (for time-dependent effects) */
   frameRate?: number;
+  /** Canvas width in cells (for bounds-aware effects like wave warp) */
+  canvasWidth?: number;
+  /** Canvas height in cells (for bounds-aware effects like wave warp) */
+  canvasHeight?: number;
 }
 
 /**

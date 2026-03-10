@@ -41,10 +41,10 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
     displayName: 'Amplitude',
     category: 'Wave',
     valueType: 'number',
-    defaultValue: 3,
+    defaultValue: 5,
     interpolation: 'numeric',
-    min: 1,
-    max: 20,
+    min: -30,
+    max: 30,
     step: 1,
     unit: 'cells',
   },
@@ -53,12 +53,11 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
     displayName: 'Speed',
     category: 'Wave',
     valueType: 'number',
-    defaultValue: 100,
+    defaultValue: 5,
     interpolation: 'numeric',
-    min: 10,
-    max: 500,
-    step: 10,
-    unit: 'px/s',
+    min: -50,
+    max: 50,
+    step: 1,
   },
   {
     path: 'phase',
@@ -83,8 +82,8 @@ export const waveWarpEffect: EffectRegistryEntry = {
   defaultSettings: {
     axis: 'horizontal',
     frequency: 1.0,
-    amplitude: 3,
-    speed: 100,
+    amplitude: 5,
+    speed: 5,
     phase: 0,
   },
   propertyDefinitions,
@@ -95,8 +94,9 @@ export const waveWarpEffect: EffectRegistryEntry = {
     // Calculate accumulated time from frame number and frame rate
     const accumulatedTime = (frame / frameRate) * 1000;
 
-    // Derive canvas bounds from cell positions
-    const { width, height } = deriveCanvasBounds(cells);
+    // Use canvas dimensions from options, falling back to content bounds
+    const width = options?.canvasWidth ?? deriveCanvasBounds(cells).width;
+    const height = options?.canvasHeight ?? deriveCanvasBounds(cells).height;
 
     const processedCells = applyWaveWarpToFrame(
       cells,

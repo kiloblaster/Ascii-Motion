@@ -73,6 +73,8 @@ export function compositeLayersAtFrame(
       cellData = applyEffectsToLayer(cellData, layer.effectTracks, frame, {
         canvasBackgroundColor: '#000000',
         frame,
+        canvasWidth,
+        canvasHeight,
       });
     }
 
@@ -94,6 +96,8 @@ export function compositeLayersAtFrame(
           cellData = applyEffectsToLayer(cellData, group.effectTracks, frame, {
             canvasBackgroundColor: '#000000',
             frame,
+            canvasWidth,
+            canvasHeight,
           });
         }
 
@@ -236,6 +240,8 @@ export function compositeLayersAtFrame(
     const globalResult = applyEffectsToLayer(result, globalEffectTracks, frame, {
       canvasBackgroundColor: '#000000',
       frame,
+      canvasWidth,
+      canvasHeight,
     });
     return globalResult;
   }
