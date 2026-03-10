@@ -21,7 +21,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; border: string; selected: st
   adjustment: { bg: 'bg-blue-500/20', border: 'border-blue-500/50', selected: 'bg-blue-500/35 border-blue-500/70 ring-1 ring-blue-500/40' },
   mapping: { bg: 'bg-green-500/20', border: 'border-green-500/50', selected: 'bg-green-500/35 border-green-500/70 ring-1 ring-green-500/40' },
   filter: { bg: 'bg-orange-500/20', border: 'border-orange-500/50', selected: 'bg-orange-500/35 border-orange-500/70 ring-1 ring-orange-500/40' },
-  distortion: { bg: 'bg-purple-500/20', border: 'border-purple-500/50', selected: 'bg-purple-500/35 border-purple-500/70 ring-1 ring-purple-500/40' },
+  distortion: { bg: 'bg-orange-500/20', border: 'border-orange-500/50', selected: 'bg-orange-500/35 border-orange-500/70 ring-1 ring-orange-500/40' },
 };
 
 const DEFAULT_COLORS = { bg: 'bg-muted-foreground/15', border: 'border-muted-foreground/30', selected: 'bg-muted-foreground/25 border-muted-foreground/50' };

@@ -186,9 +186,10 @@ export const TimelinePanel: React.FC = () => {
     }
   }, [activeTool, setShowLayerProperties]);
 
-  // Unified vertical scroll: Both panels have overflow-y hidden.
-  // Vertical scrolling is managed manually via wheel events to ensure
-  // both panels update in the exact same frame with zero delay.
+  // Unified vertical scroll: Both panels scroll together.
+  // Wheel events are intercepted and applied to both simultaneously for zero delay.
+  // TrackArea has overflow-y: scroll for a visible scrollbar handle.
+  // Scrollbar drag is synced via a scroll event listener.
   const layerListScrollRef = useRef<HTMLDivElement>(null);
   const trackAreaScrollRef = useRef<HTMLDivElement>(null);
 
@@ -197,30 +198,38 @@ export const TimelinePanel: React.FC = () => {
     const trackEl = trackAreaScrollRef.current;
     if (!layerEl || !trackEl) return;
 
+    let isWheelScrolling = false;
+
     // Unified wheel handler: apply deltaY to both panels simultaneously
     const handleWheel = (e: WheelEvent) => {
-      // Skip if Ctrl/Cmd held (zoom handled separately in TrackArea)
       if (e.ctrlKey || e.metaKey) return;
-      // Skip pure horizontal scroll
       if (e.deltaY === 0) return;
 
-      // Calculate new scrollTop clamped to valid range
-      // Use trackEl for max scroll calculation since it has the full content width
       const maxScroll = Math.max(0, trackEl.scrollHeight - trackEl.clientHeight);
       const newTop = Math.max(0, Math.min(maxScroll, trackEl.scrollTop + e.deltaY));
 
+      isWheelScrolling = true;
       trackEl.scrollTop = newTop;
       layerEl.scrollTop = newTop;
+      requestAnimationFrame(() => { isWheelScrolling = false; });
 
       e.preventDefault();
     };
 
+    // Sync from scrollbar drag on LayerList (scroll events not caused by our wheel handler)
+    const syncFromScrollbar = () => {
+      if (isWheelScrolling) return;
+      trackEl.scrollTop = layerEl.scrollTop;
+    };
+
     layerEl.addEventListener('wheel', handleWheel, { passive: false });
     trackEl.addEventListener('wheel', handleWheel, { passive: false });
+    layerEl.addEventListener('scroll', syncFromScrollbar, { passive: true });
 
     return () => {
       layerEl.removeEventListener('wheel', handleWheel);
       trackEl.removeEventListener('wheel', handleWheel);
+      layerEl.removeEventListener('scroll', syncFromScrollbar);
     };
   }, []);
 

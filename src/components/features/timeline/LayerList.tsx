@@ -335,7 +335,7 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
       <div className="h-6 flex-shrink-0 border-b border-border/50 bg-muted/30" />
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-hidden"
+        className="flex-1 overflow-y-scroll"
       >
       {/* Build display list with group headers interleaved */}
       {(() => {
