@@ -2830,10 +2830,7 @@ export const useKeyboardShortcuts = () => {
               try {
                 handleHistoryAction(redoAction, true);
               } finally {
-                // Clear flag after a small delay to ensure all effects have settled
-                setTimeout(() => {
-                  useToolStore.setState({ isProcessingHistory: false });
-                }, 200);
+                useToolStore.setState({ isProcessingHistory: false });
               }
             }
           }
@@ -2848,10 +2845,7 @@ export const useKeyboardShortcuts = () => {
               try {
                 handleHistoryAction(undoAction, false);
               } finally {
-                // Clear flag after a small delay to ensure all effects have settled
-                setTimeout(() => {
-                  useToolStore.setState({ isProcessingHistory: false });
-                }, 200);
+                useToolStore.setState({ isProcessingHistory: false });
               }
             }
           }

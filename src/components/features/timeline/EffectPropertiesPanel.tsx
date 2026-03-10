@@ -18,6 +18,7 @@ import { Button } from '../../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { ColorPickerOverlay } from '../ColorPickerOverlay';
+import { EnhancedCharacterPicker } from '../EnhancedCharacterPicker';
 import { Trash2, Eye, EyeOff, X, Check, Diamond, RotateCcw } from 'lucide-react';
 import { useScrubInput } from '../../../hooks/useScrubInput';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
@@ -523,13 +524,22 @@ const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChan
                     {fromKey === ' ' ? '␣' : fromKey}
                   </div>
                   <span className="text-[9px] text-muted-foreground">→</span>
-                  {/* Character: to (editable) */}
-                  <input
-                    type="text"
-                    value={toVal}
-                    maxLength={1}
-                    onChange={(e) => updateMapping(fromKey, e.target.value || fromKey)}
-                    className="w-5 h-5 text-center text-[10px] rounded border border-border/50 bg-background text-foreground outline-none"
+                  {/* Character: to (clickable, opens character picker) */}
+                  <div
+                    ref={getSwatchRef(fromKey) as React.RefObject<HTMLDivElement>}
+                    className="w-5 h-5 rounded border border-border/50 flex items-center justify-center text-[10px] flex-shrink-0 bg-background cursor-pointer hover:ring-1 hover:ring-primary"
+                    onClick={() => setPickerOpenFor(pickerOpenFor === fromKey ? null : fromKey)}
+                  >
+                    {toVal === ' ' ? '␣' : toVal}
+                  </div>
+                  <EnhancedCharacterPicker
+                    isOpen={pickerOpenFor === fromKey}
+                    onClose={() => setPickerOpenFor(null)}
+                    onSelectCharacter={(char) => { updateMapping(fromKey, char); setPickerOpenFor(null); }}
+                    triggerRef={getSwatchRef(fromKey) as React.RefObject<HTMLElement | null>}
+                    anchorPosition="left-bottom"
+                    initialValue={toVal}
+                    title="Map to character"
                   />
                 </>
               )}
