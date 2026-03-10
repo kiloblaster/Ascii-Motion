@@ -33,6 +33,7 @@ import {
 } from '../../ui/dropdown-menu';
 import { EffectTrackRow } from './EffectTrackRow';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
+import { useToolStore } from '../../../stores/toolStore';
 import { getAllEffects } from '../../../registry/effectRegistry';
 import { getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
@@ -75,7 +76,10 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
   const ungroupLayers = useTimelineStore((s) => s.ungroupLayers);
   const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
   const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
+  const moveEffectTrack = useTimelineStore((s) => s.moveEffectTrack);
   const { recordAdd: recordEffectAdd } = useEffectBlockHistory();
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
+  const [isEffectDragOver, setIsEffectDragOver] = React.useState(false);
 
   // Groups show property tracks when not collapsed (unlike layers which use expandedLayerIds)
   const isExpanded = !group.collapsed;
@@ -130,21 +134,73 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
       className={cn(
         'border-b border-border/50 select-none bg-muted/40 group',
         isSelected && 'bg-accent/40',
-        isDragOver && dragOverPosition === 'above' && 'border-t-2 border-t-primary',
-        isDragOver && dragOverPosition === 'into' && 'bg-primary/20',
+        isDragOver && !isEffectDragOver && dragOverPosition === 'above' && 'border-t-2 border-t-primary',
+        isDragOver && !isEffectDragOver && dragOverPosition === 'into' && 'bg-primary/20',
+        isEffectDragOver && 'ring-1 ring-inset ring-primary bg-primary/10',
       )}
       onClick={onSelect}
       onContextMenu={onContextMenu}
       draggable
       onDragStart={(e) => {
+        if ((e.target as HTMLElement).closest('[data-effect-track]')) return;
         e.dataTransfer.effectAllowed = 'move';
         onDragStart?.();
       }}
       onDragOver={(e) => {
-        e.preventDefault();
-        onDragOver?.(e);
+        if (e.dataTransfer.types.includes('application/effect-block-id')) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          setIsEffectDragOver(true);
+        } else {
+          e.preventDefault();
+          onDragOver?.(e);
+        }
       }}
-      onDrop={() => onDrop?.()}
+      onDragLeave={() => {
+        setIsEffectDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer.types.includes('application/effect-block-id')) {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsEffectDragOver(false);
+          const draggedBlockId = e.dataTransfer.getData('application/effect-block-id');
+          if (draggedBlockId) {
+            // Snapshot before move for undo
+            const tl = useTimelineStore.getState();
+            let sourceTrack: import('../../../types/effectBlock').EffectTrack | undefined;
+            let sourceOwnerId: string | null = null;
+            for (const l of tl.layers) {
+              const t = (l.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+              if (t) { sourceTrack = t; sourceOwnerId = l.id as string; break; }
+            }
+            if (!sourceTrack) {
+              for (const g of tl.layerGroups) {
+                const t = (g.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+                if (t) { sourceTrack = t; sourceOwnerId = g.id as string; break; }
+              }
+            }
+            if (!sourceTrack) {
+              sourceTrack = tl.globalEffects.find((et) => (et.effectBlock.id as string) === draggedBlockId);
+              if (sourceTrack) sourceOwnerId = null;
+            }
+            moveEffectTrack(
+              draggedBlockId as import('../../../types/effectBlock').EffectBlockId,
+              group.id,
+              0,
+            );
+            if (sourceTrack) {
+              pushToHistory({
+                type: 'effect_block_remove', timestamp: Date.now(), description: 'Move effect to group',
+                data: { ownerId: sourceOwnerId, ownerType: sourceOwnerId === null ? 'global' : 'layer', trackSnapshot: structuredClone(sourceTrack), trackIndex: 0 },
+              } as import('../../../types').EffectBlockRemoveHistoryAction);
+            }
+          }
+        } else {
+          onDrop?.();
+        }
+      }}
       onDragEnd={() => onDragEnd?.()}
     >
       <TooltipProvider>
