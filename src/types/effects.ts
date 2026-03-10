@@ -36,9 +36,6 @@ export interface HueSaturationEffectSettings {
   
   // Color range targeting
   colorRange: ColorRange;
-  
-  // Advanced settings
-  preserveLuminance: boolean;
 }
 
 export interface RemapColorsEffectSettings {

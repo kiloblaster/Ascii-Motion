@@ -79,9 +79,6 @@ export const DEFAULT_HUE_SATURATION_SETTINGS: HueSaturationEffectSettings = {
   colorRange: {
     type: 'all'
   },
-  
-  // Advanced settings
-  preserveLuminance: false
 };
 
 export const DEFAULT_REMAP_COLORS_SETTINGS: RemapColorsEffectSettings = {

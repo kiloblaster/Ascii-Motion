@@ -44,14 +44,6 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
     max: 100,
     step: 1,
   },
-  {
-    path: 'preserveLuminance',
-    displayName: 'Preserve Luminance',
-    category: 'Advanced',
-    valueType: 'boolean',
-    defaultValue: false,
-    interpolation: 'hold',
-  },
 ];
 
 export const hueSaturationEffect: EffectRegistryEntry = {
