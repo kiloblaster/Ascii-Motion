@@ -559,6 +559,7 @@ export const EffectPropertiesPanel: React.FC = () => {
   const updateEffectBlockSettings = useTimelineStore((s) => s.updateEffectBlockSettings);
   const updateEffectKeyframe = useTimelineStore((s) => s.updateEffectKeyframe);
   const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
+  const addEffectPropertyTrack = useTimelineStore((s) => s.addEffectPropertyTrack);
   const toggleEffectBlockEnabled = useTimelineStore((s) => s.toggleEffectBlockEnabled);
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
   const { recordRemove: recordEffectRemove, recordUpdate: recordEffectUpdate } = useEffectBlockHistory();
@@ -628,11 +629,6 @@ export const EffectPropertiesPanel: React.FC = () => {
         </button>
       </div>
 
-      {/* Time range display */}
-      <div className="px-2 py-1 text-[9px] text-muted-foreground/60 border-b border-border/30">
-        Frames {block.startFrame}–{block.startFrame + block.durationFrames}
-      </div>
-
       {/* Properties by category */}
       <div className="flex-1 overflow-y-auto px-2 py-1">
         {[...categories.entries()].map(([category, defs]) => (
@@ -695,105 +691,141 @@ export const EffectPropertiesPanel: React.FC = () => {
       </div>
 
       {/* Footer actions */}
-      <div className="px-2 py-1.5 border-t border-border/50 flex gap-1">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1 h-6 text-[10px]"
-          onClick={() => {
-            // Snapshot all affected layers' content frames + the effect track for undo
-            const tl = useTimelineStore.getState();
-            const ownerIdTyped = ownerId as import('../../../types/timeline').LayerId | import('../../../types/timeline').LayerGroupId | null;
+      <div className="px-2 py-1.5 border-t border-border/50 space-y-1">
+        <div className="flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 h-6 text-[10px]"
+            onClick={() => {
+              // Snapshot all affected layers' content frames + the effect track for undo
+              const tl = useTimelineStore.getState();
+              const ownerIdTyped = ownerId as import('../../../types/timeline').LayerId | import('../../../types/timeline').LayerGroupId | null;
 
-            // Determine affected layer IDs
-            let affectedLayerIds: string[] = [];
-            if (ownerId) {
-              const layer = tl.layers.find((l) => l.id === ownerIdTyped);
-              if (layer) {
-                affectedLayerIds = [layer.id as string];
+              // Determine affected layer IDs
+              let affectedLayerIds: string[] = [];
+              if (ownerId) {
+                const layer = tl.layers.find((l) => l.id === ownerIdTyped);
+                if (layer) {
+                  affectedLayerIds = [layer.id as string];
+                } else {
+                  const group = tl.layerGroups.find((g) => g.id === ownerIdTyped);
+                  if (group) affectedLayerIds = group.childLayerIds.map((id) => id as string);
+                }
               } else {
-                const group = tl.layerGroups.find((g) => g.id === ownerIdTyped);
-                if (group) affectedLayerIds = group.childLayerIds.map((id) => id as string);
+                affectedLayerIds = tl.layers.map((l) => l.id as string);
               }
-            } else {
-              affectedLayerIds = tl.layers.map((l) => l.id as string);
-            }
 
-            // Snapshot full content frames per layer before bake
-            // For the active layer, use canvasStore.cells for the current content frame
-            // (it may have unsaved drawing changes)
-            const activeLayerId = tl.view.activeLayerId;
-            const canvasCellsNow = useCanvasStore.getState().cells;
+              // Snapshot full content frames per layer before bake
+              // For the active layer, use canvasStore.cells for the current content frame
+              // (it may have unsaved drawing changes)
+              const activeLayerId = tl.view.activeLayerId;
+              const canvasCellsNow = useCanvasStore.getState().cells;
 
-            const layerSnapshots = affectedLayerIds.map((layerId) => {
-              const layer = tl.layers.find((l) => (l.id as string) === layerId);
-              if (!layer) return null;
-              return {
-                layerId,
-                contentFrames: layer.contentFrames.map((cf) => {
-                  // For the active layer's current frame, use canvas store cells
-                  const isActiveFrame = (layer.id as string) === (activeLayerId as string) &&
-                    currentFrame >= cf.startFrame && currentFrame < cf.startFrame + cf.durationFrames;
-                  const sourceData = isActiveFrame ? canvasCellsNow : cf.data;
-                  // Deep clone: new Map + new Cell objects for each entry
-                  const clonedData = new Map<string, import('../../../types').Cell>();
-                  sourceData.forEach((cell, key) => {
-                    clonedData.set(key, { ...cell });
-                  });
-                  return {
-                    ...cf,
-                    data: clonedData,
-                  };
-                }),
-              };
-            }).filter(Boolean) as Array<{ layerId: string; contentFrames: import('../../../types/timeline').ContentFrame[] }>;
+              const layerSnapshots = affectedLayerIds.map((layerId) => {
+                const layer = tl.layers.find((l) => (l.id as string) === layerId);
+                if (!layer) return null;
+                return {
+                  layerId,
+                  contentFrames: layer.contentFrames.map((cf) => {
+                    // For the active layer's current frame, use canvas store cells
+                    const isActiveFrame = (layer.id as string) === (activeLayerId as string) &&
+                      currentFrame >= cf.startFrame && currentFrame < cf.startFrame + cf.durationFrames;
+                    const sourceData = isActiveFrame ? canvasCellsNow : cf.data;
+                    // Deep clone: new Map + new Cell objects for each entry
+                    const clonedData = new Map<string, import('../../../types').Cell>();
+                    sourceData.forEach((cell, key) => {
+                      clonedData.set(key, { ...cell });
+                    });
+                    return {
+                      ...cf,
+                      data: clonedData,
+                    };
+                  }),
+                };
+              }).filter(Boolean) as Array<{ layerId: string; contentFrames: import('../../../types/timeline').ContentFrame[] }>;
 
-            // Find the track before removal
-            let trackSnapshot: import('../../../types/effectBlock').EffectTrack | undefined;
-            let trackIndex = 0;
-            for (const l of tl.layers) {
-              const idx = (l.effectTracks ?? []).findIndex((t) => t.effectBlock.id === block.id);
-              if (idx !== -1) { trackSnapshot = structuredClone(l.effectTracks[idx]); trackIndex = idx; break; }
-            }
-            if (!trackSnapshot) {
-              for (const g of tl.layerGroups) {
-                const idx = (g.effectTracks ?? []).findIndex((t) => t.effectBlock.id === block.id);
-                if (idx !== -1) { trackSnapshot = structuredClone(g.effectTracks[idx]); trackIndex = idx; break; }
+              // Find the track before removal
+              let trackSnapshot: import('../../../types/effectBlock').EffectTrack | undefined;
+              let trackIndex = 0;
+              for (const l of tl.layers) {
+                const idx = (l.effectTracks ?? []).findIndex((t) => t.effectBlock.id === block.id);
+                if (idx !== -1) { trackSnapshot = structuredClone(l.effectTracks[idx]); trackIndex = idx; break; }
               }
-            }
-            if (!trackSnapshot) {
-              const idx = tl.globalEffects.findIndex((t) => t.effectBlock.id === block.id);
-              if (idx !== -1) { trackSnapshot = structuredClone(tl.globalEffects[idx]); trackIndex = idx; }
-            }
+              if (!trackSnapshot) {
+                for (const g of tl.layerGroups) {
+                  const idx = (g.effectTracks ?? []).findIndex((t) => t.effectBlock.id === block.id);
+                  if (idx !== -1) { trackSnapshot = structuredClone(g.effectTracks[idx]); trackIndex = idx; break; }
+                }
+              }
+              if (!trackSnapshot) {
+                const idx = tl.globalEffects.findIndex((t) => t.effectBlock.id === block.id);
+                if (idx !== -1) { trackSnapshot = structuredClone(tl.globalEffects[idx]); trackIndex = idx; }
+              }
 
-            // Bake the effect
-            tl.bakeEffect(block.id);
-            selectEffectBlock(null);
+              // Bake the effect
+              tl.bakeEffect(block.id);
+              selectEffectBlock(null);
 
-            // Record undo history
-            if (trackSnapshot) {
-              pushToHistory({
-                type: 'effect_bake',
-                timestamp: Date.now(),
-                description: `Apply ${entry.name} effect`,
-                data: {
-                  ownerId: (ownerId ?? null) as string | null,
-                  ownerType: ownerId === null ? 'global' : 'layer',
-                  trackSnapshot,
-                  trackIndex,
-                  layerSnapshots,
-                },
-              } as import('../../../types').EffectBakeHistoryAction);
-            }
-          }}
-        >
-          <Diamond className="w-3 h-3 mr-1" />
-          Apply
-        </Button>
+              // Record undo history
+              if (trackSnapshot) {
+                pushToHistory({
+                  type: 'effect_bake',
+                  timestamp: Date.now(),
+                  description: `Apply ${entry.name} effect`,
+                  data: {
+                    ownerId: (ownerId ?? null) as string | null,
+                    ownerType: ownerId === null ? 'global' : 'layer',
+                    trackSnapshot,
+                    trackIndex,
+                    layerSnapshots,
+                  },
+                } as import('../../../types').EffectBakeHistoryAction);
+              }
+            }}
+          >
+            <Diamond className="w-3 h-3 mr-1" />
+            Apply
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 h-6 text-[10px]"
+            onClick={() => {
+              const beforeBlock = structuredClone(block);
+              const staticResets: Record<string, unknown> = {};
+
+              for (const def of entry.propertyDefinitions) {
+                const propTrack = block.propertyTracks.find((pt) => pt.propertyPath === def.path);
+                if (propTrack) {
+                  // Keyframed property: add/update a keyframe at playhead with default value
+                  const existingKf = propTrack.keyframes.find((kf) => kf.frame === currentFrame);
+                  if (existingKf) {
+                    updateEffectKeyframe(block.id, propTrack.id, existingKf.id, { value: def.defaultValue as number });
+                  } else {
+                    addEffectKeyframe(block.id, propTrack.id, currentFrame, def.defaultValue as number);
+                  }
+                } else {
+                  // Static property: collect for batch reset
+                  staticResets[def.path] = def.defaultValue;
+                }
+              }
+
+              if (Object.keys(staticResets).length > 0) {
+                updateEffectBlockSettings(block.id, staticResets);
+              }
+
+              recordEffectUpdate(block.id, beforeBlock);
+            }}
+          >
+            <RotateCcw className="w-3 h-3 mr-1" />
+            Reset
+          </Button>
+        </div>
         <Button
           variant="outline"
           size="sm"
-          className="flex-1 h-6 text-[10px]"
+          className="w-full h-6 text-[10px]"
           onClick={() => {
             recordEffectRemove(
               ownerId as import('../../../types/timeline').LayerId | import('../../../types/timeline').LayerGroupId | null,

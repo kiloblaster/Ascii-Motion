@@ -1521,13 +1521,25 @@ const processHistoryAction = (
     }
 
     case 'effect_block_update': {
-      const tl = useTimelineStore.getState();
       const a = action as import('../types').EffectBlockUpdateHistoryAction;
       const block = isRedo ? a.data.newBlock : a.data.previousBlock;
-      tl.updateEffectBlockTiming(a.data.blockId as import("../types/effectBlock").EffectBlockId, block.startFrame, block.durationFrames);
-      tl.updateEffectBlockSettings(a.data.blockId as import("../types/effectBlock").EffectBlockId, block.settings as Record<string, unknown>);
-      if (block.enabled !== (isRedo ? a.data.previousBlock : a.data.newBlock).enabled) {
-        tl.toggleEffectBlockEnabled(a.data.blockId as import("../types/effectBlock").EffectBlockId);
+      const blockId = a.data.blockId as import("../types/effectBlock").EffectBlockId;
+      const restoredBlock = structuredClone(block);
+
+      // Directly replace the full effect block (including propertyTracks/keyframes)
+      const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+      const replaceBlock = (tracks: import("../types/effectBlock").EffectTrack[]) =>
+        tracks.map((t) => t.effectBlock.id === blockId ? { ...t, effectBlock: restoredBlock } : t);
+
+      if (ownerId === null) {
+        useTimelineStore.setState((s) => ({ globalEffects: replaceBlock(s.globalEffects) }));
+      } else {
+        const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+        if (isLayer) {
+          useTimelineStore.setState((s) => ({ layers: s.layers.map((l) => l.id === ownerId ? { ...l, effectTracks: replaceBlock(l.effectTracks) } : l) }));
+        } else {
+          useTimelineStore.setState((s) => ({ layerGroups: s.layerGroups.map((g) => g.id === ownerId ? { ...g, effectTracks: replaceBlock(g.effectTracks ?? []) } : g) }));
+        }
       }
       break;
     }

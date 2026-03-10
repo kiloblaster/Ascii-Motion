@@ -17,7 +17,7 @@ export interface ColorRange {
 export interface LevelsEffectSettings {
   // Input levels
   shadowsInput: number;      // 0-255: Black point
-  midtonesInput: number;     // 0.1-3.0: Gamma correction (1.0 = no change)
+  midtonesInput: number;     // 0-100: Midtone brightness (50 = no change)
   highlightsInput: number;   // 0-255: White point
   
   // Output levels (0-255)
@@ -26,9 +26,6 @@ export interface LevelsEffectSettings {
   
   // Color targeting
   colorRange: ColorRange;
-  
-  // Advanced settings
-  gamma: number;
 }
 
 export interface HueSaturationEffectSettings {

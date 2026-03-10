@@ -179,21 +179,21 @@ export function LevelsEffectPanel() {
         <div className="space-y-2">
           <div className="flex justify-between text-xs">
             <Label>Mid-tones</Label>
-            <span className="text-muted-foreground">{levelsSettings.midtonesInput.toFixed(2)}</span>
+            <span className="text-muted-foreground">{levelsSettings.midtonesInput}</span>
           </div>
           <Slider
             value={levelsSettings.midtonesInput}
             onValueChange={handleMidtonesInputChange}
-            min={0.1}
-            max={3.0}
-            step={0.1}
+            min={0}
+            max={100}
+            step={1}
             className={cn(
               "w-full",
-              levelsSettings.midtonesInput !== 1.0 && "opacity-90"
+              levelsSettings.midtonesInput !== 50 && "opacity-90"
             )}
           />
           <div className="text-xs text-muted-foreground">
-            Mid-tone gamma correction - values &lt; 1 darken, &gt; 1 brighten
+            Midtone brightness - values &lt; 50 darken, &gt; 50 brighten
           </div>
         </div>
         

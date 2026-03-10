@@ -25,14 +25,14 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
   },
   {
     path: 'midtonesInput',
-    displayName: 'Midtones (Gamma)',
+    displayName: 'Midtones',
     category: 'Input Levels',
     valueType: 'number',
-    defaultValue: 1.0,
+    defaultValue: 50,
     interpolation: 'numeric',
-    min: 0.1,
-    max: 3.0,
-    step: 0.01,
+    min: 0,
+    max: 100,
+    step: 1,
   },
   {
     path: 'highlightsInput',
@@ -67,17 +67,7 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
     max: 255,
     step: 1,
   },
-  {
-    path: 'gamma',
-    displayName: 'Gamma',
-    category: 'Advanced',
-    valueType: 'number',
-    defaultValue: 1.0,
-    interpolation: 'numeric',
-    min: 0.1,
-    max: 3.0,
-    step: 0.01,
-  },
+
 ];
 
 export const levelsEffect: EffectRegistryEntry = {

@@ -84,7 +84,7 @@ export function EffectsIntegrationTest() {
       results.push('✓ Configuring levels effect...');
       updateLevelsSettings({
         shadowsInput: 50,
-        midtonesInput: 1.2,
+        midtonesInput: 60,
         highlightsInput: 200
       });
       results.push('✓ Levels settings updated');

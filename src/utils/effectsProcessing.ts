@@ -461,9 +461,12 @@ function applyLevelsToChannel(
   if (value <= shadowsInput) return outputMin;
   if (value >= highlightsInput) return outputMax;
   
-  // Apply gamma correction for midtones
+  // Convert 0-100 midtones to gamma exponent (0→0.1, 50→1.0, 100→3.0)
   const normalizedInput = (value - shadowsInput) / (highlightsInput - shadowsInput);
-  const gammaAdjusted = Math.pow(normalizedInput, 1.0 / midtonesInput);
+  const gammaValue = midtonesInput <= 50
+    ? 0.1 + (midtonesInput / 50) * 0.9
+    : 1.0 + ((midtonesInput - 50) / 50) * 2.0;
+  const gammaAdjusted = Math.pow(normalizedInput, 1.0 / gammaValue);
   
   // Map to output range
   const result = outputMin + (gammaAdjusted * (outputMax - outputMin));
