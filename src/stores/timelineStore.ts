@@ -3050,7 +3050,13 @@ export const useTimelineStore = create<TimelineState>()(
       const newLayers = layers.map((layer) => {
         if (!targetLayerIds.includes(layer.id)) return layer;
 
-        const bakedFrames = bakeEffectIntoFrames(block, layer.contentFrames, {
+        // Clone content frames deeply before baking
+        const clonedFrames = layer.contentFrames.map((cf) => ({
+          ...cf,
+          data: new Map(cf.data),
+        }));
+
+        const bakedFrames = bakeEffectIntoFrames(block, clonedFrames, {
           canvasBackgroundColor: '#000000',
           frame: block.startFrame,
         });
@@ -3081,6 +3087,21 @@ export const useTimelineStore = create<TimelineState>()(
         globalEffects: newGlobalEffects,
         view: { ...get().view, selectedEffectBlockId: null },
       });
+
+      // Sync canvas store with the baked data for the active layer
+      const activeLayerId = get().view.activeLayerId;
+      const currentFrame = get().view.currentFrame;
+      if (activeLayerId && targetLayerIds.includes(activeLayerId)) {
+        const updatedLayer = get().layers.find((l) => l.id === activeLayerId);
+        if (updatedLayer) {
+          const cf = updatedLayer.contentFrames.find(
+            (c) => currentFrame >= c.startFrame && currentFrame < c.startFrame + c.durationFrames,
+          );
+          if (cf) {
+            useCanvasStore.getState().setCanvasData(cf.data);
+          }
+        }
+      }
     },
 
     // ============================================
