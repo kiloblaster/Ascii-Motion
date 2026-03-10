@@ -18,7 +18,7 @@ import { Button } from '../../ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { ColorPickerOverlay } from '../ColorPickerOverlay';
-import { Trash2, Eye, EyeOff, X, Diamond, RotateCcw } from 'lucide-react';
+import { Trash2, Eye, EyeOff, X, Check, Diamond, RotateCcw } from 'lucide-react';
 import { useScrubInput } from '../../../hooks/useScrubInput';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 import type { EffectTrack, EffectPropertyDefinition, EffectBlock } from '../../../types/effectBlock';
@@ -301,7 +301,7 @@ interface MappingEditorProps {
 }
 
 const MappingEditor: React.FC<MappingEditorProps> = ({ definition, value, onChange, keyframeDiamond }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
   const [mode, setMode] = useState<'manual' | 'palette'>('manual');
   const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
 
@@ -784,7 +784,7 @@ export const EffectPropertiesPanel: React.FC = () => {
               }
             }}
           >
-            <Diamond className="w-3 h-3 mr-1" />
+            <Check className="w-3 h-3 mr-1" />
             Apply
           </Button>
           <Button

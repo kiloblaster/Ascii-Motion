@@ -18,38 +18,6 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
     defaultValue: {},
     interpolation: 'hold',
   },
-  {
-    path: 'matchExact',
-    displayName: 'Match Exact',
-    category: 'Options',
-    valueType: 'boolean',
-    defaultValue: true,
-    interpolation: 'hold',
-  },
-  {
-    path: 'paletteMode',
-    displayName: 'Palette Mode',
-    category: 'Options',
-    valueType: 'select',
-    defaultValue: 'manual',
-    interpolation: 'hold',
-    options: [
-      { label: 'Manual', value: 'manual' },
-      { label: 'Palette', value: 'palette' },
-    ],
-  },
-  {
-    path: 'mappingAlgorithm',
-    displayName: 'Mapping Algorithm',
-    category: 'Options',
-    valueType: 'select',
-    defaultValue: 'closest',
-    interpolation: 'hold',
-    options: [
-      { label: 'Closest Match', value: 'closest' },
-      { label: 'By Index', value: 'by-index' },
-    ],
-  },
 ];
 
 export const remapColorsEffect: EffectRegistryEntry = {
