@@ -1439,16 +1439,26 @@ const processHistoryAction = (
     }
       
     case 'effect_block_add': {
-      const tl = useTimelineStore.getState();
       const a = action as import('../types').EffectBlockAddHistoryAction;
       if (isRedo) {
-        // Re-add the effect block
+        // Re-add the effect block — restore full track from snapshot
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
-        tl.addEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.effectType, a.data.trackSnapshot.effectBlock.startFrame, a.data.trackSnapshot.effectBlock.durationFrames);
+        const trackToRestore = structuredClone(a.data.trackSnapshot);
+        trackToRestore.ownerId = ownerId;
+        if (ownerId === null) {
+          useTimelineStore.setState((s) => ({ globalEffects: [...s.globalEffects, trackToRestore] }));
+        } else {
+          const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+          if (isLayer) {
+            useTimelineStore.setState((s) => ({ layers: s.layers.map((l) => l.id === ownerId ? { ...l, effectTracks: [...l.effectTracks, trackToRestore] } : l) }));
+          } else {
+            useTimelineStore.setState((s) => ({ layerGroups: s.layerGroups.map((g) => g.id === ownerId ? { ...g, effectTracks: [...(g.effectTracks ?? []), trackToRestore] } : g) }));
+          }
+        }
       } else {
         // Remove the added effect block
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
-        tl.removeEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.id);
+        useTimelineStore.getState().removeEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.id);
       }
       break;
     }
@@ -1480,13 +1490,31 @@ const processHistoryAction = (
           tl.removeEffectBlock(null, blockId);
         }
 
-        // Re-add the effect block at the original owner
+        // Re-add the effect block at the original owner — restore full track from snapshot
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
-        const block = a.data.trackSnapshot.effectBlock;
-        const newBlockId = tl.addEffectBlock(ownerId, block.effectType, block.startFrame, block.durationFrames);
-        if (newBlockId) {
-          tl.updateEffectBlockSettings(newBlockId, block.settings as Record<string, unknown>);
-          if (!block.enabled) tl.toggleEffectBlockEnabled(newBlockId);
+        const trackToRestore = structuredClone(a.data.trackSnapshot);
+        // Fix ownerId on the restored track
+        trackToRestore.ownerId = ownerId;
+
+        if (ownerId === null) {
+          useTimelineStore.setState((s) => ({
+            globalEffects: [...s.globalEffects, trackToRestore],
+          }));
+        } else {
+          const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+          if (isLayer) {
+            useTimelineStore.setState((s) => ({
+              layers: s.layers.map((l) =>
+                l.id === ownerId ? { ...l, effectTracks: [...l.effectTracks, trackToRestore] } : l,
+              ),
+            }));
+          } else {
+            useTimelineStore.setState((s) => ({
+              layerGroups: s.layerGroups.map((g) =>
+                g.id === ownerId ? { ...g, effectTracks: [...(g.effectTracks ?? []), trackToRestore] } : g,
+              ),
+            }));
+          }
         }
       }
       break;
@@ -1572,13 +1600,30 @@ const processHistoryAction = (
         // Set all at once
         useTimelineStore.setState({ layers: restoredLayers });
 
-        // Re-add the effect block
+        // Re-add the effect block — restore full track from snapshot (preserves keyframes)
         const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
-        const block = a.data.trackSnapshot.effectBlock;
-        const newBlockId = tl.addEffectBlock(ownerId, block.effectType, block.startFrame, block.durationFrames);
-        if (newBlockId) {
-          tl.updateEffectBlockSettings(newBlockId, block.settings as Record<string, unknown>);
-          if (!block.enabled) tl.toggleEffectBlockEnabled(newBlockId);
+        const trackToRestore = structuredClone(a.data.trackSnapshot);
+        trackToRestore.ownerId = ownerId;
+
+        if (ownerId === null) {
+          useTimelineStore.setState((s) => ({
+            globalEffects: [...s.globalEffects, trackToRestore],
+          }));
+        } else {
+          const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+          if (isLayer) {
+            useTimelineStore.setState((s) => ({
+              layers: s.layers.map((l) =>
+                l.id === ownerId ? { ...l, effectTracks: [...l.effectTracks, trackToRestore] } : l,
+              ),
+            }));
+          } else {
+            useTimelineStore.setState((s) => ({
+              layerGroups: s.layerGroups.map((g) =>
+                g.id === ownerId ? { ...g, effectTracks: [...(g.effectTracks ?? []), trackToRestore] } : g,
+              ),
+            }));
+          }
         }
 
         // Sync canvas store with restored data
