@@ -720,15 +720,25 @@ export const EffectPropertiesPanel: React.FC = () => {
             }
 
             // Snapshot full content frames per layer before bake
+            // For the active layer, use canvasStore.cells for the current content frame
+            // (it may have unsaved drawing changes)
+            const activeLayerId = tl.view.activeLayerId;
+            const canvasCellsNow = useCanvasStore.getState().cells;
+
             const layerSnapshots = affectedLayerIds.map((layerId) => {
               const layer = tl.layers.find((l) => (l.id as string) === layerId);
               if (!layer) return null;
               return {
                 layerId,
-                contentFrames: layer.contentFrames.map((cf) => ({
-                  ...cf,
-                  data: new Map(cf.data),
-                })),
+                contentFrames: layer.contentFrames.map((cf) => {
+                  // For the active layer's current frame, use canvas store cells
+                  const isActiveFrame = (layer.id as string) === (activeLayerId as string) &&
+                    currentFrame >= cf.startFrame && currentFrame < cf.startFrame + cf.durationFrames;
+                  return {
+                    ...cf,
+                    data: isActiveFrame ? new Map(canvasCellsNow) : new Map(cf.data),
+                  };
+                }),
               };
             }).filter(Boolean) as Array<{ layerId: string; contentFrames: import('../../../types/timeline').ContentFrame[] }>;
 

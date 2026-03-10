@@ -3046,6 +3046,22 @@ export const useTimelineStore = create<TimelineState>()(
         targetLayerIds = layers.map((l) => l.id);
       }
 
+      // Flush canvas store to the active layer's content frame before baking
+      // to ensure we process the latest drawing state
+      const flushActiveLayerId = get().view.activeLayerId;
+      const flushCurrentFrame = get().view.currentFrame;
+      if (flushActiveLayerId && targetLayerIds.includes(flushActiveLayerId)) {
+        const activeLayer = layers.find((l) => l.id === flushActiveLayerId);
+        if (activeLayer) {
+          const activeCf = activeLayer.contentFrames.find(
+            (c) => flushCurrentFrame >= c.startFrame && flushCurrentFrame < c.startFrame + c.durationFrames,
+          );
+          if (activeCf) {
+            activeCf.data = new Map(useCanvasStore.getState().cells);
+          }
+        }
+      }
+
       // Bake into each target layer's content frames
       const newLayers = layers.map((layer) => {
         if (!targetLayerIds.includes(layer.id)) return layer;
