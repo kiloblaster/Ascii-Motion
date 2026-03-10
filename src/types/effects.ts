@@ -55,9 +55,6 @@ export interface RemapColorsEffectSettings {
 export interface RemapCharactersEffectSettings {
   // Map of original character -> new character
   characterMappings: Record<string, string>;
-  
-  // Processing options
-  preserveSpacing: boolean;
 }
 
 export interface ScatterEffectSettings {

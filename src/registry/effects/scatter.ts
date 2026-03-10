@@ -18,7 +18,7 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
     defaultValue: 50,
     interpolation: 'numeric',
     min: 0,
-    max: 100,
+    max: 400,
     step: 1,
     unit: '%',
   },

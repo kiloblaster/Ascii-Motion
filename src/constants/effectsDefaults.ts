@@ -98,9 +98,6 @@ export const DEFAULT_REMAP_COLORS_SETTINGS: RemapColorsEffectSettings = {
 export const DEFAULT_REMAP_CHARACTERS_SETTINGS: RemapCharactersEffectSettings = {
   // Empty mappings by default
   characterMappings: {},
-  
-  // Processing options
-  preserveSpacing: true
 };
 
 export const DEFAULT_SCATTER_SETTINGS: ScatterEffectSettings = {

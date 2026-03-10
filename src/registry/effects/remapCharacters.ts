@@ -18,14 +18,6 @@ const propertyDefinitions: EffectPropertyDefinition[] = [
     defaultValue: {},
     interpolation: 'hold',
   },
-  {
-    path: 'preserveSpacing',
-    displayName: 'Preserve Spacing',
-    category: 'Options',
-    valueType: 'boolean',
-    defaultValue: true,
-    interpolation: 'hold',
-  },
 ];
 
 export const remapCharactersEffect: EffectRegistryEntry = {
