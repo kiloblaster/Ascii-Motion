@@ -161,8 +161,11 @@ export const ProjectCanvasPreview: React.FC<ProjectCanvasPreviewProps> = ({
         <div
           className="rounded border border-border/30 bg-muted/30 flex items-center justify-center"
           style={{ width, height }}
+          role="status"
+          aria-live="polite"
         >
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <span className="sr-only">Loading project preview…</span>
         </div>
       </div>
     );

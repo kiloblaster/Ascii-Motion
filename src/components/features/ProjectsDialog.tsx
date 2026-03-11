@@ -76,7 +76,12 @@ const CACHE_KEY_PROJECTS = 'ascii-motion:projects-cache';
 const CACHE_KEY_DELETED = 'ascii-motion:deleted-projects-cache';
 const CACHE_KEY_PROFILE = 'ascii-motion:user-profile-cache';
 
+function hasSessionStorage(): boolean {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
 function getCachedProjects(): CloudProject[] | null {
+  if (!hasSessionStorage()) return null;
   try {
     const raw = sessionStorage.getItem(CACHE_KEY_PROJECTS);
     return raw ? JSON.parse(raw) : null;
@@ -84,6 +89,7 @@ function getCachedProjects(): CloudProject[] | null {
 }
 
 function getCachedDeletedProjects(): CloudProject[] | null {
+  if (!hasSessionStorage()) return null;
   try {
     const raw = sessionStorage.getItem(CACHE_KEY_DELETED);
     return raw ? JSON.parse(raw) : null;
@@ -91,6 +97,7 @@ function getCachedDeletedProjects(): CloudProject[] | null {
 }
 
 function getCachedUserProfile(): UserProfile | null {
+  if (!hasSessionStorage()) return null;
   try {
     const raw = sessionStorage.getItem(CACHE_KEY_PROFILE);
     return raw ? JSON.parse(raw) : null;
@@ -98,14 +105,17 @@ function getCachedUserProfile(): UserProfile | null {
 }
 
 function setCachedProjects(projects: CloudProject[]) {
+  if (!hasSessionStorage()) return;
   try { sessionStorage.setItem(CACHE_KEY_PROJECTS, JSON.stringify(projects)); } catch { /* quota exceeded */ }
 }
 
 function setCachedDeletedProjects(projects: CloudProject[]) {
+  if (!hasSessionStorage()) return;
   try { sessionStorage.setItem(CACHE_KEY_DELETED, JSON.stringify(projects)); } catch { /* quota exceeded */ }
 }
 
 function setCachedUserProfile(profile: UserProfile) {
+  if (!hasSessionStorage()) return;
   try { sessionStorage.setItem(CACHE_KEY_PROFILE, JSON.stringify(profile)); } catch { /* quota exceeded */ }
 }
 
@@ -207,8 +217,7 @@ export function ProjectsDialog({
 
   // Load projects list from database (stale-while-revalidate)
   const loadProjectsList = useCallback(async () => {
-    const hadCachedData = projects.length > 0 || hasCachedData.current;
-    if (hadCachedData) setRefreshing(true);
+    if (hasCachedData.current) setRefreshing(true);
 
     try {
       const [activeData, deletedData, profileData] = await Promise.all([
@@ -248,31 +257,29 @@ export function ProjectsDialog({
       setCachedDeletedProjects(deletedData);
       if (profileData) setCachedUserProfile(profileData);
       hasCachedData.current = true;
-      hasLoadedOnce.current = true;
 
       // Lazy-load session data for previews — progressive per-project updates
       const idsNeedingData = [...sortedActive, ...deletedData]
         .filter(p => !p.sessionData)
         .map(p => p.id);
       if (idsNeedingData.length > 0) {
+        const activeIds = new Set(sortedActive.map(p => p.id));
         const updateProject = (id: string, sessionData: CloudProject['sessionData']) => {
-          setProjects(prev => {
-            const updated = prev.map(p => p.id === id ? { ...p, sessionData } : p);
-            setCachedProjects(updated);
-            return updated;
-          });
-          setDeletedProjects(prev => {
-            const updated = prev.map(p => p.id === id ? { ...p, sessionData } : p);
-            setCachedDeletedProjects(updated);
+          const setter = activeIds.has(id) ? setProjects : setDeletedProjects;
+          setter(prev => {
+            const updated = prev.map(p =>
+              p.id === id ? { ...p, sessionData } : p
+            );
             return updated;
           });
         };
         loadProjectsSessionData(idsNeedingData, updateProject);
       }
     } finally {
+      hasLoadedOnce.current = true;
       setRefreshing(false);
     }
-  }, [listProjects, listDeletedProjects, getUserProfile, loadProjectsSessionData, projects.length]);
+  }, [listProjects, listDeletedProjects, getUserProfile, loadProjectsSessionData]);
 
   // Load projects when dialog opens OR when refreshTrigger changes
   useEffect(() => {
@@ -280,6 +287,16 @@ export function ProjectsDialog({
       loadProjectsList();
     }
   }, [open, refreshTrigger, loadProjectsList]);
+
+  // Persist project data to sessionStorage (debounced to avoid excessive writes)
+  useEffect(() => {
+    if (!hasLoadedOnce.current) return;
+    const timer = setTimeout(() => {
+      setCachedProjects(projects);
+      setCachedDeletedProjects(deletedProjects);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [projects, deletedProjects]);
 
   // Reset dialog state when closed
   useEffect(() => {
