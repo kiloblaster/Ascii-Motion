@@ -555,7 +555,7 @@ export interface TimelineState {
   createNewProject: () => void;
 
   /** Load state from session data (used by session importer) */
-  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>, layerGroups?: LayerGroup[]) => void;
+  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>, layerGroups?: LayerGroup[], globalEffects?: EffectTrack[]) => void;
 
   /** Serialize current state to SessionDataV2 format (used by session exporter) */
   getSessionData: () => SessionDataV2;
@@ -3140,7 +3140,7 @@ export const useTimelineStore = create<TimelineState>()(
       });
     },
 
-    loadFromSessionData: (layers, config, viewState, layerGroups) => {
+    loadFromSessionData: (layers, config, viewState, layerGroups, globalEffects) => {
       const mergedConfig: TimelineConfig = {
         frameRate: config.frameRate ?? INITIAL_CONFIG.frameRate,
         durationFrames: config.durationFrames ?? INITIAL_CONFIG.durationFrames,
@@ -3154,7 +3154,7 @@ export const useTimelineStore = create<TimelineState>()(
         config: mergedConfig,
         layers,
         layerGroups: layerGroups ?? [],
-        globalEffects: [],
+        globalEffects: globalEffects ?? [],
         view: {
           ...INITIAL_VIEW,
           activeLayerId,
@@ -3164,7 +3164,7 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     getSessionData: () => {
-      const { config, layers, layerGroups, view } = get();
+      const { config, layers, layerGroups, globalEffects, view } = get();
       const canvasState = useCanvasStore.getState();
 
       return {
@@ -3288,6 +3288,34 @@ export const useTimelineStore = create<TimelineState>()(
                     collapsed: et.collapsed,
                   }))
                 : undefined,
+            }))
+          : undefined,
+
+        // Global effects
+        globalEffects: globalEffects.length > 0
+          ? globalEffects.map((et) => ({
+              id: et.id as string,
+              ownerId: et.ownerId as string | null,
+              effectBlock: {
+                id: et.effectBlock.id as string,
+                effectType: et.effectBlock.effectType,
+                startFrame: et.effectBlock.startFrame,
+                durationFrames: et.effectBlock.durationFrames,
+                enabled: et.effectBlock.enabled,
+                settings: { ...et.effectBlock.settings },
+                propertyTracks: et.effectBlock.propertyTracks.map((pt) => ({
+                  id: pt.id as string,
+                  propertyPath: pt.propertyPath,
+                  keyframes: pt.keyframes.map((kf) => ({
+                    id: kf.id as string,
+                    frame: kf.frame,
+                    value: kf.value,
+                    easing: kf.easing,
+                  })),
+                  loopKeyframes: pt.loopKeyframes,
+                })),
+              },
+              collapsed: et.collapsed,
             }))
           : undefined,
       };

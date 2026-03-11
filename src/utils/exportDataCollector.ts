@@ -24,7 +24,7 @@ function computeCompositedFrames(
   width: number,
   height: number,
 ): Frame[] {
-  const { layers, config, layerGroups } = useTimelineStore.getState();
+  const { layers, config, layerGroups, globalEffects } = useTimelineStore.getState();
   const frames: Frame[] = [];
   const frameDurationMs = 1000 / config.frameRate;
 
@@ -37,6 +37,7 @@ function computeCompositedFrames(
       undefined, // cellAspectRatio — use default
       true,      // clip to canvas bounds for export
       layerGroups, // include group transforms
+      globalEffects, // apply global effects
     );
 
     frames.push({
