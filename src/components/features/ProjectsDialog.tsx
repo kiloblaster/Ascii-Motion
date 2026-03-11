@@ -163,6 +163,7 @@ export function ProjectsDialog({
     updateDescription,
     uploadSessionFile,
     getUserProfile,
+    loadProjectsSessionData,
   } = useCloudProject();
 
   const [projects, setProjects] = useState<CloudProject[]>(() => getCachedProjects() ?? []);
@@ -231,10 +232,32 @@ export function ProjectsDialog({
       if (profileData) setCachedUserProfile(profileData);
       hasCachedData.current = true;
       hasLoadedOnce.current = true;
+
+      // Lazy-load session data for previews (non-blocking)
+      const allIds = [...sortedActive, ...deletedData].map(p => p.id);
+      if (allIds.length > 0) {
+        loadProjectsSessionData(allIds).then(sessionDataMap => {
+          if (sessionDataMap.size === 0) return;
+          const enrichProject = (p: CloudProject) => {
+            const sd = sessionDataMap.get(p.id);
+            return sd ? { ...p, sessionData: sd } : p;
+          };
+          setProjects(prev => {
+            const enriched = prev.map(enrichProject);
+            setCachedProjects(enriched);
+            return enriched;
+          });
+          setDeletedProjects(prev => {
+            const enriched = prev.map(enrichProject);
+            setCachedDeletedProjects(enriched);
+            return enriched;
+          });
+        });
+      }
     } finally {
       setRefreshing(false);
     }
-  }, [listProjects, listDeletedProjects, getUserProfile, projects.length]);
+  }, [listProjects, listDeletedProjects, getUserProfile, loadProjectsSessionData, projects.length]);
 
   // Load projects when dialog opens OR when refreshTrigger changes
   useEffect(() => {
