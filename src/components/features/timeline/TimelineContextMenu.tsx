@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../../../types/timeline';
 import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/layerCompositing';
+import { evaluateEffectBlock } from '../../../utils/effectsPipeline';
 import type { ContentFrameReorderHistoryAction } from '../../../types';
 
 // ============================================
@@ -351,16 +352,36 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
         destTrackId = destTrack.id;
       } else if (targetMatchesCopied) {
         // Single-layer multi-track: route to matching property
-        // Search layers and groups for matching track
+        // Search layers, groups, and effect property tracks for matching track
         let destTrackId2: typeof trackId | undefined;
         if (targetLayer) {
           const dt = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
           if (dt) destTrackId2 = dt.id;
+          // Search layer effect property tracks
+          if (!destTrackId2) {
+            for (const et of (targetLayer.effectTracks ?? [])) {
+              const pt = et.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+              if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
+            }
+          }
         }
         if (!destTrackId2) {
           for (const g of useTimelineStore.getState().layerGroups) {
             const dt = g.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
             if (dt) { destTrackId2 = dt.id; break; }
+            // Search group effect property tracks
+            for (const et of (g.effectTracks ?? [])) {
+              const pt = et.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+              if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
+            }
+            if (destTrackId2) break;
+          }
+        }
+        // Search global effects
+        if (!destTrackId2) {
+          for (const et of (useTimelineStore.getState().globalEffects ?? [])) {
+            const pt = et.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+            if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
           }
         }
         if (!destTrackId2) continue;
@@ -543,6 +564,22 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
                     return;
                   }
                 }
+                // Fall back to effect property tracks (layers, groups, global)
+                const { addEffectKeyframe } = tl;
+                const allSources = [
+                  ...layers.flatMap((l) => (l.effectTracks ?? []).map((et) => et)),
+                  ...tl.layerGroups.flatMap((g) => (g.effectTracks ?? []).map((et) => et)),
+                  ...(tl.globalEffects ?? []),
+                ];
+                for (const et of allSources) {
+                  const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (ctx.trackId as string));
+                  if (pt) {
+                    const resolved = evaluateEffectBlock(et.effectBlock, ctx.clickFrame);
+                    const currentValue = (resolved[pt.propertyPath] ?? 0) as import('../../../types/effectBlock').EffectKeyframe['value'];
+                    addEffectKeyframe(et.effectBlock.id, pt.id, ctx.clickFrame, currentValue);
+                    return;
+                  }
+                }
               })}
             />
             <MenuItem
@@ -576,7 +613,32 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
               label={`Delete ${label}`}
               onClick={() => act(() => {
                 for (const kfId of ctx.keyframeIds) {
-                  removeKeyframe(ctx.layerId, ctx.trackId, kfId);
+                  // Try layer/group property tracks first
+                  const layer = layers.find((l) => l.id === ctx.layerId);
+                  const layerTrack = layer?.propertyTracks.find((pt) => pt.id === ctx.trackId);
+                  if (layerTrack) {
+                    removeKeyframe(ctx.layerId, ctx.trackId, kfId);
+                    continue;
+                  }
+                  const tl = useTimelineStore.getState();
+                  const groupTrack = tl.layerGroups.some((g) => g.propertyTracks.some((pt) => pt.id === ctx.trackId));
+                  if (groupTrack) {
+                    removeKeyframe(ctx.layerId, ctx.trackId, kfId);
+                    continue;
+                  }
+                  // Fall back to effect property tracks
+                  const allSources = [
+                    ...layers.flatMap((l) => (l.effectTracks ?? []).map((et) => et)),
+                    ...tl.layerGroups.flatMap((g) => (g.effectTracks ?? []).map((et) => et)),
+                    ...(tl.globalEffects ?? []),
+                  ];
+                  for (const et of allSources) {
+                    const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (ctx.trackId as string));
+                    if (pt) {
+                      tl.removeEffectKeyframe(et.effectBlock.id, pt.id, kfId);
+                      break;
+                    }
+                  }
                 }
                 useTimelineStore.getState().clearKeyframeSelection();
               })}
