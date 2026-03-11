@@ -569,7 +569,6 @@ export const EffectPropertiesPanel: React.FC = () => {
   const updateEffectBlockSettings = useTimelineStore((s) => s.updateEffectBlockSettings);
   const updateEffectKeyframe = useTimelineStore((s) => s.updateEffectKeyframe);
   const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
-  const addEffectPropertyTrack = useTimelineStore((s) => s.addEffectPropertyTrack);
   const toggleEffectBlockEnabled = useTimelineStore((s) => s.toggleEffectBlockEnabled);
   const removeEffectBlock = useTimelineStore((s) => s.removeEffectBlock);
   const { recordRemove: recordEffectRemove, recordUpdate: recordEffectUpdate } = useEffectBlockHistory();

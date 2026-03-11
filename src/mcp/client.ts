@@ -240,30 +240,19 @@ export class MCPClient {
 
     // Prefer Web Crypto API in browser-like environments
     let randomPart: string | null = null;
-    const globalAny: any = (typeof globalThis !== 'undefined') ? (globalThis as any) : null;
+    const globalRef: Record<string, unknown> = (typeof globalThis !== 'undefined') ? (globalThis as Record<string, unknown>) : {};
 
-    const webCrypto = globalAny && (globalAny.crypto || (globalAny.window && globalAny.window.crypto));
+    const webCrypto = globalRef && ((globalRef.crypto as Record<string, unknown>) || ((globalRef.window as Record<string, unknown>)?.crypto as Record<string, unknown>));
     if (webCrypto && typeof webCrypto.getRandomValues === 'function') {
       const bytes = new Uint8Array(8);
-      webCrypto.getRandomValues(bytes);
+      (webCrypto.getRandomValues as (arr: Uint8Array) => void)(bytes);
       // Convert bytes to hex string
       randomPart = Array.from(bytes)
         .map((b: number) => b.toString(16).padStart(2, '0'))
         .join('')
         .substring(0, 12);
-    } else if (typeof require === 'function') {
-      // Fallback for Node.js environments without Web Crypto
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const nodeCrypto = require('crypto');
-        const bytes: Buffer = nodeCrypto.randomBytes(8);
-        randomPart = bytes.toString('hex').substring(0, 12);
-      } catch {
-        // As a last resort, fall back to Math.random (should be rare)
-        randomPart = Math.random().toString(36).substring(2, 14);
-      }
     } else {
-      // As a last resort, fall back to Math.random (should be rare)
+      // Fallback to Math.random for environments without Web Crypto
       randomPart = Math.random().toString(36).substring(2, 14);
     }
 

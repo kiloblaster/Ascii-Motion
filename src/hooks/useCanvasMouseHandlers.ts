@@ -506,7 +506,6 @@ export const useCanvasMouseHandlers = (): MouseHandlers => {
     selectionHandlers,
     lassoSelectionHandlers,
     magicWandSelectionHandlers,
-    dragAndDropHandlers,
     setIsDrawing,
     setMouseButtonDown,
     asciiDragState,

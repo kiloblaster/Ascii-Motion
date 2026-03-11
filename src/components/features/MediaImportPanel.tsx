@@ -527,7 +527,6 @@ export function MediaImportPanel() {
     settings.autoModeCharacterSet,
     settings.autoModeGlobalContrast,
     settings.autoModeDirectionalContrast,
-    settings.autoModeSamplingQuality,
     settings.characterWidth,
     settings.characterHeight,
     settings.lineArtBlurRadius,
