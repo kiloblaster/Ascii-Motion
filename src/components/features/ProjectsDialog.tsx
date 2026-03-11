@@ -207,8 +207,8 @@ export function ProjectsDialog({
 
   // Load projects list from database (stale-while-revalidate)
   const loadProjectsList = useCallback(async () => {
-    const showingCached = projects.length > 0 || hasCachedData.current;
-    if (showingCached) setRefreshing(true);
+    const hadCachedData = projects.length > 0 || hasCachedData.current;
+    if (hadCachedData) setRefreshing(true);
 
     try {
       const [activeData, deletedData, profileData] = await Promise.all([
@@ -222,37 +222,52 @@ export function ProjectsDialog({
         new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime()
       );
       
-      setProjects(sortedActive);
-      setDeletedProjects(deletedData);
+      // Merge fresh metadata with existing sessionData from cache
+      setProjects(prev => {
+        const existingSD = new Map(
+          prev.filter(p => p.sessionData).map(p => [p.id, p.sessionData])
+        );
+        return sortedActive.map(p => ({
+          ...p,
+          sessionData: p.sessionData || existingSD.get(p.id),
+        }));
+      });
+      setDeletedProjects(prev => {
+        const existingSD = new Map(
+          prev.filter(p => p.sessionData).map(p => [p.id, p.sessionData])
+        );
+        return deletedData.map(p => ({
+          ...p,
+          sessionData: p.sessionData || existingSD.get(p.id),
+        }));
+      });
       setUserProfile(profileData);
 
-      // Persist to sessionStorage for next open
+      // Persist metadata to sessionStorage
       setCachedProjects(sortedActive);
       setCachedDeletedProjects(deletedData);
       if (profileData) setCachedUserProfile(profileData);
       hasCachedData.current = true;
       hasLoadedOnce.current = true;
 
-      // Lazy-load session data for previews (non-blocking)
-      const allIds = [...sortedActive, ...deletedData].map(p => p.id);
-      if (allIds.length > 0) {
-        loadProjectsSessionData(allIds).then(sessionDataMap => {
-          if (sessionDataMap.size === 0) return;
-          const enrichProject = (p: CloudProject) => {
-            const sd = sessionDataMap.get(p.id);
-            return sd ? { ...p, sessionData: sd } : p;
-          };
+      // Lazy-load session data for previews — progressive per-project updates
+      const idsNeedingData = [...sortedActive, ...deletedData]
+        .filter(p => !p.sessionData)
+        .map(p => p.id);
+      if (idsNeedingData.length > 0) {
+        const updateProject = (id: string, sessionData: CloudProject['sessionData']) => {
           setProjects(prev => {
-            const enriched = prev.map(enrichProject);
-            setCachedProjects(enriched);
-            return enriched;
+            const updated = prev.map(p => p.id === id ? { ...p, sessionData } : p);
+            setCachedProjects(updated);
+            return updated;
           });
           setDeletedProjects(prev => {
-            const enriched = prev.map(enrichProject);
-            setCachedDeletedProjects(enriched);
-            return enriched;
+            const updated = prev.map(p => p.id === id ? { ...p, sessionData } : p);
+            setCachedDeletedProjects(updated);
+            return updated;
           });
-        });
+        };
+        loadProjectsSessionData(idsNeedingData, updateProject);
       }
     } finally {
       setRefreshing(false);
