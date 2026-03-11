@@ -178,6 +178,7 @@ export function ProjectsDialog({
   const [showRealUpgradeDialog, setShowRealUpgradeDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const hasCachedData = useRef(!!getCachedProjects());
+  const hasLoadedOnce = useRef(false);
   
   // Get auth for upgrade dialog
   const { user, profile, getAccessToken } = useAuth();
@@ -229,6 +230,7 @@ export function ProjectsDialog({
       setCachedDeletedProjects(deletedData);
       if (profileData) setCachedUserProfile(profileData);
       hasCachedData.current = true;
+      hasLoadedOnce.current = true;
     } finally {
       setRefreshing(false);
     }
@@ -251,6 +253,7 @@ export function ProjectsDialog({
       setNewName('');
       setEditingDescriptionId(null);
       setNewDescription('');
+      hasLoadedOnce.current = false;
     }
   }, [open]);
 
@@ -507,7 +510,7 @@ export function ProjectsDialog({
 
         {/* Projects List */}
         <div className="flex-1 overflow-y-auto min-h-0">
-          {loading && projects.length === 0 ? (
+          {!hasLoadedOnce.current && projects.length === 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <ProjectCardSkeleton />
               <ProjectCardSkeleton />
