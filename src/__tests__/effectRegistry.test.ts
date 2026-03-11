@@ -103,10 +103,10 @@ describe('effectRegistry', () => {
   });
 
   describe('registerAllEffects', () => {
-    it('registers all 7 built-in effects', () => {
+    it('registers all 8 built-in effects', () => {
       registerAllEffects();
       const all = getAllEffects();
-      expect(all).toHaveLength(7);
+      expect(all).toHaveLength(8);
     });
 
     it('includes expected effect types', () => {
@@ -118,12 +118,13 @@ describe('effectRegistry', () => {
       expect(isEffectRegistered('scatter')).toBe(true);
       expect(isEffectRegistered('wave-warp')).toBe(true);
       expect(isEffectRegistered('wiggle')).toBe(true);
+      expect(isEffectRegistered('motion-trails')).toBe(true);
     });
 
     it('is idempotent (safe to call multiple times)', () => {
       registerAllEffects();
       registerAllEffects();
-      expect(getAllEffects()).toHaveLength(7);
+      expect(getAllEffects()).toHaveLength(8);
     });
 
     it('each effect has property definitions', () => {

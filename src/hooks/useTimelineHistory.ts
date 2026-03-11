@@ -469,7 +469,31 @@ export function useTimelineHistory() {
     frame: number,
     value: number,
   ) => {
-    const keyframeId = useTimelineStore.getState().addKeyframe(layerId, trackId, frame, value);
+    const tl = useTimelineStore.getState();
+
+    // Check if this track belongs to an effect property track
+    const allEffectSources = [
+      ...tl.layers.flatMap((l) => (l.effectTracks ?? [])),
+      ...tl.layerGroups.flatMap((g) => (g.effectTracks ?? [])),
+      ...(tl.globalEffects ?? []),
+    ];
+    let effectMatch: { blockId: string; ptId: string } | null = null;
+    for (const et of allEffectSources) {
+      const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+      if (pt) { effectMatch = { blockId: et.effectBlock.id as string, ptId: pt.id as string }; break; }
+    }
+
+    if (effectMatch) {
+      const kfId = tl.addEffectKeyframe(
+        effectMatch.blockId as import('../types/effectBlock').EffectBlockId,
+        effectMatch.ptId as import('../types/effectBlock').EffectPropertyTrackId,
+        frame,
+        value as import('../types/effectBlock').EffectKeyframe['value'],
+      );
+      return kfId as unknown as KeyframeId;
+    }
+
+    const keyframeId = tl.addKeyframe(layerId, trackId, frame, value);
 
     // Get the keyframe that was just created
     const layer = useTimelineStore.getState().getLayer(layerId);
@@ -499,7 +523,23 @@ export function useTimelineHistory() {
     trackId: PropertyTrackId,
     keyframeId: KeyframeId,
   ) => {
-    const { getLayer, removeKeyframe: removeKeyframeStore } = useTimelineStore.getState();
+    const tl = useTimelineStore.getState();
+
+    // Check if this track belongs to an effect property track
+    const allEffectSources = [
+      ...tl.layers.flatMap((l) => (l.effectTracks ?? [])),
+      ...tl.layerGroups.flatMap((g) => (g.effectTracks ?? [])),
+      ...(tl.globalEffects ?? []),
+    ];
+    for (const et of allEffectSources) {
+      const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+      if (pt) {
+        tl.removeEffectKeyframe(et.effectBlock.id, pt.id, keyframeId);
+        return;
+      }
+    }
+
+    const { getLayer, removeKeyframe: removeKeyframeStore } = tl;
     const layer = getLayer(layerId);
     const track = layer?.propertyTracks.find((pt) => pt.id === trackId);
     const keyframe = track?.keyframes.find((kf) => kf.id === keyframeId);
