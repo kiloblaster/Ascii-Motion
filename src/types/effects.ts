@@ -5,7 +5,7 @@
  */
 
 // Core effect types
-export type EffectType = 'levels' | 'hue-saturation' | 'remap-colors' | 'remap-characters' | 'scatter';
+export type EffectType = 'levels' | 'hue-saturation' | 'remap-colors' | 'remap-characters' | 'scatter' | 'motion-trails';
 
 // Color range targeting for effects
 export interface ColorRange {
@@ -159,10 +159,25 @@ export interface EffectProcessingResult {
 export interface EffectHistoryAction {
   type: 'EFFECT_APPLIED';
   effectType: EffectType;
-  settings: LevelsEffectSettings | HueSaturationEffectSettings | RemapColorsEffectSettings | RemapCharactersEffectSettings | ScatterEffectSettings;
+  settings: LevelsEffectSettings | HueSaturationEffectSettings | RemapColorsEffectSettings | RemapCharactersEffectSettings | ScatterEffectSettings | MotionTrailsSettings;
   targetScope: 'canvas' | 'timeline';
   affectedFrames?: number[];
   timestamp: number;
+}
+
+export interface MotionTrailsSettings {
+  trailCount: number;
+  frameDelay: number;
+  trailColor1: string;
+  trailColor2: string;
+  trailColor3: string;
+  trailColor4: string;
+  trailColor5: string;
+  trailColor6: string;
+  trailColor7: string;
+  trailColor8: string;
+  trailColor9: string;
+  trailColor10: string;
 }
 
 // Export all settings as union type
@@ -171,7 +186,8 @@ export type EffectSettings =
   | HueSaturationEffectSettings 
   | RemapColorsEffectSettings 
   | RemapCharactersEffectSettings
-  | ScatterEffectSettings;
+  | ScatterEffectSettings
+  | MotionTrailsSettings;
 
 // Last applied effect info for re-apply functionality
 export interface LastAppliedEffect {

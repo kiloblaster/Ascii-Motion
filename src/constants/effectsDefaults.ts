@@ -10,7 +10,8 @@ import type {
   HueSaturationEffectSettings, 
   RemapColorsEffectSettings, 
   RemapCharactersEffectSettings,
-  ScatterEffectSettings
+  ScatterEffectSettings,
+  MotionTrailsSettings
 } from '../types/effects';
 
 // Effect definitions for UI rendering
@@ -48,6 +49,13 @@ export const EFFECT_DEFINITIONS: EffectDefinition[] = [
     name: 'Scatter',
     icon: 'ScatterChart',
     description: 'Randomly scatter characters with customizable patterns',
+    category: 'filter'
+  },
+  {
+    id: 'motion-trails',
+    name: 'Motion Trails',
+    icon: 'Layers',
+    description: 'Add trailing copies of animated content',
     category: 'filter'
   }
 ];
@@ -112,6 +120,21 @@ export const DEFAULT_SCATTER_SETTINGS: ScatterEffectSettings = {
   
   // Blend colors based on displacement distance
   blendColors: false
+};
+
+export const DEFAULT_MOTION_TRAILS_SETTINGS: MotionTrailsSettings = {
+  trailCount: 3,
+  frameDelay: 2,
+  trailColor1: '#AAAAAA',
+  trailColor2: '#999999',
+  trailColor3: '#888888',
+  trailColor4: '#777777',
+  trailColor5: '#666666',
+  trailColor6: '#555555',
+  trailColor7: '#444444',
+  trailColor8: '#333333',
+  trailColor9: '#282828',
+  trailColor10: '#222222',
 };
 
 // Canvas analysis settings

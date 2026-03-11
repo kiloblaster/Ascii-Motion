@@ -24,6 +24,7 @@ import { PROPERTY_DEFINITIONS } from '../types/timeline';
 import { interpolateKeyframes } from '../types/easing';
 import { CELL_ASPECT_RATIO } from '../utils/fontMetrics';
 import { applyEffectsToLayer, hasActiveEffectsAtFrame } from './effectsPipeline';
+import { getEffect } from '../registry/effectRegistry';
 
 // ============================================
 // MAIN COMPOSITING FUNCTION
@@ -55,6 +56,22 @@ export function compositeLayersAtFrame(
   // Check if any layer is solo'd
   const hasSoloLayer = layers.some((l) => l.solo);
 
+  // Identify groups with active screen-space effects for post-loop processing
+  const groupScreenEffectMap = new Map<string, EffectTrack[]>();
+  const groupCellMaps = new Map<string, Map<string, Cell>>();
+  if (groups) {
+    for (const group of groups) {
+      const screenTracks = (group.effectTracks ?? []).filter((t) => {
+        const entry = getEffect(t.effectBlock.effectType);
+        return !!entry?.screenSpace && t.effectBlock.enabled;
+      });
+      if (screenTracks.length > 0 && hasActiveEffectsAtFrame(screenTracks, frame)) {
+        groupScreenEffectMap.set(group.id, screenTracks);
+        groupCellMaps.set(group.id, new Map<string, Cell>());
+      }
+    }
+  }
+
   // Iterate layers from bottom to top (first in array = bottom)
   for (const layer of layers) {
     // Skip invisible layers
@@ -67,10 +84,20 @@ export function compositeLayersAtFrame(
     const contentFrame = getContentFrameAtTime(layer, frame);
     if (!contentFrame) continue;
 
+    // Split effects into local-space and screen-space
+    const localEffects = (layer.effectTracks ?? []).filter((t) => {
+      const entry = getEffect(t.effectBlock.effectType);
+      return !entry?.screenSpace;
+    });
+    const screenEffects = (layer.effectTracks ?? []).filter((t) => {
+      const entry = getEffect(t.effectBlock.effectType);
+      return !!entry?.screenSpace;
+    });
+
     // Apply per-layer procedural effects (non-destructive, in local space)
     let cellData = contentFrame.data;
-    if (layer.effectTracks?.length > 0 && hasActiveEffectsAtFrame(layer.effectTracks, frame)) {
-      cellData = applyEffectsToLayer(cellData, layer.effectTracks, frame, {
+    if (localEffects.length > 0 && hasActiveEffectsAtFrame(localEffects, frame)) {
+      cellData = applyEffectsToLayer(cellData, localEffects, frame, {
         canvasBackgroundColor: '#000000',
         frame,
         canvasWidth,
@@ -91,9 +118,13 @@ export function compositeLayersAtFrame(
     if (layer.parentGroupId && groups) {
       const group = groups.find((g) => g.id === layer.parentGroupId);
       if (group) {
-        // Apply group-level effects to this layer's cell data (before transforms)
-        if (group.effectTracks?.length > 0 && hasActiveEffectsAtFrame(group.effectTracks, frame)) {
-          cellData = applyEffectsToLayer(cellData, group.effectTracks, frame, {
+        // Apply only local (non-screen-space) group effects per-layer
+        const localGroupEffects = (group.effectTracks ?? []).filter((t) => {
+          const entry = getEffect(t.effectBlock.effectType);
+          return !entry?.screenSpace;
+        });
+        if (localGroupEffects.length > 0 && hasActiveEffectsAtFrame(localGroupEffects, frame)) {
+          cellData = applyEffectsToLayer(cellData, localGroupEffects, frame, {
             canvasBackgroundColor: '#000000',
             frame,
             canvasWidth,
@@ -132,6 +163,15 @@ export function compositeLayersAtFrame(
       rotation !== 0 ||
       anchorX !== 0 ||
       anchorY !== 0;
+
+    // Determine final destination: group temp map or result
+    const groupTarget = (layer.parentGroupId && groupCellMaps.has(layer.parentGroupId))
+      ? groupCellMaps.get(layer.parentGroupId)!
+      : result;
+
+    // If layer has screen-space effects, collect in a temp map first
+    const hasActiveScreenEffects = screenEffects.length > 0 && hasActiveEffectsAtFrame(screenEffects, frame);
+    const target = hasActiveScreenEffects ? new Map<string, Cell>() : groupTarget;
 
     // Apply each cell from the content frame
     if (hasTransform) {
@@ -200,7 +240,7 @@ export function compositeLayersAtFrame(
           const cell = cellData.get(sourceKey);
 
           if (cell && cell.char && cell.char !== ' ') {
-            result.set(`${sx},${sy}`, cell);
+            target.set(`${sx},${sy}`, cell);
           }
         }
       }
@@ -230,20 +270,110 @@ export function compositeLayersAtFrame(
           continue;
         }
 
-        result.set(coordKey, cell);
+        target.set(coordKey, cell);
       }
+    }
+
+    // Apply layer screen-space effects with temporal access, then merge into groupTarget
+    if (hasActiveScreenEffects) {
+      const frameCache = new Map<number, Map<string, Cell>>();
+      const getLayerCompositeAtFrame = (reqFrame: number): Map<string, Cell> => {
+        if (frameCache.has(reqFrame)) return frameCache.get(reqFrame)!;
+        const cells = compositeOneLayerToScreenSpace(
+          layer, reqFrame, canvasWidth, canvasHeight, cellAspectRatio, clip, groups,
+        );
+        frameCache.set(reqFrame, cells);
+        return cells;
+      };
+
+      const processed = applyEffectsToLayer(target, screenEffects, frame, {
+        canvasBackgroundColor: '#000000',
+        frame,
+        canvasWidth,
+        canvasHeight,
+        getLayerCompositeAtFrame,
+      });
+
+      processed.forEach((cell, key) => groupTarget.set(key, cell));
     }
   }
 
-  // Apply global effects post-compositing (screen space)
-  if (globalEffectTracks && globalEffectTracks.length > 0 && hasActiveEffectsAtFrame(globalEffectTracks, frame)) {
-    const globalResult = applyEffectsToLayer(result, globalEffectTracks, frame, {
+  // Apply screen-space group effects post-loop
+  for (const [groupId, screenTracks] of groupScreenEffectMap) {
+    const groupCells = groupCellMaps.get(groupId)!;
+    if (groupCells.size === 0) continue;
+
+    const frameCache = new Map<number, Map<string, Cell>>();
+    const getGroupCompositeAtFrame = (reqFrame: number): Map<string, Cell> => {
+      if (frameCache.has(reqFrame)) return frameCache.get(reqFrame)!;
+      // Re-composite just this group's child layers at the requested frame
+      const groupLayers = layers.filter((l) => l.parentGroupId === groupId);
+      const composite = compositeLayersAtFrame(
+        groupLayers, reqFrame, canvasWidth, canvasHeight, cellAspectRatio, clip, groups,
+      );
+      frameCache.set(reqFrame, composite);
+      return composite;
+    };
+
+    const processed = applyEffectsToLayer(groupCells, screenTracks, frame, {
       canvasBackgroundColor: '#000000',
       frame,
       canvasWidth,
       canvasHeight,
+      getLayerCompositeAtFrame: getGroupCompositeAtFrame,
     });
-    return globalResult;
+
+    processed.forEach((cell, key) => result.set(key, cell));
+  }
+
+  // Apply global effects post-compositing
+  if (globalEffectTracks && globalEffectTracks.length > 0 && hasActiveEffectsAtFrame(globalEffectTracks, frame)) {
+    // Split global effects into local and screen-space
+    const localGlobalEffects = globalEffectTracks.filter((t) => {
+      const entry = getEffect(t.effectBlock.effectType);
+      return !entry?.screenSpace;
+    });
+    const screenGlobalEffects = globalEffectTracks.filter((t) => {
+      const entry = getEffect(t.effectBlock.effectType);
+      return !!entry?.screenSpace;
+    });
+
+    // Apply local global effects
+    let globalCells = result;
+    if (localGlobalEffects.length > 0 && hasActiveEffectsAtFrame(localGlobalEffects, frame)) {
+      globalCells = applyEffectsToLayer(result, localGlobalEffects, frame, {
+        canvasBackgroundColor: '#000000',
+        frame,
+        canvasWidth,
+        canvasHeight,
+      });
+    }
+
+    // Apply screen-space global effects with temporal callback
+    if (screenGlobalEffects.length > 0 && hasActiveEffectsAtFrame(screenGlobalEffects, frame)) {
+      const frameCache = new Map<number, Map<string, Cell>>();
+      const getGlobalCompositeAtFrame = (reqFrame: number): Map<string, Cell> => {
+        if (frameCache.has(reqFrame)) return frameCache.get(reqFrame)!;
+        // Re-composite at the requested frame with only local global effects
+        const composite = compositeLayersAtFrame(
+          layers, reqFrame, canvasWidth, canvasHeight, cellAspectRatio, clip, groups,
+          localGlobalEffects.length > 0 ? localGlobalEffects : undefined,
+        );
+        frameCache.set(reqFrame, composite);
+        return composite;
+      };
+
+      const processed = applyEffectsToLayer(globalCells, screenGlobalEffects, frame, {
+        canvasBackgroundColor: '#000000',
+        frame,
+        canvasWidth,
+        canvasHeight,
+        getLayerCompositeAtFrame: getGlobalCompositeAtFrame,
+      });
+      return processed;
+    }
+
+    return globalCells;
   }
 
   return result;
@@ -478,4 +608,155 @@ export function getGroupPropertyValue(
   }
 
   return interpolateKeyframes(track.keyframes, frame, track.loopKeyframes);
+}
+
+// ============================================
+// SCREEN-SPACE EFFECT HELPERS
+// ============================================
+
+/**
+ * Composite a single layer to screen space at a given frame.
+ * Only applies local-space effects (no screen-space effects) to prevent recursion.
+ * Used by screen-space effects (e.g., Motion Trails) to look up previous frames.
+ */
+function compositeOneLayerToScreenSpace(
+  layer: Layer,
+  frame: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  cellAspectRatio: number,
+  clip: boolean,
+  groups?: LayerGroup[],
+): Map<string, Cell> {
+  const layerCells = new Map<string, Cell>();
+
+  const contentFrame = getContentFrameAtTime(layer, frame);
+  if (!contentFrame) return layerCells;
+
+  // Apply only non-screen-space (local) effects
+  let cellData = contentFrame.data;
+  const localEffects = (layer.effectTracks ?? []).filter((t) => {
+    const entry = getEffect(t.effectBlock.effectType);
+    return !entry?.screenSpace;
+  });
+
+  if (localEffects.length > 0 && hasActiveEffectsAtFrame(localEffects, frame)) {
+    cellData = applyEffectsToLayer(cellData, localEffects, frame, {
+      canvasBackgroundColor: '#000000',
+      frame,
+      canvasWidth,
+      canvasHeight,
+    });
+  }
+
+  // Resolve transform values
+  let posX = getPropertyValueAtFrame(layer, 'transform.position.x', frame);
+  let posY = getPropertyValueAtFrame(layer, 'transform.position.y', frame);
+  let scaleX = getPropertyValueAtFrame(layer, 'transform.scale.x', frame);
+  let scaleY = getPropertyValueAtFrame(layer, 'transform.scale.y', frame);
+  let rotation = getPropertyValueAtFrame(layer, 'transform.rotation', frame);
+  const anchorX = getPropertyValueAtFrame(layer, 'transform.anchorPoint.x', frame);
+  const anchorY = getPropertyValueAtFrame(layer, 'transform.anchorPoint.y', frame);
+
+  // Compose group transforms
+  if (layer.parentGroupId && groups) {
+    const group = groups.find((g) => g.id === layer.parentGroupId);
+    if (group) {
+      // Apply only local (non-screen-space) group effects
+      const localGroupEffects = (group.effectTracks ?? []).filter((t) => {
+        const entry = getEffect(t.effectBlock.effectType);
+        return !entry?.screenSpace;
+      });
+      if (localGroupEffects.length > 0 && hasActiveEffectsAtFrame(localGroupEffects, frame)) {
+        cellData = applyEffectsToLayer(cellData, localGroupEffects, frame, {
+          canvasBackgroundColor: '#000000',
+          frame,
+          canvasWidth,
+          canvasHeight,
+        });
+      }
+      posX += getGroupPropertyValue(group, 'transform.position.x', frame);
+      posY += getGroupPropertyValue(group, 'transform.position.y', frame);
+      scaleX *= getGroupPropertyValue(group, 'transform.scale.x', frame);
+      scaleY *= getGroupPropertyValue(group, 'transform.scale.y', frame);
+      rotation += getGroupPropertyValue(group, 'transform.rotation', frame);
+    }
+  }
+
+  const hasTransform =
+    posX !== 0 || posY !== 0 || scaleX !== 1 || scaleY !== 1 ||
+    rotation !== 0 || anchorX !== 0 || anchorY !== 0;
+
+  if (hasTransform) {
+    // Find local-space content bounds
+    let localMinX = Infinity, localMaxX = -Infinity;
+    let localMinY = Infinity, localMaxY = -Infinity;
+    for (const coordKey of cellData.keys()) {
+      const commaIdx = coordKey.indexOf(',');
+      const x = parseInt(coordKey.substring(0, commaIdx), 10);
+      const y = parseInt(coordKey.substring(commaIdx + 1), 10);
+      if (x < localMinX) localMinX = x;
+      if (x > localMaxX) localMaxX = x;
+      if (y < localMinY) localMinY = y;
+      if (y > localMaxY) localMaxY = y;
+    }
+
+    if (localMinX === Infinity) return layerCells;
+
+    const fwd = (x: number, y: number) => {
+      const lx = x - anchorX;
+      const ly = y - anchorY;
+      const sx = lx * scaleX;
+      const sy = ly * scaleY;
+      const { rotatedX, rotatedY } = applyRotation(sx, sy, rotation, cellAspectRatio);
+      return {
+        x: Math.round(rotatedX + anchorX + posX),
+        y: Math.round(rotatedY + anchorY + posY),
+      };
+    };
+
+    const corners = [
+      fwd(localMinX, localMinY),
+      fwd(localMaxX + 1, localMinY),
+      fwd(localMinX, localMaxY + 1),
+      fwd(localMaxX + 1, localMaxY + 1),
+    ];
+
+    let sMinX = Infinity, sMaxX = -Infinity;
+    let sMinY = Infinity, sMaxY = -Infinity;
+    for (const c of corners) {
+      if (c.x < sMinX) sMinX = c.x;
+      if (c.x > sMaxX) sMaxX = c.x;
+      if (c.y < sMinY) sMinY = c.y;
+      if (c.y > sMaxY) sMaxY = c.y;
+    }
+    sMinX -= 1; sMinY -= 1; sMaxX += 1; sMaxY += 1;
+
+    const transform = {
+      positionX: posX, positionY: posY, scaleX, scaleY, rotation,
+      anchorPointX: anchorX, anchorPointY: anchorY,
+    };
+
+    for (let sy = sMinY; sy <= sMaxY; sy++) {
+      for (let sx = sMinX; sx <= sMaxX; sx++) {
+        if (clip && (sx < 0 || sx >= canvasWidth || sy < 0 || sy >= canvasHeight)) continue;
+        const source = inverseTransformPoint(sx, sy, transform);
+        const cell = cellData.get(`${source.x},${source.y}`);
+        if (cell && cell.char && cell.char !== ' ') {
+          layerCells.set(`${sx},${sy}`, cell);
+        }
+      }
+    }
+  } else {
+    for (const [coordKey, cell] of cellData) {
+      if (!cell.char || cell.char === ' ') continue;
+      const commaIdx = coordKey.indexOf(',');
+      const finalX = parseInt(coordKey.substring(0, commaIdx), 10);
+      const finalY = parseInt(coordKey.substring(commaIdx + 1), 10);
+      if (clip && (finalX < 0 || finalX >= canvasWidth || finalY < 0 || finalY >= canvasHeight)) continue;
+      layerCells.set(coordKey, cell);
+    }
+  }
+
+  return layerCells;
 }
