@@ -3,7 +3,7 @@ import React from 'react';
 import { render, Box, Text } from 'ink';
 
 // Import your exported Ink component:
-import { AsciiMotionCli256 } from './ascii-motion-cli_256.js';
+import { AsciiMotionCliEffects } from './ascii-motion-cli-effects.js';
 
 // Parse CLI arguments
 const args = process.argv.slice(2);
@@ -101,7 +101,7 @@ const PlaceholderAnimation: React.FC<{ hasDarkBackground: boolean }> = ({ hasDar
 
 // Main app - using your exported component
 const App: React.FC = () => {
-  return <AsciiMotionCli256 hasDarkBackground={hasDarkBackground} autoPlay={true} loop={true} />;
+  return <AsciiMotionCliEffects hasDarkBackground={hasDarkBackground} autoPlay={true} loop={true} />;
 };
 
 render(<App />);

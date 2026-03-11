@@ -400,7 +400,7 @@ export class ExportRenderer {
           description: data.metadata.projectDescription || data.description,
           metadata: settings.includeMetadata ? {
             exportedAt: new Date().toISOString(),
-            exportVersion: '2.0.0',
+            exportVersion: '2.1.0',
             userAgent: navigator.userAgent
           } : undefined,
           // Attach shared state that the timeline store doesn't track
@@ -3274,7 +3274,7 @@ export class ExportRenderer {
     lines.push('var frames = []Frame{');
     for (const frame of framesData) {
       lines.push('\t{');
-      lines.push(`\t\tDuration: ${frame.duration} * time.Millisecond,`);
+      lines.push(`\t\tDuration: ${Math.round(frame.duration)} * time.Millisecond,`);
       lines.push('\t\tContent: []string{');
       for (const row of frame.content) {
         lines.push(`\t\t\t${JSON.stringify(row)},`);

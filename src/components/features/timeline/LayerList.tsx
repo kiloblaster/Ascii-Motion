@@ -15,6 +15,7 @@ import { useTimelineHistory } from '../../../hooks/useTimelineHistory';
 import { useLayerLimit } from '../../../hooks/useLayerLimit';
 import { LayerListItem } from './LayerListItem';
 import { GroupHeader } from './GroupHeader';
+import { GlobalEffectsTrackHeader } from './GlobalEffectsTrackHeader';
 import { LayerContextMenu, type LayerContextMenuState } from './LayerContextMenu';
 import { LayerMenu } from './LayerMenu';
 import { cn } from '@/lib/utils';
@@ -334,12 +335,17 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
       <div className="h-6 flex-shrink-0 border-b border-border/50 bg-muted/30" />
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-y-scroll"
       >
       {/* Build display list with group headers interleaved */}
       {(() => {
         const renderedGroupIds = new Set<string>();
         const items: React.ReactNode[] = [];
+
+        // Global effects track at top (always visible for adding effects)
+        items.push(
+          <GlobalEffectsTrackHeader key="global-effects" />
+        );
 
         displayLayers.forEach((layer, displayIndex) => {
           // Check if this layer belongs to a group

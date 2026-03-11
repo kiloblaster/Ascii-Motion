@@ -39,6 +39,7 @@ import {
 export function useCompositedCanvas() {
   const layers = useTimelineStore((s) => s.layers);
   const layerGroups = useTimelineStore((s) => s.layerGroups);
+  const globalEffects = useTimelineStore((s) => s.globalEffects);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
   const canvasWidth = useCanvasStore((s) => s.width);
@@ -64,8 +65,9 @@ export function useCompositedCanvas() {
           if (k === 'transform.scale.x' || k === 'transform.scale.y') return v !== 1;
           return v !== 0;
         });
+      const hasEffects = layer.effectTracks.length > 0 || globalEffects.length > 0;
       
-      if (!hasTransforms) {
+      if (!hasTransforms && !hasEffects) {
         const activeContentFrame = getContentFrameAtTime(layer, currentFrame);
         if (activeContentFrame) {
           return canvasCells;
@@ -100,8 +102,9 @@ export function useCompositedCanvas() {
       undefined,
       false,
       layerGroups,
+      globalEffects,
     );
-  }, [layers, layerGroups, currentFrame, activeLayerId, canvasCells, canvasWidth, canvasHeight, isLayerMode]);
+  }, [layers, layerGroups, globalEffects, currentFrame, activeLayerId, canvasCells, canvasWidth, canvasHeight, isLayerMode]);
 
   // Cell getter function for the renderer
   const getCompositedCell = useMemo(() => {

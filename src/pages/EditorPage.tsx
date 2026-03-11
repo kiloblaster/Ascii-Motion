@@ -20,7 +20,6 @@ import { AsciiTypePreviewDialog } from '../components/features/AsciiTypePreviewD
 import { ImportModal } from '../components/features/ImportModal'
 import { MediaImportPanel } from '../components/features/MediaImportPanel'
 import { GradientPanel } from '../components/features/GradientPanel'
-import { EffectsPanel } from '../components/features/EffectsPanel'
 import { GeneratorsPanel } from '../components/features/GeneratorsPanel'
 import { ImageExportDialog } from '../components/features/ImageExportDialog'
 import { VideoExportDialog } from '../components/features/VideoExportDialog'
@@ -32,10 +31,6 @@ import { ReactExportDialog } from '../components/features/ReactExportDialog'
 import { InkExportDialog } from '../components/features/InkExportDialog'
 import { OpenTuiExportDialog } from '../components/features/OpenTuiExportDialog'
 import { BubbleteaExportDialog } from '../components/features/BubbleteaExportDialog'
-import { SetFrameDurationDialog } from '../components/features/timeEffects/SetFrameDurationDialog'
-import { AddFramesDialog } from '../components/features/timeEffects/AddFramesDialog'
-import { WaveWarpDialog } from '../components/features/timeEffects/WaveWarpDialog'
-import { WiggleDialog } from '../components/features/timeEffects/WiggleDialog'
 import { NewProjectDialog } from '../components/features/NewProjectDialog'
 import { ProjectSettingsDialog } from '../components/features/ProjectSettingsDialog'
 import { WelcomeDialog } from '../components/features/WelcomeDialog'
@@ -195,7 +190,6 @@ export function EditorPage() {
       <ImportModal />
       <MediaImportPanel />
       <GradientPanel />
-      <EffectsPanel />
       <GeneratorsPanel />
       <ImageExportDialog />
       <VideoExportDialog />
@@ -207,12 +201,6 @@ export function EditorPage() {
       <InkExportDialog />
       <OpenTuiExportDialog />
       <BubbleteaExportDialog />
-      
-      {/* Time Effects Dialogs */}
-      <SetFrameDurationDialog />
-      <AddFramesDialog />
-      <WaveWarpDialog />
-      <WiggleDialog />
       
       {/* Project Management Dialogs */}
       <NewProjectDialog />

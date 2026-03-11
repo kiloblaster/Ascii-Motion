@@ -288,17 +288,37 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     const tl = useTimelineStore.getState();
     const layers = tl.layers;
 
-    // Find target track — search layers first, then groups
+    // Find target track — search layers, groups, and effect tracks
     let targetPropertyPath: string | undefined;
     const targetLayer = layers.find((l) => l.id === layerId);
     if (targetLayer) {
       const track = targetLayer.propertyTracks.find((t) => t.id === trackId);
       if (track) targetPropertyPath = track.propertyPath;
+      // Search layer effect property tracks
+      if (!targetPropertyPath) {
+        for (const et of (targetLayer.effectTracks ?? [])) {
+          const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+          if (pt) { targetPropertyPath = pt.propertyPath; break; }
+        }
+      }
     }
     if (!targetPropertyPath) {
       for (const group of tl.layerGroups) {
         const track = group.propertyTracks.find((t) => t.id === trackId);
         if (track) { targetPropertyPath = track.propertyPath; break; }
+        // Search group effect property tracks
+        for (const et of (group.effectTracks ?? [])) {
+          const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+          if (pt) { targetPropertyPath = pt.propertyPath; break; }
+        }
+        if (targetPropertyPath) break;
+      }
+    }
+    // Search global effects
+    if (!targetPropertyPath) {
+      for (const et of (tl.globalEffects ?? [])) {
+        const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+        if (pt) { targetPropertyPath = pt.propertyPath; break; }
       }
     }
     if (!targetPropertyPath) return;

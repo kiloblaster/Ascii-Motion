@@ -164,10 +164,11 @@ export const useOptimizedPlayback = () => {
 
     if (isLayerMode) {
       const groups = useTimelineStore.getState().layerGroups;
+      const globalEffectTracks = useTimelineStore.getState().globalEffects;
       precomputedFrames = [];
       for (let f = 0; f < durationFrames; f++) {
         precomputedFrames.push(
-          compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight, undefined, true, groups),
+          compositeLayersAtFrame(layers, f, canvasWidth, canvasHeight, undefined, true, groups, globalEffectTracks),
         );
       }
     }

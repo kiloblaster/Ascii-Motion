@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	anim "bubbletea-test-cli/animations/copilotspin"
+	anim "bubbletea-test-cli/animations/effects3"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

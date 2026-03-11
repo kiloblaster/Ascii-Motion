@@ -21,6 +21,7 @@ import { KeyframeEditorPanel } from './timeline/KeyframeEditorPanel';
 import { OnionSkinControls } from './OnionSkinControls';
 import { LayerPropertiesPanel } from './timeline/LayerPropertiesPanel';
 import { GroupPropertiesPanel } from './timeline/GroupPropertiesPanel';
+import { EffectPropertiesPanel } from './timeline/EffectPropertiesPanel';
 import { Button } from '../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { Slider } from '../ui/slider';
@@ -165,6 +166,7 @@ const TimelineFooter = React.memo(function TimelineFooter({
 
 export const TimelinePanel: React.FC = () => {
   const editingKeyframeId = useTimelineStore((s) => s.view.editingKeyframeId);
+  const selectedEffectBlockId = useTimelineStore((s) => s.view.selectedEffectBlockId);
   const showLayerProperties = useTimelineStore((s) => s.view.showLayerProperties);
   const setShowLayerProperties = useTimelineStore((s) => s.setShowLayerProperties);
   const activeTool = useToolStore((s) => s.activeTool);
@@ -184,36 +186,50 @@ export const TimelinePanel: React.FC = () => {
     }
   }, [activeTool, setShowLayerProperties]);
 
-  // Sync vertical scroll between layer list and track area
+  // Unified vertical scroll: Both panels scroll together.
+  // Wheel events are intercepted and applied to both simultaneously for zero delay.
+  // TrackArea has overflow-y: scroll for a visible scrollbar handle.
+  // Scrollbar drag is synced via a scroll event listener.
   const layerListScrollRef = useRef<HTMLDivElement>(null);
   const trackAreaScrollRef = useRef<HTMLDivElement>(null);
-  const isSyncingScroll = useRef(false);
 
   useEffect(() => {
     const layerEl = layerListScrollRef.current;
     const trackEl = trackAreaScrollRef.current;
     if (!layerEl || !trackEl) return;
 
-    const syncFromLayers = () => {
-      if (isSyncingScroll.current) return;
-      isSyncingScroll.current = true;
+    let isWheelScrolling = false;
+
+    // Unified wheel handler: apply deltaY to both panels simultaneously
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+      if (e.deltaY === 0) return;
+
+      const maxScroll = Math.max(0, trackEl.scrollHeight - trackEl.clientHeight);
+      const newTop = Math.max(0, Math.min(maxScroll, trackEl.scrollTop + e.deltaY));
+
+      isWheelScrolling = true;
+      trackEl.scrollTop = newTop;
+      layerEl.scrollTop = newTop;
+      requestAnimationFrame(() => { isWheelScrolling = false; });
+
+      e.preventDefault();
+    };
+
+    // Sync from scrollbar drag on LayerList (scroll events not caused by our wheel handler)
+    const syncFromScrollbar = () => {
+      if (isWheelScrolling) return;
       trackEl.scrollTop = layerEl.scrollTop;
-      requestAnimationFrame(() => { isSyncingScroll.current = false; });
     };
 
-    const syncFromTracks = () => {
-      if (isSyncingScroll.current) return;
-      isSyncingScroll.current = true;
-      layerEl.scrollTop = trackEl.scrollTop;
-      requestAnimationFrame(() => { isSyncingScroll.current = false; });
-    };
-
-    layerEl.addEventListener('scroll', syncFromLayers);
-    trackEl.addEventListener('scroll', syncFromTracks);
+    layerEl.addEventListener('wheel', handleWheel, { passive: false });
+    trackEl.addEventListener('wheel', handleWheel, { passive: false });
+    layerEl.addEventListener('scroll', syncFromScrollbar, { passive: true });
 
     return () => {
-      layerEl.removeEventListener('scroll', syncFromLayers);
-      trackEl.removeEventListener('scroll', syncFromTracks);
+      layerEl.removeEventListener('wheel', handleWheel);
+      trackEl.removeEventListener('wheel', handleWheel);
+      layerEl.removeEventListener('scroll', syncFromScrollbar);
     };
   }, []);
 
@@ -241,7 +257,7 @@ export const TimelinePanel: React.FC = () => {
             </div>
 
             {/* Right: Keyframe editor or Layer/Group properties */}
-            {editingKeyframeId ? <KeyframeEditorPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : <GroupPropertiesPanel />}
+            {editingKeyframeId ? <KeyframeEditorPanel /> : selectedEffectBlockId ? <EffectPropertiesPanel /> : showLayerProperties ? <LayerPropertiesPanel /> : <GroupPropertiesPanel />}
           </div>
         </div>
   );

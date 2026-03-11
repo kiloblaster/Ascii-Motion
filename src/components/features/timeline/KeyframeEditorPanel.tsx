@@ -18,6 +18,7 @@ import React, { useMemo, useState } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
 import { EasingCurveEditor } from './EasingCurveEditor';
+import { useScrubInput } from '../../../hooks/useScrubInput';
 import { Input } from '../../ui/input';
 import { Label } from '../../ui/label';
 import { Switch } from '../../ui/switch';
@@ -34,6 +35,7 @@ export const KeyframeEditorPanel: React.FC = () => {
   const selectedKeyframeIds = useTimelineStore((s) => s.view.selectedKeyframeIds);
   const layers = useTimelineStore((s) => s.layers);
   const layerGroups = useTimelineStore((s) => s.layerGroups);
+  const globalEffects = useTimelineStore((s) => s.globalEffects);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const moveKeyframe = useTimelineStore((s) => s.moveKeyframe);
   const updateKeyframe = useTimelineStore((s) => s.updateKeyframe);
@@ -45,13 +47,20 @@ export const KeyframeEditorPanel: React.FC = () => {
 
   const multiSelectCount = selectedKeyframeIds.size;
 
-  // Find the keyframe being edited across all layers/tracks and groups
+  // Find the keyframe being edited across all layers/tracks, groups, and effect blocks
   const kfData = useMemo(() => {
     if (!editingKeyframeId) return null;
     for (const layer of layers) {
       for (const track of layer.propertyTracks) {
         const kf = track.keyframes.find((k) => k.id === editingKeyframeId);
         if (kf) return { layerId: layer.id, trackId: track.id, keyframe: kf, track };
+      }
+      // Search effect block property tracks
+      for (const et of (layer.effectTracks ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          const kf = pt.keyframes.find((k) => k.id === editingKeyframeId);
+          if (kf) return { layerId: layer.id, trackId: pt.id as unknown as typeof layer.propertyTracks[0]['id'], keyframe: kf as unknown as typeof layer.propertyTracks[0]['keyframes'][0], track: pt as unknown as typeof layer.propertyTracks[0] };
+        }
       }
     }
     for (const group of layerGroups) {
@@ -62,9 +71,27 @@ export const KeyframeEditorPanel: React.FC = () => {
           return { layerId: proxyLayerId, trackId: track.id, keyframe: kf, track };
         }
       }
+      // Search group effect block property tracks
+      for (const et of (group.effectTracks ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          const kf = pt.keyframes.find((k) => k.id === editingKeyframeId);
+          if (kf) {
+            const proxyLayerId = group.childLayerIds[0] ?? ('' as typeof layers[0]['id']);
+            return { layerId: proxyLayerId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0], track: pt as unknown as typeof layers[0]['propertyTracks'][0] };
+          }
+        }
+      }
+    }
+    // Search global effects
+    const proxyId = layers.length > 0 ? layers[0].id : ('' as typeof layers[0]['id']);
+    for (const et of (globalEffects ?? [])) {
+      for (const pt of et.effectBlock.propertyTracks) {
+        const kf = pt.keyframes.find((k) => k.id === editingKeyframeId);
+        if (kf) return { layerId: proxyId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0], track: pt as unknown as typeof layers[0]['propertyTracks'][0] };
+      }
     }
     return null;
-  }, [editingKeyframeId, layers, layerGroups]);
+  }, [editingKeyframeId, layers, layerGroups, globalEffects]);
 
   // All selected keyframes (for batch operations)
   const selectedKeyframeEntries = useMemo(() => {
@@ -90,10 +117,30 @@ export const KeyframeEditorPanel: React.FC = () => {
     return entries;
   }, [selectedKeyframeIds, layers, layerGroups]);
 
+  const frameScrub = useScrubInput({
+    value: kfData?.keyframe.frame ?? 0,
+    onChange: (v) => {
+      if (kfData) moveKeyframe(kfData.layerId, kfData.trackId, kfData.keyframe.id, Math.max(0, Math.round(v)));
+    },
+    step: 1,
+    min: 0,
+  });
+
+  const kfDef = kfData ? PROPERTY_DEFINITIONS[kfData.track.propertyPath] : undefined;
+  const valueScrub = useScrubInput({
+    value: (kfData?.keyframe.value as number) ?? 0,
+    onChange: (v) => {
+      if (kfData) updateKeyframe(kfData.layerId, kfData.trackId, kfData.keyframe.id, { value: v });
+    },
+    step: kfDef?.step ?? 1,
+    min: kfDef?.min,
+    max: kfDef?.max,
+  });
+
   if (!kfData) return null;
 
   const { layerId, trackId, keyframe, track } = kfData;
-  const definition = PROPERTY_DEFINITIONS[track.propertyPath];
+  const definition = kfDef;
 
   const handleFrameChange = (value: string) => {
     const frame = parseInt(value, 10);
@@ -164,12 +211,12 @@ export const KeyframeEditorPanel: React.FC = () => {
         {/* Frame + Value */}
         <div className="flex gap-1.5">
           <div className="flex-1">
-            <Label className="text-[10px] text-muted-foreground">Frame</Label>
+            <Label className="text-[10px] text-muted-foreground cursor-ew-resize" onMouseDown={frameScrub.onMouseDown}>Frame</Label>
             <Input type="number" value={keyframe.frame} onChange={(e) => handleFrameChange(e.target.value)}
               className="h-6 text-xs mt-0.5" min={0} />
           </div>
           <div className="flex-1">
-            <Label className="text-[10px] text-muted-foreground">
+            <Label className="text-[10px] text-muted-foreground cursor-ew-resize" onMouseDown={valueScrub.onMouseDown}>
               Value{definition?.unit ? ` (${definition.unit})` : ''}
             </Label>
             <Input type="number" value={keyframe.value as number} onChange={(e) => handleValueChange(e.target.value)}

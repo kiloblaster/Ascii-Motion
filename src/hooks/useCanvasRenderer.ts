@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useCanvasStore } from '../stores/canvasStore';
 import { useToolStore } from '../stores/toolStore';
 import { usePreviewStore } from '../stores/previewStore';
-import { useEffectsStore } from '../stores/effectsStore';
-import { useTimeEffectsStore } from '../stores/timeEffectsStore';
 import { useAsciiTypeStore } from '../stores/asciiTypeStore';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -99,8 +97,6 @@ export const useCanvasRenderer = () => {
   const linePreview = useToolStore((s) => s.linePreview);
   const previewData = usePreviewStore((s) => s.previewData);
   const isPreviewActive = usePreviewStore((s) => s.isPreviewActive);
-  const isEffectPreviewActive = useEffectsStore((s) => s.isPreviewActive);
-  const isTimeEffectPreviewActive = useTimeEffectsStore((s) => s.isPreviewActive);
   const previewOrigin = useAsciiTypeStore((s) => s.previewOrigin);
   const previewDimensions = useAsciiTypeStore((s) => s.previewDimensions);
   
@@ -268,12 +264,7 @@ export const useCanvasRenderer = () => {
     }
 
     // Draw static cells (excluding cells being moved)
-    const isEffectPreviewMode = isTimeEffectPreviewActive || isEffectPreviewActive;
-    // During effects preview, the preview data contains the full composited result
-    // (all layers composited with the effect applied). Skip the normal cell-drawing
-    // pass entirely and let the preview pass handle all rendering to avoid
-    // unaffected cells (e.g. scatter source positions) bleeding through.
-    const skipBaseRenderForEffectPreview = isEffectPreviewMode && isPreviewActive && previewData.size > 0;
+    const skipBaseRenderForEffectPreview = false;
     
     if (!skipBaseRenderForEffectPreview) {
     // Draw all static cells
@@ -462,37 +453,19 @@ export const useCanvasRenderer = () => {
     // Draw text cursor overlay 
     if (isPreviewActive && previewData.size > 0) {
       // Check if this is an effects preview (should be fully opaque) or other preview (semi-transparent)
-      const isEffectsPreview = isEffectPreviewActive || isTimeEffectPreviewActive;
-      const previewAlpha = isEffectsPreview ? 1.0 : 0.8; // Effects: full opacity, others: semi-transparent
+      const previewAlpha = 0.8;
       
-      if (isEffectsPreview) {
-        // For effects previews, render preview cells on top of the dimmed layers
-        // (other layers are already drawn at 50% opacity above)
-        ctx.save();
-        ctx.globalAlpha = previewAlpha;
+      previewData.forEach((cell, key) => {
+        const [x, y] = key.split(',').map(Number);
         
-        previewData.forEach((cell, key) => {
-          const [x, y] = key.split(',').map(Number);
-          if (x >= 0 && x < canvasConfig.width && y >= 0 && y < canvasConfig.height) {
-            drawCell(ctx, x, y, cell);
-          }
-        });
-        
-        ctx.restore();
-      } else {
-        // For non-effects previews, only draw the preview cells (existing behavior)
-        previewData.forEach((cell, key) => {
-          const [x, y] = key.split(',').map(Number);
-          
-          // Only draw if within canvas bounds
-          if (x >= 0 && x < canvasConfig.width && y >= 0 && y < canvasConfig.height) {
-            ctx.save();
-            ctx.globalAlpha = previewAlpha;
-            drawCell(ctx, x, y, cell);
-            ctx.restore();
-          }
-        });
-      }
+        // Only draw if within canvas bounds
+        if (x >= 0 && x < canvasConfig.width && y >= 0 && y < canvasConfig.height) {
+          ctx.save();
+          ctx.globalAlpha = previewAlpha;
+          drawCell(ctx, x, y, cell);
+          ctx.restore();
+        }
+      });
 
       // Draw purple dotted outline for ASCII Type preview
       if (activeTool === 'asciitype' && previewOrigin && previewDimensions) {
@@ -550,9 +523,6 @@ export const useCanvasRenderer = () => {
     // Preview store values
     previewData,
     isPreviewActive,
-    // Effects preview state
-    isEffectPreviewActive,
-    isTimeEffectPreviewActive,
     // ASCII Type preview outline state
     previewOrigin,
     previewDimensions,

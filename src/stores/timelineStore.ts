@@ -26,7 +26,6 @@ import type {
   PropertyPath,
   TimelineConfig,
   TimelineViewState,
-  EffectInstance,
   SessionDataV2,
 } from '../types/timeline';
 import {
@@ -41,8 +40,16 @@ import {
 import { defaultEasing } from '../types/easing';
 import { canAddLayer } from '../utils/layerLimits';
 import { compositeLayersAtFrame } from '../utils/layerCompositing';
+import type { EffectTrack, EffectKeyframe } from '../types/effectBlock';
+import {
+  generateEffectBlockId,
+  generateEffectTrackId,
+  generateEffectPropertyTrackId,
+} from '../types/effectBlock';
+import { getEffect } from '../registry/effectRegistry';
+import { bakeEffectIntoFrames } from '../utils/effectsPipeline';
 
-/** Helper: find a track and a keyframe at a specific frame across layers and groups */
+/** Helper: find a track and a keyframe at a specific frame across layers, groups, and effect blocks */
 function findTrackKeyframeByFrame(
   state: { layers: Layer[]; layerGroups: LayerGroup[] },
   trackId: PropertyTrackId,
@@ -54,6 +61,14 @@ function findTrackKeyframeByFrame(
       const kf = track.keyframes.find((k) => k.frame === frame);
       return { track, kf: kf ?? null };
     }
+    // Search effect property tracks
+    for (const et of (layer.effectTracks ?? [])) {
+      const ept = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+      if (ept) {
+        const kf = ept.keyframes.find((k) => k.frame === frame);
+        return { track: ept as unknown as typeof layer.propertyTracks[0], kf: (kf ?? null) as typeof layer.propertyTracks[0]['keyframes'][0] | null };
+      }
+    }
   }
   for (const group of state.layerGroups) {
     const track = group.propertyTracks.find((t) => t.id === trackId);
@@ -61,8 +76,87 @@ function findTrackKeyframeByFrame(
       const kf = track.keyframes.find((k) => k.frame === frame);
       return { track, kf: kf ?? null };
     }
+    // Search group effect property tracks
+    for (const et of (group.effectTracks ?? [])) {
+      const ept = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+      if (ept) {
+        const kf = ept.keyframes.find((k) => k.frame === frame);
+        return { track: ept as unknown as typeof group.propertyTracks[0], kf: (kf ?? null) as typeof group.propertyTracks[0]['keyframes'][0] | null };
+      }
+    }
   }
   return { track: null, kf: null };
+}
+
+/**
+ * Helper: apply a keyframe updater to an effect property track by trackId.
+ * Searches all layers' effectTracks, groups' effectTracks, and globalEffects.
+ * Returns updated state slices if found, or null if the trackId was not found.
+ */
+function updateEffectPropertyTrackKeyframes(
+  state: { layers: Layer[]; layerGroups: LayerGroup[]; globalEffects: EffectTrack[] },
+  trackId: string,
+  updater: (keyframes: EffectKeyframe[]) => EffectKeyframe[],
+): { layers?: Layer[]; layerGroups?: LayerGroup[]; globalEffects?: EffectTrack[] } | null {
+  // Search layers
+  for (const layer of state.layers) {
+    for (const et of (layer.effectTracks ?? [])) {
+      if (et.effectBlock.propertyTracks.some((pt) => (pt.id as string) === trackId)) {
+        return {
+          layers: state.layers.map((l) => l.id !== layer.id ? l : {
+            ...l,
+            effectTracks: l.effectTracks.map((t) => t.id !== et.id ? t : {
+              ...t,
+              effectBlock: {
+                ...t.effectBlock,
+                propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+                  (pt.id as string) !== trackId ? pt : { ...pt, keyframes: updater(pt.keyframes) },
+                ),
+              },
+            }),
+          }),
+        };
+      }
+    }
+  }
+  // Search groups
+  for (const group of state.layerGroups) {
+    for (const et of (group.effectTracks ?? [])) {
+      if (et.effectBlock.propertyTracks.some((pt) => (pt.id as string) === trackId)) {
+        return {
+          layerGroups: state.layerGroups.map((g) => g.id !== group.id ? g : {
+            ...g,
+            effectTracks: g.effectTracks.map((t) => t.id !== et.id ? t : {
+              ...t,
+              effectBlock: {
+                ...t.effectBlock,
+                propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+                  (pt.id as string) !== trackId ? pt : { ...pt, keyframes: updater(pt.keyframes) },
+                ),
+              },
+            }),
+          }),
+        };
+      }
+    }
+  }
+  // Search global
+  for (const et of state.globalEffects) {
+    if (et.effectBlock.propertyTracks.some((pt) => (pt.id as string) === trackId)) {
+      return {
+        globalEffects: state.globalEffects.map((t) => t.id !== et.id ? t : {
+          ...t,
+          effectBlock: {
+            ...t.effectBlock,
+            propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+              (pt.id as string) !== trackId ? pt : { ...pt, keyframes: updater(pt.keyframes) },
+            ),
+          },
+        }),
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -150,7 +244,7 @@ export interface TimelineState {
   layerGroups: LayerGroup[];
 
   // Global effects
-  globalEffects: EffectInstance[];
+  globalEffects: EffectTrack[];
 
   // View state
   view: TimelineViewState;
@@ -358,6 +452,102 @@ export interface TimelineState {
   ungroupLayers: (groupId: LayerGroupId) => void;
 
   // ============================================
+  // EFFECT TRACK ACTIONS (Procedural Effects)
+  // ============================================
+
+  /** Add an effect block to a layer, group, or global track */
+  addEffectBlock: (
+    ownerId: LayerId | LayerGroupId | null,
+    effectType: string,
+    startFrame: number,
+    durationFrames: number,
+  ) => import('../types/effectBlock').EffectBlockId | null;
+
+  /** Remove an effect block */
+  removeEffectBlock: (
+    ownerId: LayerId | LayerGroupId | null,
+    blockId: import('../types/effectBlock').EffectBlockId,
+  ) => void;
+
+  /** Update an effect block's timing (in/out points) */
+  updateEffectBlockTiming: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    startFrame: number,
+    durationFrames: number,
+  ) => void;
+
+  /** Update an effect block's settings */
+  updateEffectBlockSettings: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    settings: Partial<Record<string, unknown>>,
+  ) => void;
+
+  /** Reorder effect tracks (z-order) within a layer or group */
+  reorderEffectTracks: (
+    ownerId: LayerId | LayerGroupId | null,
+    fromIndex: number,
+    toIndex: number,
+  ) => void;
+
+  /** Toggle an effect block's enabled state (bypass) */
+  toggleEffectBlockEnabled: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+  ) => void;
+
+  /** Add a property track to an effect block (if not already present) and return its ID */
+  addEffectPropertyTrack: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    propertyPath: string,
+  ) => import('../types/effectBlock').EffectPropertyTrackId | null;
+
+  /** Add a keyframe to an effect property track */
+  addEffectKeyframe: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    trackId: import('../types/effectBlock').EffectPropertyTrackId,
+    frame: number,
+    value: import('../types/effectBlock').EffectKeyframe['value'],
+  ) => import('../types/timeline').KeyframeId;
+
+  /** Remove a keyframe from an effect property track */
+  removeEffectKeyframe: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    trackId: import('../types/effectBlock').EffectPropertyTrackId,
+    keyframeId: KeyframeId,
+  ) => void;
+
+  /** Update a keyframe on an effect property track */
+  updateEffectKeyframe: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    trackId: import('../types/effectBlock').EffectPropertyTrackId,
+    keyframeId: KeyframeId,
+    updates: Partial<Pick<import('../types/effectBlock').EffectKeyframe, 'frame' | 'value' | 'easing'>>,
+  ) => void;
+
+  /** Select an effect block (shows properties in sidebar) */
+  selectEffectBlock: (blockId: import('../types/effectBlock').EffectBlockId | null) => void;
+
+  /** Toggle effect track expanded (show property keyframe sub-rows) */
+  toggleEffectTrackExpanded: (blockId: import('../types/effectBlock').EffectBlockId) => void;
+
+  /** Set which effect keyframe is being edited */
+  setEditingEffectKeyframe: (keyframeId: KeyframeId | null) => void;
+
+  /** Toggle global effects section expanded/collapsed */
+  toggleGlobalEffectsExpanded: () => void;
+
+  /** Move an effect track from one owner to another (for cross-layer drag) */
+  moveEffectTrack: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+    targetOwnerId: LayerId | LayerGroupId | null,
+    targetIndex?: number,
+  ) => void;
+
+  /** Bake (apply) an effect destructively to layer canvas data, then remove the effect block */
+  bakeEffect: (
+    blockId: import('../types/effectBlock').EffectBlockId,
+  ) => void;
+
+  // ============================================
   // PROJECT LIFECYCLE
   // ============================================
 
@@ -365,7 +555,7 @@ export interface TimelineState {
   createNewProject: () => void;
 
   /** Load state from session data (used by session importer) */
-  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>, layerGroups?: LayerGroup[]) => void;
+  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>, layerGroups?: LayerGroup[], globalEffects?: EffectTrack[]) => void;
 
   /** Serialize current state to SessionDataV2 format (used by session exporter) */
   getSessionData: () => SessionDataV2;
@@ -403,6 +593,10 @@ const INITIAL_VIEW: TimelineViewState = {
   workAreaEnd: 1,
   workAreaEnabled: false,
   timecodeFormat: 'timecode' as const,
+  selectedEffectBlockId: null,
+  expandedEffectTrackIds: new Set(),
+  editingEffectKeyframeId: null,
+  globalEffectsExpanded: true,
 };
 
 // ============================================
@@ -472,6 +666,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': anchorX,
           'transform.anchorPoint.y': anchorY,
         },
+        effectTracks: [],
       };
 
       // Insert above active layer (or at top if none active)
@@ -677,7 +872,7 @@ export const useTimelineStore = create<TimelineState>()(
 
     setActiveLayer: (layerId) => {
       set((state) => ({
-        view: { ...state.view, activeLayerId: layerId, activeGroupId: null },
+        view: { ...state.view, activeLayerId: layerId, activeGroupId: null, selectedEffectBlockId: null },
       }));
     },
 
@@ -722,6 +917,7 @@ export const useTimelineStore = create<TimelineState>()(
         view: {
           ...state.view,
           activeGroupId: groupId,
+          selectedEffectBlockId: null,
           // Clear active layer and showLayerProperties when selecting a group
           ...(groupId ? { activeLayerId: null, showLayerProperties: false } : {}),
         },
@@ -1031,8 +1227,12 @@ export const useTimelineStore = create<TimelineState>()(
             }),
           })),
         }));
-      } else {
-        // Fall back to layerGroups
+        return id;
+      }
+
+      // Try layerGroups
+      const group = get().layerGroups.find((g) => g.propertyTracks.some((pt) => pt.id === trackId));
+      if (group) {
         set((state) => ({
           layerGroups: state.layerGroups.map((g) => {
             const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
@@ -1053,7 +1253,24 @@ export const useTimelineStore = create<TimelineState>()(
             };
           }),
         }));
+        return id;
       }
+
+      // Fallback: effect property tracks
+      const effectUpdate = updateEffectPropertyTrackKeyframes(
+        get(),
+        trackId as string,
+        (kfs) => {
+          const existingIndex = kfs.findIndex((kf) => kf.frame === frame);
+          if (existingIndex !== -1) {
+            const updated = [...kfs];
+            updated[existingIndex] = { ...updated[existingIndex], value };
+            return updated;
+          }
+          return [...kfs, { id, frame, value, easing: defaultEasing() } as EffectKeyframe].sort((a, b) => a.frame - b.frame);
+        },
+      );
+      if (effectUpdate) set(effectUpdate);
 
       return id;
     },
@@ -1072,12 +1289,14 @@ export const useTimelineStore = create<TimelineState>()(
             ),
           })),
         }));
-      } else {
-        // Fall back to layerGroups
+        return;
+      }
+      // Try layerGroups
+      const group = get().layerGroups.find((g) => g.propertyTracks.some((pt) => pt.id === trackId));
+      if (group) {
         set((state) => ({
           layerGroups: state.layerGroups.map((g) => {
-            const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
-            if (!hasTrack) return g;
+            if (!g.propertyTracks.some((pt) => pt.id === trackId)) return g;
             return {
               ...g,
               propertyTracks: g.propertyTracks.map((pt) =>
@@ -1088,7 +1307,15 @@ export const useTimelineStore = create<TimelineState>()(
             };
           }),
         }));
+        return;
       }
+      // Fallback: effect property tracks (search all layers, groups, global)
+      const effectUpdate = updateEffectPropertyTrackKeyframes(
+        get(),
+        trackId as string,
+        (kfs) => kfs.filter((kf) => kf.id !== keyframeId),
+      );
+      if (effectUpdate) set(effectUpdate);
     },
 
     updateKeyframe: (layerId, trackId, keyframeId, updates) => {
@@ -1110,12 +1337,14 @@ export const useTimelineStore = create<TimelineState>()(
             }),
           })),
         }));
-      } else {
-        // Fall back to layerGroups
+        return;
+      }
+      // Try layerGroups
+      const group = get().layerGroups.find((g) => g.propertyTracks.some((pt) => pt.id === trackId));
+      if (group) {
         set((state) => ({
           layerGroups: state.layerGroups.map((g) => {
-            const hasTrack = g.propertyTracks.some((pt) => pt.id === trackId);
-            if (!hasTrack) return g;
+            if (!g.propertyTracks.some((pt) => pt.id === trackId)) return g;
             return {
               ...g,
               propertyTracks: g.propertyTracks.map((pt) => {
@@ -1131,7 +1360,23 @@ export const useTimelineStore = create<TimelineState>()(
             };
           }),
         }));
+        return;
       }
+      // Fallback: effect property tracks
+      const effectUpdate = updateEffectPropertyTrackKeyframes(
+        get(),
+        trackId as string,
+        (kfs) => {
+          const updated = kfs.map((kf) =>
+            kf.id === keyframeId ? { ...kf, ...updates } : kf,
+          );
+          if (updates.frame !== undefined) {
+            updated.sort((a, b) => a.frame - b.frame);
+          }
+          return updated;
+        },
+      );
+      if (effectUpdate) set(effectUpdate);
     },
 
     moveKeyframe: (layerId, trackId, keyframeId, newFrame) => {
@@ -1654,6 +1899,59 @@ export const useTimelineStore = create<TimelineState>()(
           }
         }
       }
+      // Search effect property tracks across layers, groups, and global
+      for (const layer of get().layers) {
+        for (const et of (layer.effectTracks ?? [])) {
+          for (const pt of et.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (keyframeIds.includes(kf.id as KeyframeId)) {
+                entries.push({
+                  layerId: layer.id as string,
+                  trackId: pt.id as string,
+                  propertyPath: pt.propertyPath,
+                  frame: kf.frame,
+                  value: kf.value as number,
+                  easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+                });
+              }
+            }
+          }
+        }
+      }
+      for (const group of get().layerGroups) {
+        for (const et of (group.effectTracks ?? [])) {
+          for (const pt of et.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (keyframeIds.includes(kf.id as KeyframeId)) {
+                entries.push({
+                  layerId: (group.childLayerIds[0] ?? group.id) as string,
+                  trackId: pt.id as string,
+                  propertyPath: pt.propertyPath,
+                  frame: kf.frame,
+                  value: kf.value as number,
+                  easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+                });
+              }
+            }
+          }
+        }
+      }
+      for (const et of (get().globalEffects ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          for (const kf of pt.keyframes) {
+            if (keyframeIds.includes(kf.id as KeyframeId)) {
+              entries.push({
+                layerId: (get().layers[0]?.id ?? '') as string,
+                trackId: pt.id as string,
+                propertyPath: pt.propertyPath,
+                frame: kf.frame,
+                value: kf.value as number,
+                easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+              });
+            }
+          }
+        }
+      }
       if (entries.length === 0) return;
 
       // Sort all entries by frame to find the global first frame
@@ -1703,6 +2001,31 @@ export const useTimelineStore = create<TimelineState>()(
             targetPath = track.propertyPath;
             break;
           }
+        }
+      }
+      // Search effect property tracks
+      if (!targetPath) {
+        for (const layer of layers) {
+          for (const et of (layer.effectTracks ?? [])) {
+            const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+            if (pt) { targetPath = pt.propertyPath; break; }
+          }
+          if (targetPath) break;
+        }
+      }
+      if (!targetPath) {
+        for (const group of layerGroups) {
+          for (const et of (group.effectTracks ?? [])) {
+            const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+            if (pt) { targetPath = pt.propertyPath; break; }
+          }
+          if (targetPath) break;
+        }
+      }
+      if (!targetPath) {
+        for (const et of (get().globalEffects ?? [])) {
+          const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+          if (pt) { targetPath = pt.propertyPath; break; }
         }
       }
       if (!targetPath) return;
@@ -1897,6 +2220,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
           'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
         },
+        effectTracks: [],
       };
 
       const newLayers = [
@@ -1955,6 +2279,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': Math.floor(canvasWidth / 2),
           'transform.anchorPoint.y': Math.floor(canvasHeight / 2),
         },
+        effectTracks: [],
       };
 
       // Remove all visible layers; keep invisible ones; insert merged at top visible position
@@ -2058,6 +2383,7 @@ export const useTimelineStore = create<TimelineState>()(
           'transform.anchorPoint.x': anchorX,
           'transform.anchorPoint.y': anchorY,
         },
+        effectTracks: [],
       };
 
       // Update layers to reference the group
@@ -2092,6 +2418,711 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     // ============================================
+    // EFFECT TRACK ACTIONS (Procedural Effects)
+    // ============================================
+
+    addEffectBlock: (ownerId, effectType, startFrame, durationFrames) => {
+      const { layers, layerGroups, globalEffects } = get();
+
+      const blockId = generateEffectBlockId();
+      const trackId = generateEffectTrackId();
+
+      const newTrack: EffectTrack = {
+        id: trackId,
+        ownerId,
+        effectBlock: {
+          id: blockId,
+          effectType,
+          startFrame,
+          durationFrames,
+          enabled: true,
+          settings: {},
+          propertyTracks: [],
+        },
+        collapsed: true,
+      };
+
+      // Try to load default settings from registry
+      const entry = getEffect(effectType);
+      if (entry) {
+        newTrack.effectBlock.settings = { ...entry.defaultSettings };
+      }
+
+      if (ownerId === null) {
+        // Global
+        set({ globalEffects: [...globalEffects, newTrack] });
+      } else {
+        // Try layer first
+        const layer = layers.find((l) => l.id === ownerId);
+        if (layer) {
+          set({
+            layers: updateLayer(layers, ownerId as LayerId, (l) => ({
+              ...l,
+              effectTracks: [...l.effectTracks, newTrack],
+            })),
+          });
+          return blockId;
+        }
+
+        // Try group
+        const group = layerGroups.find((g) => g.id === ownerId);
+        if (group) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === ownerId
+                ? { ...g, effectTracks: [...g.effectTracks, newTrack] }
+                : g,
+            ),
+          });
+          return blockId;
+        }
+
+        return null;
+      }
+
+      return blockId;
+    },
+
+    removeEffectBlock: (ownerId, blockId) => {
+      const { layers, layerGroups, globalEffects } = get();
+
+      if (ownerId === null) {
+        set({
+          globalEffects: (globalEffects).filter(
+            (t) => t.effectBlock.id !== blockId,
+          ),
+        });
+      } else {
+        const layer = layers.find((l) => l.id === ownerId);
+        if (layer) {
+          set({
+            layers: updateLayer(layers, ownerId as LayerId, (l) => ({
+              ...l,
+              effectTracks: l.effectTracks.filter((t) => t.effectBlock.id !== blockId),
+            })),
+          });
+          return;
+        }
+
+        const group = layerGroups.find((g) => g.id === ownerId);
+        if (group) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === ownerId
+                ? { ...g, effectTracks: g.effectTracks.filter((t) => t.effectBlock.id !== blockId) }
+                : g,
+            ),
+          });
+        }
+      }
+    },
+
+    updateEffectBlockTiming: (blockId, startFrame, durationFrames) => {
+      const updateBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? { ...t, effectBlock: { ...t.effectBlock, startFrame, durationFrames } }
+            : t,
+        );
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      // Search layers
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layers: updateLayer(layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: updateBlock(l.effectTracks),
+            })),
+          });
+          return;
+        }
+      }
+
+      // Search groups
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === group.id
+                ? { ...g, effectTracks: updateBlock(g.effectTracks) }
+                : g,
+            ),
+          });
+          return;
+        }
+      }
+
+      // Global
+      set({
+        globalEffects: updateBlock(
+          globalEffects,
+        ),
+      });
+    },
+
+    updateEffectBlockSettings: (blockId, settings) => {
+      const updateBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  settings: { ...t.effectBlock.settings, ...settings },
+                },
+              }
+            : t,
+        );
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layers: updateLayer(layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: updateBlock(l.effectTracks),
+            })),
+          });
+          return;
+        }
+      }
+
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === group.id
+                ? { ...g, effectTracks: updateBlock(g.effectTracks) }
+                : g,
+            ),
+          });
+          return;
+        }
+      }
+
+      set({
+        globalEffects: updateBlock(
+          globalEffects,
+        ),
+      });
+    },
+
+    reorderEffectTracks: (ownerId, fromIndex, toIndex) => {
+      const reorder = (tracks: EffectTrack[]): EffectTrack[] => {
+        const result = [...tracks];
+        const [moved] = result.splice(fromIndex, 1);
+        result.splice(toIndex, 0, moved);
+        return result;
+      };
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      if (ownerId === null) {
+        set({
+          globalEffects: reorder(
+            globalEffects,
+          ),
+        });
+        return;
+      }
+
+      const layer = layers.find((l) => l.id === ownerId);
+      if (layer) {
+        set({
+          layers: updateLayer(layers, ownerId as LayerId, (l) => ({
+            ...l,
+            effectTracks: reorder(l.effectTracks),
+          })),
+        });
+        return;
+      }
+
+      const group = layerGroups.find((g) => g.id === ownerId);
+      if (group) {
+        set({
+          layerGroups: layerGroups.map((g) =>
+            g.id === ownerId
+              ? { ...g, effectTracks: reorder(g.effectTracks) }
+              : g,
+          ),
+        });
+      }
+    },
+
+    toggleEffectBlockEnabled: (blockId) => {
+      const toggleBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? { ...t, effectBlock: { ...t.effectBlock, enabled: !t.effectBlock.enabled } }
+            : t,
+        );
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layers: updateLayer(layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: toggleBlock(l.effectTracks),
+            })),
+          });
+          return;
+        }
+      }
+
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === group.id
+                ? { ...g, effectTracks: toggleBlock(g.effectTracks) }
+                : g,
+            ),
+          });
+          return;
+        }
+      }
+
+      set({
+        globalEffects: toggleBlock(
+          globalEffects,
+        ),
+      });
+    },
+
+    addEffectPropertyTrack: (blockId, propertyPath) => {
+      const ptId = generateEffectPropertyTrackId();
+
+      const addTrackToBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) => {
+          if (t.effectBlock.id !== blockId) return t;
+          // Don't add if already exists
+          if (t.effectBlock.propertyTracks.some((pt) => pt.propertyPath === propertyPath)) return t;
+          return {
+            ...t,
+            effectBlock: {
+              ...t.effectBlock,
+              propertyTracks: [
+                ...t.effectBlock.propertyTracks,
+                { id: ptId, propertyPath, keyframes: [], loopKeyframes: false },
+              ],
+            },
+          };
+        });
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({ layers: updateLayer(layers, layer.id, (l) => ({ ...l, effectTracks: addTrackToBlock(l.effectTracks) })) });
+          return ptId;
+        }
+      }
+
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({ layerGroups: layerGroups.map((g) => g.id === group.id ? { ...g, effectTracks: addTrackToBlock(g.effectTracks) } : g) });
+          return ptId;
+        }
+      }
+
+      set({ globalEffects: addTrackToBlock(globalEffects) });
+      return ptId;
+    },
+
+    addEffectKeyframe: (blockId, trackId, frame, value) => {
+      const keyframeId = generateKeyframeId();
+      const newKeyframe: EffectKeyframe = {
+        id: keyframeId,
+        frame,
+        value,
+        easing: defaultEasing(),
+      };
+
+      const updateBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) => {
+          if (t.effectBlock.id !== blockId) return t;
+          return {
+            ...t,
+            effectBlock: {
+              ...t.effectBlock,
+              propertyTracks: t.effectBlock.propertyTracks.map((pt) => {
+                if (pt.id !== trackId) return pt;
+                // Remove any existing keyframe at this frame, then add
+                const filtered = pt.keyframes.filter((kf) => kf.frame !== frame);
+                return {
+                  ...pt,
+                  keyframes: [...filtered, newKeyframe].sort((a, b) => a.frame - b.frame),
+                };
+              }),
+            },
+          };
+        });
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layers: updateLayer(layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: updateBlock(l.effectTracks),
+            })),
+          });
+          return keyframeId;
+        }
+      }
+
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === group.id
+                ? { ...g, effectTracks: updateBlock(g.effectTracks) }
+                : g,
+            ),
+          });
+          return keyframeId;
+        }
+      }
+
+      set({
+        globalEffects: updateBlock(
+          globalEffects,
+        ),
+      });
+      return keyframeId;
+    },
+
+    removeEffectKeyframe: (blockId, trackId, keyframeId) => {
+      const updateBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) => {
+          if (t.effectBlock.id !== blockId) return t;
+          return {
+            ...t,
+            effectBlock: {
+              ...t.effectBlock,
+              propertyTracks: t.effectBlock.propertyTracks.map((pt) => {
+                if (pt.id !== trackId) return pt;
+                return {
+                  ...pt,
+                  keyframes: pt.keyframes.filter((kf) => kf.id !== keyframeId),
+                };
+              }),
+            },
+          };
+        });
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layers: updateLayer(layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: updateBlock(l.effectTracks),
+            })),
+          });
+          return;
+        }
+      }
+
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === group.id
+                ? { ...g, effectTracks: updateBlock(g.effectTracks) }
+                : g,
+            ),
+          });
+          return;
+        }
+      }
+
+      set({
+        globalEffects: updateBlock(
+          globalEffects,
+        ),
+      });
+    },
+
+    updateEffectKeyframe: (blockId, trackId, keyframeId, updates) => {
+      const updateBlock = (tracks: EffectTrack[]): EffectTrack[] =>
+        tracks.map((t) => {
+          if (t.effectBlock.id !== blockId) return t;
+          return {
+            ...t,
+            effectBlock: {
+              ...t.effectBlock,
+              propertyTracks: t.effectBlock.propertyTracks.map((pt) => {
+                if (pt.id !== trackId) return pt;
+                return {
+                  ...pt,
+                  keyframes: pt.keyframes
+                    .map((kf) => (kf.id === keyframeId ? { ...kf, ...updates } : kf))
+                    .sort((a, b) => a.frame - b.frame),
+                };
+              }),
+            },
+          };
+        });
+
+      const { layers, layerGroups, globalEffects } = get();
+
+      for (const layer of layers) {
+        if (layer.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layers: updateLayer(layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: updateBlock(l.effectTracks),
+            })),
+          });
+          return;
+        }
+      }
+
+      for (const group of layerGroups) {
+        if (group.effectTracks.some((t) => t.effectBlock.id === blockId)) {
+          set({
+            layerGroups: layerGroups.map((g) =>
+              g.id === group.id
+                ? { ...g, effectTracks: updateBlock(g.effectTracks) }
+                : g,
+            ),
+          });
+          return;
+        }
+      }
+
+      set({
+        globalEffects: updateBlock(
+          globalEffects,
+        ),
+      });
+    },
+
+    selectEffectBlock: (blockId) => {
+      set((state) => ({
+        view: { ...state.view, selectedEffectBlockId: blockId, editingKeyframeId: blockId ? null : state.view.editingKeyframeId },
+      }));
+    },
+
+    toggleEffectTrackExpanded: (blockId) => {
+      set((state) => {
+        const expanded = new Set(state.view.expandedEffectTrackIds);
+        if (expanded.has(blockId)) {
+          expanded.delete(blockId);
+        } else {
+          expanded.add(blockId);
+        }
+        return { view: { ...state.view, expandedEffectTrackIds: expanded } };
+      });
+    },
+
+    setEditingEffectKeyframe: (keyframeId) => {
+      set((state) => ({
+        view: { ...state.view, editingEffectKeyframeId: keyframeId },
+      }));
+    },
+
+    toggleGlobalEffectsExpanded: () => {
+      set((state) => ({
+        view: { ...state.view, globalEffectsExpanded: !state.view.globalEffectsExpanded },
+      }));
+    },
+
+    moveEffectTrack: (blockId, targetOwnerId, targetIndex) => {
+      set((state) => {
+        let movedTrack: EffectTrack | null = null;
+        let newLayers = state.layers;
+        let newLayerGroups = state.layerGroups;
+        let newGlobalEffects = state.globalEffects;
+
+        // Remove from source — search layers, groups, global
+        for (const layer of state.layers) {
+          const idx = (layer.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
+          if (idx !== -1) {
+            movedTrack = (layer.effectTracks ?? [])[idx];
+            newLayers = updateLayer(state.layers, layer.id, (l) => ({
+              ...l,
+              effectTracks: l.effectTracks.filter((t) => t.effectBlock.id !== blockId),
+            }));
+            break;
+          }
+        }
+        if (!movedTrack) {
+          for (const group of state.layerGroups) {
+            const idx = (group.effectTracks ?? []).findIndex((t) => t.effectBlock.id === blockId);
+            if (idx !== -1) {
+              movedTrack = (group.effectTracks ?? [])[idx];
+              newLayerGroups = state.layerGroups.map((g) =>
+                g.id === group.id ? { ...g, effectTracks: g.effectTracks.filter((t) => t.effectBlock.id !== blockId) } : g,
+              );
+              break;
+            }
+          }
+        }
+        if (!movedTrack) {
+          const idx = state.globalEffects.findIndex((t) => t.effectBlock.id === blockId);
+          if (idx !== -1) {
+            movedTrack = state.globalEffects[idx];
+            newGlobalEffects = state.globalEffects.filter((t) => t.effectBlock.id !== blockId);
+          }
+        }
+
+        if (!movedTrack) return {};
+
+        const updatedTrack: EffectTrack = { ...movedTrack, ownerId: targetOwnerId };
+
+        // Insert into target
+        if (targetOwnerId === null) {
+          const arr = [...newGlobalEffects];
+          arr.splice(targetIndex ?? arr.length, 0, updatedTrack);
+          newGlobalEffects = arr;
+        } else {
+          const targetLayerIdx = newLayers.findIndex((l) => l.id === targetOwnerId);
+          if (targetLayerIdx !== -1) {
+            newLayers = newLayers.map((l, i) => {
+              if (i !== targetLayerIdx) return l;
+              const newTracks = [...l.effectTracks];
+              newTracks.splice(targetIndex ?? newTracks.length, 0, updatedTrack);
+              return { ...l, effectTracks: newTracks };
+            });
+          } else {
+            newLayerGroups = newLayerGroups.map((g) => {
+              if (g.id !== targetOwnerId) return g;
+              const newTracks = [...(g.effectTracks ?? [])];
+              newTracks.splice(targetIndex ?? newTracks.length, 0, updatedTrack);
+              return { ...g, effectTracks: newTracks };
+            });
+          }
+        }
+
+        return { layers: newLayers, layerGroups: newLayerGroups, globalEffects: newGlobalEffects };
+      });
+    },
+
+    bakeEffect: (blockId) => {
+      const { layers, layerGroups, globalEffects } = get();
+
+      // Find the effect track and its owner
+      let effectTrack: EffectTrack | null = null;
+      let ownerId: LayerId | LayerGroupId | null = null;
+      let ownerType: 'layer' | 'group' | 'global' = 'layer';
+
+      for (const layer of layers) {
+        const et = (layer.effectTracks ?? []).find((t) => t.effectBlock.id === blockId);
+        if (et) { effectTrack = et; ownerId = layer.id; ownerType = 'layer'; break; }
+      }
+      if (!effectTrack) {
+        for (const group of layerGroups) {
+          const et = (group.effectTracks ?? []).find((t) => t.effectBlock.id === blockId);
+          if (et) { effectTrack = et; ownerId = group.id; ownerType = 'group'; break; }
+        }
+      }
+      if (!effectTrack) {
+        const et = globalEffects.find((t) => t.effectBlock.id === blockId);
+        if (et) { effectTrack = et; ownerId = null; ownerType = 'global'; }
+      }
+
+      if (!effectTrack) return;
+
+      const block = effectTrack.effectBlock;
+
+      // Determine which layers to bake into
+      let targetLayerIds: LayerId[] = [];
+      if (ownerType === 'layer') {
+        targetLayerIds = [ownerId as LayerId];
+      } else if (ownerType === 'group') {
+        const group = layerGroups.find((g) => g.id === ownerId);
+        if (group) targetLayerIds = [...group.childLayerIds];
+      } else {
+        // Global — all layers
+        targetLayerIds = layers.map((l) => l.id);
+      }
+
+      // Flush canvas store to the active layer's content frame before baking
+      // to ensure we process the latest drawing state
+      const flushActiveLayerId = get().view.activeLayerId;
+      const flushCurrentFrame = get().view.currentFrame;
+      if (flushActiveLayerId && targetLayerIds.includes(flushActiveLayerId)) {
+        const activeLayer = layers.find((l) => l.id === flushActiveLayerId);
+        if (activeLayer) {
+          const activeCf = activeLayer.contentFrames.find(
+            (c) => flushCurrentFrame >= c.startFrame && flushCurrentFrame < c.startFrame + c.durationFrames,
+          );
+          if (activeCf) {
+            activeCf.data = new Map(useCanvasStore.getState().cells);
+          }
+        }
+      }
+
+      // Bake into each target layer's content frames
+      const newLayers = layers.map((layer) => {
+        if (!targetLayerIds.includes(layer.id)) return layer;
+
+        // Clone content frames deeply before baking
+        const clonedFrames = layer.contentFrames.map((cf) => ({
+          ...cf,
+          data: new Map(cf.data),
+        }));
+
+        const bakedFrames = bakeEffectIntoFrames(block, clonedFrames, {
+          canvasBackgroundColor: '#000000',
+          frame: block.startFrame,
+          canvasWidth: useCanvasStore.getState().width,
+          canvasHeight: useCanvasStore.getState().height,
+        });
+
+        return { ...layer, contentFrames: bakedFrames };
+      });
+
+      // Remove the effect track
+      let newLayersAfterRemove = newLayers;
+      let newLayerGroups = layerGroups;
+      let newGlobalEffects = globalEffects;
+
+      if (ownerType === 'layer') {
+        newLayersAfterRemove = newLayers.map((l) =>
+          l.id === ownerId ? { ...l, effectTracks: l.effectTracks.filter((t) => t.effectBlock.id !== blockId) } : l,
+        );
+      } else if (ownerType === 'group') {
+        newLayerGroups = layerGroups.map((g) =>
+          g.id === ownerId ? { ...g, effectTracks: g.effectTracks.filter((t) => t.effectBlock.id !== blockId) } : g,
+        );
+      } else {
+        newGlobalEffects = globalEffects.filter((t) => t.effectBlock.id !== blockId);
+      }
+
+      set({
+        layers: newLayersAfterRemove,
+        layerGroups: newLayerGroups,
+        globalEffects: newGlobalEffects,
+        view: { ...get().view, selectedEffectBlockId: null },
+      });
+
+      // Sync canvas store with the baked data for the active layer
+      const activeLayerId = get().view.activeLayerId;
+      const currentFrame = get().view.currentFrame;
+      if (activeLayerId && targetLayerIds.includes(activeLayerId)) {
+        const updatedLayer = get().layers.find((l) => l.id === activeLayerId);
+        if (updatedLayer) {
+          const cf = updatedLayer.contentFrames.find(
+            (c) => currentFrame >= c.startFrame && currentFrame < c.startFrame + c.durationFrames,
+          );
+          if (cf) {
+            useCanvasStore.getState().setCanvasData(cf.data);
+          }
+        }
+      }
+    },
+
+    // ============================================
     // PROJECT LIFECYCLE
     // ============================================
 
@@ -2109,7 +3140,7 @@ export const useTimelineStore = create<TimelineState>()(
       });
     },
 
-    loadFromSessionData: (layers, config, viewState, layerGroups) => {
+    loadFromSessionData: (layers, config, viewState, layerGroups, globalEffects) => {
       const mergedConfig: TimelineConfig = {
         frameRate: config.frameRate ?? INITIAL_CONFIG.frameRate,
         durationFrames: config.durationFrames ?? INITIAL_CONFIG.durationFrames,
@@ -2123,7 +3154,7 @@ export const useTimelineStore = create<TimelineState>()(
         config: mergedConfig,
         layers,
         layerGroups: layerGroups ?? [],
-        globalEffects: [],
+        globalEffects: globalEffects ?? [],
         view: {
           ...INITIAL_VIEW,
           activeLayerId,
@@ -2133,11 +3164,11 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     getSessionData: () => {
-      const { config, layers, layerGroups, view } = get();
+      const { config, layers, layerGroups, globalEffects, view } = get();
       const canvasState = useCanvasStore.getState();
 
       return {
-        version: '2.0.0' as const,
+        version: '2.1.0' as const,
         canvas: {
           width: canvasState.width,
           height: canvasState.height,
@@ -2181,6 +3212,32 @@ export const useTimelineStore = create<TimelineState>()(
             ? { ...layer.staticProperties }
             : undefined,
           syncKeyframesToFrames: layer.syncKeyframesToFrames || undefined,
+          effectTracks: (layer.effectTracks ?? []).length > 0
+            ? (layer.effectTracks ?? []).map((et) => ({
+                id: et.id as string,
+                ownerId: et.ownerId as string | null,
+                effectBlock: {
+                  id: et.effectBlock.id as string,
+                  effectType: et.effectBlock.effectType,
+                  startFrame: et.effectBlock.startFrame,
+                  durationFrames: et.effectBlock.durationFrames,
+                  enabled: et.effectBlock.enabled,
+                  settings: { ...et.effectBlock.settings },
+                  propertyTracks: et.effectBlock.propertyTracks.map((pt) => ({
+                    id: pt.id as string,
+                    propertyPath: pt.propertyPath,
+                    keyframes: pt.keyframes.map((kf) => ({
+                      id: kf.id as string,
+                      frame: kf.frame,
+                      value: kf.value,
+                      easing: kf.easing,
+                    })),
+                    loopKeyframes: pt.loopKeyframes,
+                  })),
+                },
+                collapsed: et.collapsed,
+              }))
+            : undefined,
         })),
         layerGroups: layerGroups.length > 0
           ? layerGroups.map((group) => ({
@@ -2205,6 +3262,60 @@ export const useTimelineStore = create<TimelineState>()(
               staticProperties: Object.keys(group.staticProperties).length > 0
                 ? { ...group.staticProperties }
                 : undefined,
+              effectTracks: (group.effectTracks ?? []).length > 0
+                ? (group.effectTracks ?? []).map((et) => ({
+                    id: et.id as string,
+                    ownerId: et.ownerId as string | null,
+                    effectBlock: {
+                      id: et.effectBlock.id as string,
+                      effectType: et.effectBlock.effectType,
+                      startFrame: et.effectBlock.startFrame,
+                      durationFrames: et.effectBlock.durationFrames,
+                      enabled: et.effectBlock.enabled,
+                      settings: { ...et.effectBlock.settings },
+                      propertyTracks: et.effectBlock.propertyTracks.map((pt) => ({
+                        id: pt.id as string,
+                        propertyPath: pt.propertyPath,
+                        keyframes: pt.keyframes.map((kf) => ({
+                          id: kf.id as string,
+                          frame: kf.frame,
+                          value: kf.value,
+                          easing: kf.easing,
+                        })),
+                        loopKeyframes: pt.loopKeyframes,
+                      })),
+                    },
+                    collapsed: et.collapsed,
+                  }))
+                : undefined,
+            }))
+          : undefined,
+
+        // Global effects
+        globalEffects: globalEffects.length > 0
+          ? globalEffects.map((et) => ({
+              id: et.id as string,
+              ownerId: et.ownerId as string | null,
+              effectBlock: {
+                id: et.effectBlock.id as string,
+                effectType: et.effectBlock.effectType,
+                startFrame: et.effectBlock.startFrame,
+                durationFrames: et.effectBlock.durationFrames,
+                enabled: et.effectBlock.enabled,
+                settings: { ...et.effectBlock.settings },
+                propertyTracks: et.effectBlock.propertyTracks.map((pt) => ({
+                  id: pt.id as string,
+                  propertyPath: pt.propertyPath,
+                  keyframes: pt.keyframes.map((kf) => ({
+                    id: kf.id as string,
+                    frame: kf.frame,
+                    value: kf.value,
+                    easing: kf.easing,
+                  })),
+                  loopKeyframes: pt.loopKeyframes,
+                })),
+              },
+              collapsed: et.collapsed,
             }))
           : undefined,
       };

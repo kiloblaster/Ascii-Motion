@@ -121,34 +121,33 @@ export function applyWiggleToFrame(
   
   if (settings.mode === 'horizontal-wave') {
     // Horizontal wave motion: X displacement only
-    const phase = (accumulatedTime * settings.waveSpeed / 1000);
+    const phase = (accumulatedTime * settings.waveFrequency / 1000);
     offsetX = Math.round(
-      settings.waveAmplitude * Math.sin(settings.waveFrequency * phase)
+      settings.waveAmplitude * Math.sin(phase)
     );
   } else if (settings.mode === 'vertical-wave') {
     // Vertical wave motion: Y displacement only
-    const phase = (accumulatedTime * settings.waveSpeed / 1000);
+    const phase = (accumulatedTime * settings.waveFrequency / 1000);
     offsetY = Math.round(
-      settings.waveAmplitude * Math.sin(settings.waveFrequency * phase)
+      settings.waveAmplitude * Math.sin(phase)
     );
   } else if (settings.mode === 'noise') {
-    // Perlin noise motion: 2D displacement
-    // Create noise function with deterministic seed
+    // Perlin noise motion: independent horizontal/vertical displacement
     const noise2D = createNoise2D(() => settings.noiseSeed / 9999);
-    const timeScale = accumulatedTime / 1000; // Convert to seconds for better range
+    const timeScale = accumulatedTime / 1000;
     
-    // Apply octaves for layered noise (more complex motion)
     for (let octave = 0; octave < settings.noiseOctaves; octave++) {
       const octaveScale = Math.pow(2, octave);
-      const octaveAmplitude = settings.noiseAmplitude / octaveScale;
+      const hAmp = settings.noiseHAmplitude / octaveScale;
+      const vAmp = settings.noiseVAmplitude / octaveScale;
       
-      offsetX += octaveAmplitude * noise2D(
-        timeScale * settings.noiseFrequency * octaveScale,
+      offsetX += hAmp * noise2D(
+        timeScale * settings.noiseHFrequency * octaveScale,
         0
       );
-      offsetY += octaveAmplitude * noise2D(
+      offsetY += vAmp * noise2D(
         0,
-        timeScale * settings.noiseFrequency * octaveScale
+        timeScale * settings.noiseVFrequency * octaveScale
       );
     }
     

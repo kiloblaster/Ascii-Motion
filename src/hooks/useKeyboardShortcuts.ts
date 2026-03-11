@@ -24,7 +24,7 @@ import { useSelectionStore } from '../stores/selectionStore';
 import { ANSI_COLORS } from '../constants/colors';
 import type { AnyHistoryAction, CanvasHistoryAction, CanvasResizeHistoryAction, FrameId, Cell } from '../types';
 import { useTimelineStore } from '../stores/timelineStore';
-import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyPath } from '../types/timeline';
+import type { LayerId, LayerGroupId, ContentFrameId, PropertyTrackId, KeyframeId, PropertyPath } from '../types/timeline';
 import { PROPERTY_DEFINITIONS } from '../types/timeline';
 
 type CanvasStoreState = ReturnType<typeof useCanvasStore.getState>;
@@ -1438,6 +1438,222 @@ const processHistoryAction = (
       break;
     }
       
+    case 'effect_block_add': {
+      const a = action as import('../types').EffectBlockAddHistoryAction;
+      if (isRedo) {
+        // Re-add the effect block — restore full track from snapshot
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        const trackToRestore = structuredClone(a.data.trackSnapshot);
+        trackToRestore.ownerId = ownerId;
+        if (ownerId === null) {
+          useTimelineStore.setState((s) => ({ globalEffects: [...s.globalEffects, trackToRestore] }));
+        } else {
+          const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+          if (isLayer) {
+            useTimelineStore.setState((s) => ({ layers: s.layers.map((l) => l.id === ownerId ? { ...l, effectTracks: [...l.effectTracks, trackToRestore] } : l) }));
+          } else {
+            useTimelineStore.setState((s) => ({ layerGroups: s.layerGroups.map((g) => g.id === ownerId ? { ...g, effectTracks: [...(g.effectTracks ?? []), trackToRestore] } : g) }));
+          }
+        }
+      } else {
+        // Remove the added effect block
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        useTimelineStore.getState().removeEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.id);
+      }
+      break;
+    }
+
+    case 'effect_block_remove': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectBlockRemoveHistoryAction;
+      if (isRedo) {
+        // Re-remove the effect block
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        tl.removeEffectBlock(ownerId, a.data.trackSnapshot.effectBlock.id);
+      } else {
+        // Undo remove/move: first remove the block from wherever it currently is
+        // (handles the case where it was moved, not just deleted)
+        const blockId = a.data.trackSnapshot.effectBlock.id;
+        for (const layer of tl.layers) {
+          if ((layer.effectTracks ?? []).some((t) => t.effectBlock.id === blockId)) {
+            tl.removeEffectBlock(layer.id, blockId);
+            break;
+          }
+        }
+        for (const group of tl.layerGroups) {
+          if ((group.effectTracks ?? []).some((t) => t.effectBlock.id === blockId)) {
+            tl.removeEffectBlock(group.id, blockId);
+            break;
+          }
+        }
+        if (tl.globalEffects.some((t) => t.effectBlock.id === blockId)) {
+          tl.removeEffectBlock(null, blockId);
+        }
+
+        // Re-add the effect block at the original owner — restore full track from snapshot
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        const trackToRestore = structuredClone(a.data.trackSnapshot);
+        // Fix ownerId on the restored track
+        trackToRestore.ownerId = ownerId;
+
+        if (ownerId === null) {
+          useTimelineStore.setState((s) => ({
+            globalEffects: [...s.globalEffects, trackToRestore],
+          }));
+        } else {
+          const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+          if (isLayer) {
+            useTimelineStore.setState((s) => ({
+              layers: s.layers.map((l) =>
+                l.id === ownerId ? { ...l, effectTracks: [...l.effectTracks, trackToRestore] } : l,
+              ),
+            }));
+          } else {
+            useTimelineStore.setState((s) => ({
+              layerGroups: s.layerGroups.map((g) =>
+                g.id === ownerId ? { ...g, effectTracks: [...(g.effectTracks ?? []), trackToRestore] } : g,
+              ),
+            }));
+          }
+        }
+      }
+      break;
+    }
+
+    case 'effect_block_update': {
+      const a = action as import('../types').EffectBlockUpdateHistoryAction;
+      const block = isRedo ? a.data.newBlock : a.data.previousBlock;
+      const blockId = a.data.blockId as import("../types/effectBlock").EffectBlockId;
+      const restoredBlock = structuredClone(block);
+
+      // Directly replace the full effect block (including propertyTracks/keyframes)
+      const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+      const replaceBlock = (tracks: import("../types/effectBlock").EffectTrack[]) =>
+        tracks.map((t) => t.effectBlock.id === blockId ? { ...t, effectBlock: restoredBlock } : t);
+
+      if (ownerId === null) {
+        useTimelineStore.setState((s) => ({ globalEffects: replaceBlock(s.globalEffects) }));
+      } else {
+        const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+        if (isLayer) {
+          useTimelineStore.setState((s) => ({ layers: s.layers.map((l) => l.id === ownerId ? { ...l, effectTracks: replaceBlock(l.effectTracks) } : l) }));
+        } else {
+          useTimelineStore.setState((s) => ({ layerGroups: s.layerGroups.map((g) => g.id === ownerId ? { ...g, effectTracks: replaceBlock(g.effectTracks ?? []) } : g) }));
+        }
+      }
+      break;
+    }
+
+    case 'effect_block_reorder': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectBlockReorderHistoryAction;
+      const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+      if (isRedo) {
+        tl.reorderEffectTracks(ownerId, a.data.fromIndex, a.data.toIndex);
+      } else {
+        tl.reorderEffectTracks(ownerId, a.data.toIndex, a.data.fromIndex);
+      }
+      break;
+    }
+
+    case 'effect_keyframe_add': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectKeyframeAddHistoryAction;
+      if (isRedo) {
+        tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+      } else {
+        tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+      }
+      break;
+    }
+
+    case 'effect_keyframe_remove': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectKeyframeRemoveHistoryAction;
+      if (isRedo) {
+        tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+      } else {
+        tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+      }
+      break;
+    }
+
+    case 'effect_keyframe_update': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectKeyframeUpdateHistoryAction;
+      const kf = isRedo ? a.data.newKeyframe : a.data.previousKeyframe;
+      tl.updateEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframeId as KeyframeId, { frame: kf.frame, value: kf.value, easing: kf.easing });
+      break;
+    }
+
+    case 'effect_bake': {
+      const tl = useTimelineStore.getState();
+      const a = action as import('../types').EffectBakeHistoryAction;
+      if (isRedo) {
+        // Re-bake: apply the effect again
+        tl.bakeEffect(a.data.trackSnapshot.effectBlock.id);
+      } else {
+        // Undo bake: restore entire content frames arrays from snapshots
+
+        // Build the restored layers array
+        const currentLayers = useTimelineStore.getState().layers;
+        const restoredLayers = currentLayers.map((layer) => {
+          const snapshot = a.data.layerSnapshots.find((s) => s.layerId === (layer.id as string));
+          if (!snapshot) return layer;
+          // Deep clone the snapshot content frames to ensure independence
+          const restoredFrames = snapshot.contentFrames.map((cf) => {
+            const clonedData = new Map<string, import('../types').Cell>();
+            cf.data.forEach((cell, key) => clonedData.set(key, { ...cell }));
+            return { ...cf, data: clonedData };
+          });
+          return { ...layer, contentFrames: restoredFrames };
+        });
+
+        // Set all at once
+        useTimelineStore.setState({ layers: restoredLayers });
+
+        // Re-add the effect block — restore full track from snapshot (preserves keyframes)
+        const ownerId = a.data.ownerType === 'global' ? null : a.data.ownerId as LayerId | LayerGroupId;
+        const trackToRestore = structuredClone(a.data.trackSnapshot);
+        trackToRestore.ownerId = ownerId;
+
+        if (ownerId === null) {
+          useTimelineStore.setState((s) => ({
+            globalEffects: [...s.globalEffects, trackToRestore],
+          }));
+        } else {
+          const isLayer = useTimelineStore.getState().layers.some((l) => l.id === ownerId);
+          if (isLayer) {
+            useTimelineStore.setState((s) => ({
+              layers: s.layers.map((l) =>
+                l.id === ownerId ? { ...l, effectTracks: [...l.effectTracks, trackToRestore] } : l,
+              ),
+            }));
+          } else {
+            useTimelineStore.setState((s) => ({
+              layerGroups: s.layerGroups.map((g) =>
+                g.id === ownerId ? { ...g, effectTracks: [...(g.effectTracks ?? []), trackToRestore] } : g,
+              ),
+            }));
+          }
+        }
+
+        // Sync canvas store with restored data
+        const activeLayerId = tl.view.activeLayerId;
+        const restoredSnapshot = a.data.layerSnapshots.find((s) => s.layerId === (activeLayerId as string));
+        if (restoredSnapshot) {
+          const layer = useTimelineStore.getState().layers.find((l) => l.id === activeLayerId);
+          if (layer) {
+            const cf = layer.contentFrames.find((c) => tl.view.currentFrame >= c.startFrame && tl.view.currentFrame < c.startFrame + c.durationFrames);
+            if (cf) {
+              useCanvasStore.getState().setCanvasData(cf.data);
+            }
+          }
+        }
+      }
+      break;
+    }
+
     default:
       console.warn('Unknown history action type:', action);
   }
@@ -2148,6 +2364,15 @@ export const useKeyboardShortcuts = () => {
                 keyframeFrames.add(kf.frame);
               }
             }
+            // Include effect keyframes from expanded effect tracks
+            for (const et of (layer.effectTracks ?? [])) {
+              if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+              for (const pt of et.effectBlock.propertyTracks) {
+                for (const kf of pt.keyframes) {
+                  keyframeFrames.add(kf.frame);
+                }
+              }
+            }
           }
 
           // Also include keyframes from non-collapsed groups
@@ -2156,6 +2381,27 @@ export const useKeyboardShortcuts = () => {
             for (const track of (g.propertyTracks ?? [])) {
               for (const kf of track.keyframes) {
                 keyframeFrames.add(kf.frame);
+              }
+            }
+            // Include group effect keyframes from expanded effect tracks
+            for (const et of (g.effectTracks ?? [])) {
+              if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+              for (const pt of et.effectBlock.propertyTracks) {
+                for (const kf of pt.keyframes) {
+                  keyframeFrames.add(kf.frame);
+                }
+              }
+            }
+          }
+
+          // Include global effect keyframes from expanded effect tracks
+          if (tl.view.globalEffectsExpanded) {
+            for (const et of tl.globalEffects) {
+              if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+              for (const pt of et.effectBlock.propertyTracks) {
+                for (const kf of pt.keyframes) {
+                  keyframeFrames.add(kf.frame);
+                }
               }
             }
           }
@@ -2219,18 +2465,48 @@ export const useKeyboardShortcuts = () => {
         const tl = useTimelineStore.getState();
         if (tl.layers.length > 0) {
           event.preventDefault();
-          // Capture the current state NOW (before any async delay)
-          const shouldExpand = tl.view.expandedLayerIds.size === 0;
+          // Determine if anything is currently expanded
+          const hasExpandedLayers = tl.view.expandedLayerIds.size > 0;
+          const hasExpandedEffects = tl.view.expandedEffectTrackIds.size > 0;
+          const shouldExpand = !hasExpandedLayers && !hasExpandedEffects;
           // Use setTimeout to escape the keyboard event handler's execution context.
           setTimeout(() => {
             const current = useTimelineStore.getState();
             if (shouldExpand) {
               // Expand layers with keyframes; if none, expand all
               const withKfs = current.layers.filter((l) =>
-                l.propertyTracks.some((t) => t.keyframes.length > 0)
+                l.propertyTracks.some((t) => t.keyframes.length > 0) ||
+                (l.effectTracks ?? []).some((et) => et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0))
               );
               const toExpand = withKfs.length > 0 ? withKfs : current.layers;
               current.setExpandedLayerIds(new Set(toExpand.map((l) => l.id)));
+              // Also expand effect tracks that have keyframes (on layers)
+              for (const layer of toExpand) {
+                for (const et of (layer.effectTracks ?? [])) {
+                  if (et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)) {
+                    if (!useTimelineStore.getState().view.expandedEffectTrackIds.has(et.effectBlock.id)) {
+                      useTimelineStore.getState().toggleEffectTrackExpanded(et.effectBlock.id);
+                    }
+                  }
+                }
+              }
+              // Expand global effects section if it has keyframed effects
+              const globalHasKfs = current.globalEffects.some((et) =>
+                et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)
+              );
+              if (globalHasKfs || current.globalEffects.length > 0) {
+                if (!useTimelineStore.getState().view.globalEffectsExpanded) {
+                  useTimelineStore.getState().toggleGlobalEffectsExpanded();
+                }
+                // Expand individual global effect tracks with keyframes
+                for (const et of current.globalEffects) {
+                  if (et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)) {
+                    if (!useTimelineStore.getState().view.expandedEffectTrackIds.has(et.effectBlock.id)) {
+                      useTimelineStore.getState().toggleEffectTrackExpanded(et.effectBlock.id);
+                    }
+                  }
+                }
+              }
               // Also expand any collapsed groups so their children are visible
               if (current.layerGroups.length > 0) {
                 const hasCollapsed = current.layerGroups.some((g) => g.collapsed);
@@ -2241,10 +2517,29 @@ export const useKeyboardShortcuts = () => {
                     ),
                   });
                 }
+                // Expand group effect tracks with keyframes
+                for (const group of current.layerGroups) {
+                  for (const et of (group.effectTracks ?? [])) {
+                    if (et.effectBlock.propertyTracks.some((pt) => pt.keyframes.length > 0)) {
+                      if (!useTimelineStore.getState().view.expandedEffectTrackIds.has(et.effectBlock.id)) {
+                        useTimelineStore.getState().toggleEffectTrackExpanded(et.effectBlock.id);
+                      }
+                    }
+                  }
+                }
               }
             } else {
-              // Collapse all
+              // Collapse all (layers, effect tracks, and global effects)
               current.setExpandedLayerIds(new Set());
+              // Collapse all expanded effect tracks
+              const expandedEffects = new Set(current.view.expandedEffectTrackIds);
+              for (const blockId of expandedEffects) {
+                current.toggleEffectTrackExpanded(blockId);
+              }
+              // Collapse global effects section
+              if (current.view.globalEffectsExpanded) {
+                current.toggleGlobalEffectsExpanded();
+              }
             }
           }, 0);
           return;
@@ -2278,6 +2573,27 @@ export const useKeyboardShortcuts = () => {
           for (const track of layer.propertyTracks) {
             for (const kf of track.keyframes) {
               keyframeFrames.add(kf.frame);
+            }
+          }
+          // Include effect keyframes from expanded effect tracks
+          for (const et of (layer.effectTracks ?? [])) {
+            if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
+            }
+          }
+        }
+
+        // Include global effect keyframes
+        if (tl.view.globalEffectsExpanded) {
+          for (const et of tl.globalEffects) {
+            if (!tl.view.expandedEffectTrackIds.has(et.effectBlock.id)) continue;
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                keyframeFrames.add(kf.frame);
+              }
             }
           }
         }
@@ -2565,10 +2881,7 @@ export const useKeyboardShortcuts = () => {
               try {
                 handleHistoryAction(redoAction, true);
               } finally {
-                // Clear flag after a small delay to ensure all effects have settled
-                setTimeout(() => {
-                  useToolStore.setState({ isProcessingHistory: false });
-                }, 200);
+                useToolStore.setState({ isProcessingHistory: false });
               }
             }
           }
@@ -2583,10 +2896,7 @@ export const useKeyboardShortcuts = () => {
               try {
                 handleHistoryAction(undoAction, false);
               } finally {
-                // Clear flag after a small delay to ensure all effects have settled
-                setTimeout(() => {
-                  useToolStore.setState({ isProcessingHistory: false });
-                }, 200);
+                useToolStore.setState({ isProcessingHistory: false });
               }
             }
           }

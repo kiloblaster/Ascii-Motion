@@ -52,7 +52,7 @@ export function useCloudProjectActions() {
         description: data.description,
         metadata: {
           exportedAt: new Date().toISOString(),
-          exportVersion: '2.0.0',
+          exportVersion: '2.1.0',
         },
         // Pre-composited frames for gallery playback and publishing previews.
         // These are regenerated every save from the layer data.

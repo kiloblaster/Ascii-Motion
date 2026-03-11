@@ -150,16 +150,12 @@ export const useFrameSynchronization = (
 
   // Auto-save current canvas to current frame whenever canvas changes
   const saveCurrentCanvasToFrame = useCallback(() => {
-    if (isLoadingFrameRef.current || isPlaying || isDraggingFrame || isDeletingFrame || isImportingSession || isProcessingHistory) return;
+    if (isLoadingFrameRef.current || isPlaying || isDraggingFrame || isDeletingFrame || isImportingSession || useToolStore.getState().isProcessingHistory) return;
     
-    setTimeout(() => {
-      if (isLoadingFrameRef.current || isPlaying || isDraggingFrame || isDeletingFrame || isImportingSession || isProcessingHistory) return;
-      
-      const currentCells = new Map(cellsRef.current);
-      setFrameDataRef.current(effectiveFrameIndexRef.current, currentCells);
-      lastCellsRef.current = currentCells;
-    }, 50);
-  }, [isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession, isProcessingHistory]);
+    const currentCells = new Map(cellsRef.current);
+    setFrameDataRef.current(effectiveFrameIndexRef.current, currentCells);
+    lastCellsRef.current = currentCells;
+  }, [isPlaying, isDraggingFrame, isDeletingFrame, isImportingSession]);
 
   // Load frame data into canvas when frame changes
   const loadFrameToCanvas = useCallback((frameIndex: number) => {
@@ -333,6 +329,14 @@ export const useFrameSynchronization = (
 
       // Skip during loading/playback/etc
       if (isLoadingFrameRef.current) return;
+
+      // During history processing (undo/redo), sync refs but don't save.
+      // This prevents the auto-save from overwriting restored content frames.
+      if (useToolStore.getState().isProcessingHistory) {
+        lastCellsRef.current = newCells;
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        return;
+      }
       
       // Check if cells actually changed
       const lastCells = lastCellsRef.current;

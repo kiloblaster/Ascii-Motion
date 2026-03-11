@@ -223,10 +223,10 @@ export async function processEffectOnFrames(
 /**
  * Levels Effect Processing
  */
-async function processLevelsEffect(
+export function processLevelsEffect(
   cells: Map<string, Cell>,
   settings: LevelsEffectSettings
-): Promise<{ processedCells: Map<string, Cell>, affectedCells: number }> {
+): { processedCells: Map<string, Cell>, affectedCells: number } {
   const processedCells = new Map<string, Cell>();
   let affectedCells = 0;
 
@@ -285,10 +285,10 @@ async function processLevelsEffect(
 /**
  * Hue & Saturation Effect Processing
  */
-async function processHueSaturationEffect(
+export function processHueSaturationEffect(
   cells: Map<string, Cell>,
   settings: HueSaturationEffectSettings
-): Promise<{ processedCells: Map<string, Cell>, affectedCells: number }> {
+): { processedCells: Map<string, Cell>, affectedCells: number } {
   const processedCells = new Map<string, Cell>();
   let affectedCells = 0;
 
@@ -326,10 +326,10 @@ async function processHueSaturationEffect(
 /**
  * Remap Colors Effect Processing
  */
-async function processRemapColorsEffect(
+export function processRemapColorsEffect(
   cells: Map<string, Cell>,
   settings: RemapColorsEffectSettings
-): Promise<{ processedCells: Map<string, Cell>, affectedCells: number }> {
+): { processedCells: Map<string, Cell>, affectedCells: number } {
   const processedCells = new Map<string, Cell>();
   let affectedCells = 0;
 
@@ -367,10 +367,10 @@ async function processRemapColorsEffect(
 /**
  * Remap Characters Effect Processing
  */
-async function processRemapCharactersEffect(
+export function processRemapCharactersEffect(
   cells: Map<string, Cell>,
   settings: RemapCharactersEffectSettings
-): Promise<{ processedCells: Map<string, Cell>, affectedCells: number }> {
+): { processedCells: Map<string, Cell>, affectedCells: number } {
   const processedCells = new Map<string, Cell>();
   let affectedCells = 0;
 
@@ -461,9 +461,12 @@ function applyLevelsToChannel(
   if (value <= shadowsInput) return outputMin;
   if (value >= highlightsInput) return outputMax;
   
-  // Apply gamma correction for midtones
+  // Convert 0-100 midtones to gamma exponent (0→0.1, 50→1.0, 100→3.0)
   const normalizedInput = (value - shadowsInput) / (highlightsInput - shadowsInput);
-  const gammaAdjusted = Math.pow(normalizedInput, 1.0 / midtonesInput);
+  const gammaValue = midtonesInput <= 50
+    ? 0.1 + (midtonesInput / 50) * 0.9
+    : 1.0 + ((midtonesInput - 50) / 50) * 2.0;
+  const gammaAdjusted = Math.pow(normalizedInput, 1.0 / gammaValue);
   
   // Map to output range
   const result = outputMin + (gammaAdjusted * (outputMax - outputMin));
@@ -621,11 +624,11 @@ function hslToHex(h: number, s: number, l: number): string {
  * Scatter Effect Processing
  * Randomly scatters cells based on various patterns
  */
-async function processScatterEffect(
+export function processScatterEffect(
   cells: Map<string, Cell>,
   settings: ScatterEffectSettings,
   canvasBackgroundColor: string = '#000000'
-): Promise<{ processedCells: Map<string, Cell>, affectedCells: number }> {
+): { processedCells: Map<string, Cell>, affectedCells: number } {
   const processedCells = new Map<string, Cell>();
   const { strength, scatterType, seed, blendColors } = settings;
   

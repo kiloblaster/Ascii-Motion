@@ -17,7 +17,7 @@
 // Uncomment the line above and update the filename to match your export.
 
 import { useCallback, useRef } from 'react';
-import AsciiMotionAnimationNew from './ascii-motion-animation-new';
+import AsciiMotionAnimationEffects from './ascii-motion-animation-effects';
 
 type PlaybackApi = {
   play: () => void;
@@ -34,7 +34,7 @@ export default function MyPage() {
 
   return (
     <div>
-      <AsciiMotionAnimationNew
+      <AsciiMotionAnimationEffects
         autoPlay={true}
         onReady={handleReady}
       />

@@ -1,11 +1,8 @@
 /**
  * EffectsSection - Collapsible effects section for the right panel
  * 
- * Features:
- * - Collapsible section header with effects icon
- * - Effect buttons with icons and names
- * - Timeline toggle for applying effects to entire timeline
- * - Follows MainCharacterPaletteSection patterns exactly
+ * Creates procedural effect blocks on the active layer's timeline.
+ * Uses the effect registry for available effects.
  */
 
 import { useState } from 'react';
@@ -15,28 +12,10 @@ import {
   CollapsibleContent,
 } from '../ui/collapsible';
 import { CollapsibleHeader } from '../common/CollapsibleHeader';
-import { useEffectsStore } from '../../stores/effectsStore';
-import { useEffectsHistory } from '../../hooks/useEffectsHistory';
-import { EFFECT_DEFINITIONS } from '../../constants/effectsDefaults';
-import type { EffectType } from '../../types/effects';
-import { 
-  Wand2,
-  BarChart3,
-  Palette,
-  RefreshCcw,
-  Type,
-  ScatterChart,
-  RefreshCw
-} from 'lucide-react';
-
-// Icon mapping for effect buttons
-const EFFECT_ICONS = {
-  'BarChart3': BarChart3,
-  'Palette': Palette,
-  'RefreshCcw': RefreshCcw,
-  'Type': Type,
-  'ScatterChart': ScatterChart
-} as const;
+import { useTimelineStore } from '../../stores/timelineStore';
+import { useEffectBlockHistory } from '../../hooks/useEffectBlockHistory';
+import { getAllEffects } from '../../registry/effectRegistry';
+import { Wand2 } from 'lucide-react';
 
 interface EffectsSectionProps {
   className?: string;
@@ -44,20 +23,30 @@ interface EffectsSectionProps {
 
 export function EffectsSection({ className = '' }: EffectsSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
-  
-  const { 
-    openEffectPanel, 
-    isAnalyzing
-  } = useEffectsStore();
-  
-  const { reapplyLatestEffect, hasLastAppliedEffect, canApplyEffect } = useEffectsHistory();
 
-  const handleEffectClick = (effectId: EffectType) => {
-    openEffectPanel(effectId);
-  };
-  
-  const handleReapplyLatestEffect = async () => {
-    await reapplyLatestEffect();
+  const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
+  const selectEffectBlock = useTimelineStore((s) => s.selectEffectBlock);
+  const activeLayerId = useTimelineStore((s) => s.view.activeLayerId);
+  const currentFrame = useTimelineStore((s) => s.view.currentFrame);
+  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const { recordAdd } = useEffectBlockHistory();
+
+  const registeredEffects = getAllEffects();
+
+  const handleEffectClick = (effectType: string) => {
+    const ownerId = activeLayerId;
+    const start = currentFrame;
+    const duration = Math.max(1, durationFrames - start);
+    const blockId = addEffectBlock(ownerId, effectType, start, duration);
+    if (blockId) {
+      recordAdd(ownerId, blockId);
+      selectEffectBlock(blockId);
+      // Auto-expand the layer to show the new effect
+      const tl = useTimelineStore.getState();
+      if (ownerId && !tl.view.expandedLayerIds.has(ownerId as import('../../types/timeline').LayerId)) {
+        tl.toggleLayerExpanded(ownerId as import('../../types/timeline').LayerId);
+      }
+    }
   };
 
   return (
@@ -71,46 +60,24 @@ export function EffectsSection({ className = '' }: EffectsSectionProps) {
         </CollapsibleHeader>
         
         <CollapsibleContent className="collapsible-content mt-2">
-          <div className="space-y-3">
-            {/* Effect Buttons */}
-            <div className="space-y-2">
-              {EFFECT_DEFINITIONS.map(effect => {
-                const IconComponent = EFFECT_ICONS[effect.icon as keyof typeof EFFECT_ICONS];
-                
-                return (
-                  <Button
-                    key={effect.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEffectClick(effect.id)}
-                    disabled={isAnalyzing}
-                    className="w-full justify-start gap-2 h-8 text-xs"
-                    title={effect.description}
-                  >
-                    {IconComponent && <IconComponent className="w-3 h-3" />}
-                    {effect.name}
-                  </Button>
-                );
-              })}
-              
-              {/* Re-apply Latest Effect Button */}
+          <div className="space-y-2">
+            {registeredEffects.map((effect) => (
               <Button
+                key={effect.type}
                 variant="outline"
                 size="sm"
-                onClick={handleReapplyLatestEffect}
-                disabled={!hasLastAppliedEffect || isAnalyzing || !canApplyEffect()}
+                onClick={() => handleEffectClick(effect.type)}
                 className="w-full justify-start gap-2 h-8 text-xs"
-                title={hasLastAppliedEffect ? 'Re-apply the last effect with the same settings' : 'No effect has been applied yet'}
+                title={effect.description}
               >
-                <RefreshCw className="w-3 h-3" />
-                Re-apply Latest Effect
+                <effect.icon className="w-3 h-3" />
+                {effect.name}
               </Button>
-            </div>
-            
-            {/* Analysis Status */}
-            {isAnalyzing && (
-              <div className="text-xs text-muted-foreground animate-pulse">
-                Analyzing canvas...
+            ))}
+
+            {registeredEffects.length === 0 && (
+              <div className="text-xs text-muted-foreground">
+                No effects registered
               </div>
             )}
           </div>

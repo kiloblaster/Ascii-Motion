@@ -56,7 +56,7 @@ export const EFFECT_DEFINITIONS: EffectDefinition[] = [
 export const DEFAULT_LEVELS_SETTINGS: LevelsEffectSettings = {
   // Input levels (standard range)
   shadowsInput: 0,
-  midtonesInput: 1.0,  // Gamma value: 1.0 = no change
+  midtonesInput: 50,  // 0-100: 50 = no change
   highlightsInput: 255,
   
   // Output levels (no change)
@@ -67,9 +67,6 @@ export const DEFAULT_LEVELS_SETTINGS: LevelsEffectSettings = {
   colorRange: {
     type: 'all'
   },
-  
-  // Advanced settings
-  gamma: 1.0
 };
 
 export const DEFAULT_HUE_SATURATION_SETTINGS: HueSaturationEffectSettings = {
@@ -82,9 +79,6 @@ export const DEFAULT_HUE_SATURATION_SETTINGS: HueSaturationEffectSettings = {
   colorRange: {
     type: 'all'
   },
-  
-  // Advanced settings
-  preserveLuminance: false
 };
 
 export const DEFAULT_REMAP_COLORS_SETTINGS: RemapColorsEffectSettings = {
@@ -104,9 +98,6 @@ export const DEFAULT_REMAP_COLORS_SETTINGS: RemapColorsEffectSettings = {
 export const DEFAULT_REMAP_CHARACTERS_SETTINGS: RemapCharactersEffectSettings = {
   // Empty mappings by default
   characterMappings: {},
-  
-  // Processing options
-  preserveSpacing: true
 };
 
 export const DEFAULT_SCATTER_SETTINGS: ScatterEffectSettings = {

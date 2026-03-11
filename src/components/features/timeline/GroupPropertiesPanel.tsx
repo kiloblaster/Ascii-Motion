@@ -12,6 +12,7 @@ import React, { useState, useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { PROPERTY_DEFINITIONS } from '../../../types/timeline';
 import { getGroupPropertyValue } from '../../../utils/layerCompositing';
+import { useScrubInput } from '../../../hooks/useScrubInput';
 import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Diamond, X, RotateCcw } from 'lucide-react';
@@ -50,6 +51,14 @@ const GroupPropertyRow: React.FC<GroupPropertyRowProps> = ({ groupId, propertyPa
   const [localValue, setLocalValue] = useState<string>(String(value));
   const [isFocused, setIsFocused] = useState(false);
   const displayValue = isFocused ? localValue : String(value);
+
+  const scrub = useScrubInput({
+    value,
+    onChange: (v) => { setLocalValue(String(v)); writeValue(v); },
+    step: definition?.step ?? 1,
+    min: definition?.min,
+    max: definition?.max,
+  });
 
   const writeValue = useCallback((clamped: number) => {
     if (isTracked && track) {
@@ -139,7 +148,7 @@ const GroupPropertyRow: React.FC<GroupPropertyRowProps> = ({ groupId, propertyPa
         </Tooltip>
       </TooltipProvider>
 
-      <span className="text-[10px] text-muted-foreground w-14 truncate flex-shrink-0">
+      <span className="text-[10px] text-muted-foreground w-14 truncate flex-shrink-0 cursor-ew-resize" onMouseDown={scrub.onMouseDown}>
         {definition?.displayName ?? propertyPath.split('.').pop()}
       </span>
 

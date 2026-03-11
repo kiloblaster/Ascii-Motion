@@ -22,8 +22,19 @@ import {
   Trash2,
   Diamond,
   X,
+  Plus,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../ui/dropdown-menu';
+import { EffectTrackRow } from './EffectTrackRow';
+import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
+import { useToolStore } from '../../../stores/toolStore';
+import { getAllEffects, getEffect } from '../../../registry/effectRegistry';
 import { getGroupPropertyValue } from '../../../utils/layerCompositing';
 import { PROPERTY_DEFINITIONS, PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
 import { defaultEasing } from '../../../types/easing';
@@ -63,6 +74,12 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
   const setLayerVisible = useTimelineStore((s) => s.setLayerVisible);
   const setLayerLocked = useTimelineStore((s) => s.setLayerLocked);
   const ungroupLayers = useTimelineStore((s) => s.ungroupLayers);
+  const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
+  const addEffectBlock = useTimelineStore((s) => s.addEffectBlock);
+  const moveEffectTrack = useTimelineStore((s) => s.moveEffectTrack);
+  const { recordAdd: recordEffectAdd } = useEffectBlockHistory();
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
+  const [isEffectDragOver, setIsEffectDragOver] = React.useState(false);
 
   // Groups show property tracks when not collapsed (unlike layers which use expandedLayerIds)
   const isExpanded = !group.collapsed;
@@ -115,27 +132,79 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
   return (
     <div
       className={cn(
-        'border-b border-border/50 select-none bg-muted/40 group',
+        'select-none bg-muted/40 group',
         isSelected && 'bg-accent/40',
-        isDragOver && dragOverPosition === 'above' && 'border-t-2 border-t-primary',
-        isDragOver && dragOverPosition === 'into' && 'bg-primary/20',
+        isDragOver && !isEffectDragOver && dragOverPosition === 'above' && 'border-t-2 border-t-primary',
+        isDragOver && !isEffectDragOver && dragOverPosition === 'into' && 'bg-primary/20',
+        isEffectDragOver && 'ring-1 ring-inset ring-primary bg-primary/10',
       )}
       onClick={onSelect}
       onContextMenu={onContextMenu}
       draggable
       onDragStart={(e) => {
+        if ((e.target as HTMLElement).closest('[data-effect-track]')) return;
         e.dataTransfer.effectAllowed = 'move';
         onDragStart?.();
       }}
       onDragOver={(e) => {
-        e.preventDefault();
-        onDragOver?.(e);
+        if (e.dataTransfer.types.includes('application/effect-block-id')) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          setIsEffectDragOver(true);
+        } else {
+          e.preventDefault();
+          onDragOver?.(e);
+        }
       }}
-      onDrop={() => onDrop?.()}
+      onDragLeave={() => {
+        setIsEffectDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer.types.includes('application/effect-block-id')) {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsEffectDragOver(false);
+          const draggedBlockId = e.dataTransfer.getData('application/effect-block-id');
+          if (draggedBlockId) {
+            // Snapshot before move for undo
+            const tl = useTimelineStore.getState();
+            let sourceTrack: import('../../../types/effectBlock').EffectTrack | undefined;
+            let sourceOwnerId: string | null = null;
+            for (const l of tl.layers) {
+              const t = (l.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+              if (t) { sourceTrack = t; sourceOwnerId = l.id as string; break; }
+            }
+            if (!sourceTrack) {
+              for (const g of tl.layerGroups) {
+                const t = (g.effectTracks ?? []).find((et) => (et.effectBlock.id as string) === draggedBlockId);
+                if (t) { sourceTrack = t; sourceOwnerId = g.id as string; break; }
+              }
+            }
+            if (!sourceTrack) {
+              sourceTrack = tl.globalEffects.find((et) => (et.effectBlock.id as string) === draggedBlockId);
+              if (sourceTrack) sourceOwnerId = null;
+            }
+            moveEffectTrack(
+              draggedBlockId as import('../../../types/effectBlock').EffectBlockId,
+              group.id,
+              0,
+            );
+            if (sourceTrack) {
+              pushToHistory({
+                type: 'effect_block_remove', timestamp: Date.now(), description: 'Move effect to group',
+                data: { ownerId: sourceOwnerId, ownerType: sourceOwnerId === null ? 'global' : 'layer', trackSnapshot: structuredClone(sourceTrack), trackIndex: 0 },
+              } as import('../../../types').EffectBlockRemoveHistoryAction);
+            }
+          }
+        } else {
+          onDrop?.();
+        }
+      }}
       onDragEnd={() => onDragEnd?.()}
     >
       <TooltipProvider>
-        <div className="flex items-center gap-0.5 px-1 py-1 min-h-[28px]">
+        <div className="flex items-center gap-0.5 px-1 py-1 min-h-[28px] border-b border-border/50">
           {/* Collapse/expand */}
           <button
             className="p-0.5 hover:bg-muted rounded"
@@ -248,7 +317,7 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
 
       {/* Expanded: group property track labels */}
       {isExpanded && group.propertyTracks.length > 0 && (
-        <div className="ml-5 border-t border-border/30">
+        <div className="ml-5">
           {[...group.propertyTracks]
             .sort((a, b) => {
               const idxA = PROPERTY_DISPLAY_ORDER.indexOf(a.propertyPath);
@@ -371,6 +440,84 @@ export const GroupHeader: React.FC<GroupHeaderProps> = React.memo(function Group
                 </div>
               );
             })}
+        </div>
+      )}
+
+      {/* Effect track rows + Add Effect (when expanded) */}
+      {isExpanded && (
+        <div className="ml-5">
+          {(group.effectTracks ?? []).map((track, idx) => (
+            <React.Fragment key={track.id}>
+              <EffectTrackRow
+                track={track}
+                isExpanded={expandedEffectTrackIds.has(track.effectBlock.id)}
+                index={idx}
+              />
+              {expandedEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.map((pt) => {
+                const effectEntry = getEffect(track.effectBlock.effectType);
+                const propDef = effectEntry?.propertyDefinitions.find((d) => d.path === pt.propertyPath);
+                const existingKfAtFrame = pt.keyframes.find((kf) => kf.frame === currentFrame);
+                return (
+                <div
+                  key={pt.id}
+                  className="flex items-center pl-6 pr-1.5 min-h-[24px] border-b border-border/30 text-[10px] text-muted-foreground group/effprop"
+                >
+                  <span className="flex-1 truncate">{propDef?.displayName ?? pt.propertyPath}</span>
+                  <button
+                    className="p-0.5 hover:bg-muted rounded"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const prev = [...pt.keyframes].map((kf) => kf.frame).filter((f) => f < currentFrame).sort((a, b) => b - a)[0];
+                      if (prev !== undefined) goToFrame(prev);
+                    }}
+                    disabled={!pt.keyframes.some((kf) => kf.frame < currentFrame)}
+                  >
+                    <ChevronLeft className="w-3 h-3" />
+                  </button>
+                  <Diamond className={cn('w-3 h-3', existingKfAtFrame ? 'text-yellow-400 fill-yellow-400' : 'text-muted-foreground/40')} />
+                  <button
+                    className="p-0.5 hover:bg-muted rounded"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const next = [...pt.keyframes].map((kf) => kf.frame).filter((f) => f > currentFrame).sort((a, b) => a - b)[0];
+                      if (next !== undefined) goToFrame(next);
+                    }}
+                    disabled={!pt.keyframes.some((kf) => kf.frame > currentFrame)}
+                  >
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                </div>
+                );
+              })}
+            </React.Fragment>
+          ))}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-1 px-1.5 py-0.5 min-h-[24px] text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 w-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Plus className="w-3 h-3" />
+                Add Effect
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[160px]">
+              {getAllEffects().map((effect) => (
+                <DropdownMenuItem
+                  key={effect.type}
+                  onClick={() => {
+                    const start = currentFrame;
+                    const duration = Math.max(1, useTimelineStore.getState().config.durationFrames - start);
+                    const blockId = addEffectBlock(group.id, effect.type, start, duration);
+                    if (blockId) recordEffectAdd(group.id, blockId);
+                  }}
+                >
+                  <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+                  {effect.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
       </TooltipProvider>

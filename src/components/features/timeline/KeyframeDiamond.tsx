@@ -9,10 +9,10 @@ import React, { useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
-import type { Keyframe, KeyframeId, LayerId, PropertyTrackId } from '../../../types/timeline';
+import type { Keyframe, KeyframeId, LayerId, PropertyTrack, PropertyTrackId } from '../../../types/timeline';
 import type { KeyframeUpdateHistoryAction, KeyframeAddHistoryAction } from '../../../types';
 
-/** Find a track and keyframe across both layers and layerGroups */
+/** Find a track and keyframe across layers, layerGroups, and effect blocks */
 function findTrackAndKeyframe(trackId: PropertyTrackId, kfId: KeyframeId) {
   const tl = useTimelineStore.getState();
   for (const layer of tl.layers) {
@@ -21,12 +21,33 @@ function findTrackAndKeyframe(trackId: PropertyTrackId, kfId: KeyframeId) {
       const kf = track.keyframes.find((k) => k.id === kfId);
       return { track, kf: kf ?? null };
     }
+    for (const et of (layer.effectTracks ?? [])) {
+      const ept = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+      if (ept) {
+        const kf = ept.keyframes.find((k) => k.id === kfId);
+        return { track: ept as unknown as PropertyTrack, kf: (kf ?? null) as Keyframe | null };
+      }
+    }
   }
   for (const group of tl.layerGroups) {
     const track = group.propertyTracks.find((t) => t.id === trackId);
     if (track) {
       const kf = track.keyframes.find((k) => k.id === kfId);
       return { track, kf: kf ?? null };
+    }
+    for (const et of (group.effectTracks ?? [])) {
+      const ept = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+      if (ept) {
+        const kf = ept.keyframes.find((k) => k.id === kfId);
+        return { track: ept as unknown as PropertyTrack, kf: (kf ?? null) as Keyframe | null };
+      }
+    }
+  }
+  for (const et of (tl.globalEffects ?? [])) {
+    const ept = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+    if (ept) {
+      const kf = ept.keyframes.find((k) => k.id === kfId);
+      return { track: ept as unknown as PropertyTrack, kf: (kf ?? null) as Keyframe | null };
     }
   }
   return { track: null, kf: null };
@@ -72,6 +93,8 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
         selectKeyframes([keyframe.id]);
       }
       setEditingKeyframe(keyframe.id);
+      // Clear effect block selection so keyframe editor takes priority
+      useTimelineStore.getState().selectEffectBlock(null);
     },
     [keyframe.id, selectKeyframes, addKeyframesToSelection, setEditingKeyframe],
   );
@@ -110,15 +133,45 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
               }
             }
           }
+          // Search effect property tracks
+          for (const et of (layer.effectTracks ?? [])) {
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                if (selectedIds.has(kf.id)) {
+                  entries.push({ layerId: layer.id, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+                }
+              }
+            }
+          }
         }
         // Also search layerGroups
         for (const group of tl.layerGroups) {
           for (const track of group.propertyTracks) {
             for (const kf of track.keyframes) {
               if (selectedIds.has(kf.id)) {
-                // Use first child layer ID as proxy (store actions fall back to groups)
                 const proxyLayerId = group.childLayerIds[0] ?? layerId;
                 entries.push({ layerId: proxyLayerId, trackId: track.id, kfId: kf.id, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+              }
+            }
+          }
+          // Search group effect property tracks
+          for (const et of (group.effectTracks ?? [])) {
+            for (const pt of et.effectBlock.propertyTracks) {
+              for (const kf of pt.keyframes) {
+                if (selectedIds.has(kf.id)) {
+                  const proxyLayerId = group.childLayerIds[0] ?? layerId;
+                  entries.push({ layerId: proxyLayerId, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+                }
+              }
+            }
+          }
+        }
+        // Search global effects
+        for (const et of (tl.globalEffects ?? [])) {
+          for (const pt of et.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (selectedIds.has(kf.id)) {
+                entries.push({ layerId: layerId, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
               }
             }
           }
