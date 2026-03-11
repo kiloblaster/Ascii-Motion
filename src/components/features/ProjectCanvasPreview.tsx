@@ -8,6 +8,7 @@
  */
 
 import { useMemo } from 'react';
+import { Loader2 } from 'lucide-react';
 import type { CloudProject } from '@ascii-motion/premium';
 
 interface ProjectCanvasPreviewProps {
@@ -155,7 +156,19 @@ export const ProjectCanvasPreview: React.FC<ProjectCanvasPreviewProps> = ({
   }, [project.sessionData, width, height, canvasWidth, canvasHeight]);
 
   if (!previewDataUrl) {
-    return null;
+    return (
+      <div className="w-full flex justify-center my-3">
+        <div
+          className="rounded border border-border/30 bg-muted/30 flex items-center justify-center"
+          style={{ width, height }}
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <span className="sr-only">Loading project preview…</span>
+        </div>
+      </div>
+    );
   }
 
   return (

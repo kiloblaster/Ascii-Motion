@@ -13,7 +13,7 @@
  * - This keeps UI components with shadcn/ui design system while logic stays in premium package
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useCloudProject, useAuth, UpgradeDialog } from '@ascii-motion/premium';
 import type { CloudProject } from '@ascii-motion/premium';
 import {
@@ -47,6 +47,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Loader2, 
   MoreVertical, 
@@ -69,6 +70,80 @@ import { ProjectCanvasPreview } from './ProjectCanvasPreview';
 import { getProjectFrameCount } from '../../utils/projectUtils';
 import { UpgradeToProDialog } from './UpgradeToProDialog';
 import type { UserProfile } from '@ascii-motion/premium';
+
+// --- sessionStorage cache helpers ---
+const CACHE_KEY_PROJECTS = 'ascii-motion:projects-cache';
+const CACHE_KEY_DELETED = 'ascii-motion:deleted-projects-cache';
+const CACHE_KEY_PROFILE = 'ascii-motion:user-profile-cache';
+
+function hasSessionStorage(): boolean {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
+function getCachedProjects(): CloudProject[] | null {
+  if (!hasSessionStorage()) return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY_PROJECTS);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function getCachedDeletedProjects(): CloudProject[] | null {
+  if (!hasSessionStorage()) return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY_DELETED);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function getCachedUserProfile(): UserProfile | null {
+  if (!hasSessionStorage()) return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY_PROFILE);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function setCachedProjects(projects: CloudProject[]) {
+  if (!hasSessionStorage()) return;
+  try { sessionStorage.setItem(CACHE_KEY_PROJECTS, JSON.stringify(projects)); } catch { /* quota exceeded */ }
+}
+
+function setCachedDeletedProjects(projects: CloudProject[]) {
+  if (!hasSessionStorage()) return;
+  try { sessionStorage.setItem(CACHE_KEY_DELETED, JSON.stringify(projects)); } catch { /* quota exceeded */ }
+}
+
+function setCachedUserProfile(profile: UserProfile) {
+  if (!hasSessionStorage()) return;
+  try { sessionStorage.setItem(CACHE_KEY_PROFILE, JSON.stringify(profile)); } catch { /* quota exceeded */ }
+}
+
+/** Skeleton placeholder matching the project card layout */
+function ProjectCardSkeleton() {
+  return (
+    <Card className="relative border-border/50 flex flex-col">
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-3/4" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+          <Skeleton className="h-8 w-8 rounded-md" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="h-[120px] w-full rounded-md mb-2" />
+        <Skeleton className="h-3 w-28 mb-2" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-2/3 mt-1" />
+      </CardContent>
+      <CardFooter className="mt-auto">
+        <Skeleton className="h-9 w-full rounded-md" />
+      </CardFooter>
+    </Card>
+  );
+}
 
 interface ProjectsDialogProps {
   open: boolean;
@@ -98,19 +173,23 @@ export function ProjectsDialog({
     updateDescription,
     uploadSessionFile,
     getUserProfile,
+    loadProjectsSessionData,
   } = useCloudProject();
 
-  const [projects, setProjects] = useState<CloudProject[]>([]);
-  const [deletedProjects, setDeletedProjects] = useState<CloudProject[]>([]);
+  const [projects, setProjects] = useState<CloudProject[]>(() => getCachedProjects() ?? []);
+  const [deletedProjects, setDeletedProjects] = useState<CloudProject[]>(() => getCachedDeletedProjects() ?? []);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
   const [newDescription, setNewDescription] = useState('');
   const [uploading, setUploading] = useState(false);
   const [trashExpanded, setTrashExpanded] = useState(false);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getCachedUserProfile());
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [showRealUpgradeDialog, setShowRealUpgradeDialog] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasCachedData = useRef(!!getCachedProjects());
+  const hasLoadedOnce = useRef(false);
   
   // Get auth for upgrade dialog
   const { user, profile, getAccessToken } = useAuth();
@@ -136,23 +215,71 @@ export function ProjectsDialog({
 
   const projectsAtRisk = projects.length > 3 ? projects.length - 3 : 0;
 
-  // Load projects list from database
+  // Load projects list from database (stale-while-revalidate)
   const loadProjectsList = useCallback(async () => {
-    const [activeData, deletedData, profile] = await Promise.all([
-      listProjects(),
-      listDeletedProjects(),
-      getUserProfile(),
-    ]);
-    
-    // Sort active projects by most recently opened first
-    const sortedActive = activeData.sort((a, b) => 
-      new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime()
-    );
-    
-    setProjects(sortedActive);
-    setDeletedProjects(deletedData);
-    setUserProfile(profile);
-  }, [listProjects, listDeletedProjects, getUserProfile]);
+    if (hasCachedData.current) setRefreshing(true);
+
+    try {
+      const [activeData, deletedData, profileData] = await Promise.all([
+        listProjects(),
+        listDeletedProjects(),
+        getUserProfile(),
+      ]);
+      
+      // Sort active projects by most recently opened first
+      const sortedActive = activeData.sort((a, b) => 
+        new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime()
+      );
+      
+      // Merge fresh metadata with existing sessionData from cache
+      setProjects(prev => {
+        const existingSD = new Map(
+          prev.filter(p => p.sessionData).map(p => [p.id, p.sessionData])
+        );
+        return sortedActive.map(p => ({
+          ...p,
+          sessionData: p.sessionData || existingSD.get(p.id),
+        }));
+      });
+      setDeletedProjects(prev => {
+        const existingSD = new Map(
+          prev.filter(p => p.sessionData).map(p => [p.id, p.sessionData])
+        );
+        return deletedData.map(p => ({
+          ...p,
+          sessionData: p.sessionData || existingSD.get(p.id),
+        }));
+      });
+      setUserProfile(profileData);
+
+      // Persist metadata to sessionStorage
+      setCachedProjects(sortedActive);
+      setCachedDeletedProjects(deletedData);
+      if (profileData) setCachedUserProfile(profileData);
+      hasCachedData.current = true;
+
+      // Lazy-load session data for previews — progressive per-project updates
+      const idsNeedingData = [...sortedActive, ...deletedData]
+        .filter(p => !p.sessionData)
+        .map(p => p.id);
+      if (idsNeedingData.length > 0) {
+        const activeIds = new Set(sortedActive.map(p => p.id));
+        const updateProject = (id: string, sessionData: CloudProject['sessionData']) => {
+          const setter = activeIds.has(id) ? setProjects : setDeletedProjects;
+          setter(prev => {
+            const updated = prev.map(p =>
+              p.id === id ? { ...p, sessionData } : p
+            );
+            return updated;
+          });
+        };
+        loadProjectsSessionData(idsNeedingData, updateProject);
+      }
+    } finally {
+      hasLoadedOnce.current = true;
+      setRefreshing(false);
+    }
+  }, [listProjects, listDeletedProjects, getUserProfile, loadProjectsSessionData]);
 
   // Load projects when dialog opens OR when refreshTrigger changes
   useEffect(() => {
@@ -160,6 +287,16 @@ export function ProjectsDialog({
       loadProjectsList();
     }
   }, [open, refreshTrigger, loadProjectsList]);
+
+  // Persist project data to sessionStorage (debounced to avoid excessive writes)
+  useEffect(() => {
+    if (!hasLoadedOnce.current) return;
+    const timer = setTimeout(() => {
+      setCachedProjects(projects);
+      setCachedDeletedProjects(deletedProjects);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [projects, deletedProjects]);
 
   // Reset dialog state when closed
   useEffect(() => {
@@ -171,6 +308,7 @@ export function ProjectsDialog({
       setNewName('');
       setEditingDescriptionId(null);
       setNewDescription('');
+      hasLoadedOnce.current = false;
     }
   }, [open]);
 
@@ -355,6 +493,9 @@ export function ProjectsDialog({
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">
               Open, manage, and upload your projects • {getProjectLimit().current}/{getProjectLimit().max === Infinity ? '∞' : getProjectLimit().max} projects used
+              {refreshing && (
+                <Loader2 className="inline-block h-3 w-3 ml-2 animate-spin align-text-bottom" />
+              )}
             </p>
             {!isProUser() && (
               <button
@@ -424,9 +565,11 @@ export function ProjectsDialog({
 
         {/* Projects List */}
         <div className="flex-1 overflow-y-auto min-h-0">
-          {loading && projects.length === 0 ? (
-            <div className="flex items-center justify-center h-32">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          {!hasLoadedOnce.current && projects.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <ProjectCardSkeleton />
+              <ProjectCardSkeleton />
+              <ProjectCardSkeleton />
             </div>
           ) : projects.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-32 text-center">
