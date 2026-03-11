@@ -155,7 +155,14 @@ export const ProjectCanvasPreview: React.FC<ProjectCanvasPreviewProps> = ({
   }, [project.sessionData, width, height, canvasWidth, canvasHeight]);
 
   if (!previewDataUrl) {
-    return null;
+    return (
+      <div className="w-full flex justify-center my-3">
+        <div
+          className="rounded border border-border/30 bg-muted/30"
+          style={{ width, height }}
+        />
+      </div>
+    );
   }
 
   return (
