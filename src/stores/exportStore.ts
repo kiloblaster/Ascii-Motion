@@ -130,7 +130,7 @@ const DEFAULT_BUBBLETEA_SETTINGS: BubbleteaExportSettings = {
   fileName: 'ascii_motion_anim',
   packageName: 'asciimotion',
   colorMode: 'hex',
-  playbackStyle: 'api',
+  playbackStyle: 'autoplay',
   loopAnimation: true,
 };
 

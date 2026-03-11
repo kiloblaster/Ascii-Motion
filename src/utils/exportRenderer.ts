@@ -3274,7 +3274,7 @@ export class ExportRenderer {
     lines.push('var frames = []Frame{');
     for (const frame of framesData) {
       lines.push('\t{');
-      lines.push(`\t\tDuration: ${frame.duration} * time.Millisecond,`);
+      lines.push(`\t\tDuration: ${Math.round(frame.duration)} * time.Millisecond,`);
       lines.push('\t\tContent: []string{');
       for (const row of frame.content) {
         lines.push(`\t\t\t${JSON.stringify(row)},`);
