@@ -15,7 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import { getAllEffects, getEffect } from '../../../registry/effectRegistry';
 import { EffectTrackRow } from './EffectTrackRow';
@@ -182,6 +182,7 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
               >
                 <ChevronLeft className="w-3 h-3" />
               </button>
+              <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -224,6 +225,7 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
                   {existingKfAtFrame ? 'Remove keyframe at current frame' : 'Add keyframe at current frame'}
                 </TooltipContent>
               </Tooltip>
+              </TooltipProvider>
               <button
                 className="p-0.5 hover:bg-muted rounded"
                 onClick={(e) => {
