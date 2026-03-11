@@ -18,6 +18,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import { getAllEffects, getEffect } from '../../../registry/effectRegistry';
+import { evaluateEffectBlock } from '../../../utils/effectsPipeline';
 import { EffectTrackRow } from './EffectTrackRow';
 import { useEffectBlockHistory } from '../../../hooks/useEffectBlockHistory';
 
@@ -198,7 +199,8 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
                         } as import('../../../types').EffectKeyframeRemoveHistoryAction);
                         removeEffectKeyframe(track.effectBlock.id, pt.id, existingKfAtFrame.id as import('../../../types/timeline').KeyframeId);
                       } else {
-                        const kfValue = (propDef?.defaultValue ?? 0) as import('../../../types/effectBlock').EffectKeyframe['value'];
+                        const resolved = evaluateEffectBlock(track.effectBlock, currentFrame);
+                        const kfValue = (resolved[pt.propertyPath] ?? propDef?.defaultValue ?? 0) as import('../../../types/effectBlock').EffectKeyframe['value'];
                         const kfId = addEffectKeyframe(track.effectBlock.id, pt.id, currentFrame, kfValue);
                         pushToHistory({
                           type: 'effect_keyframe_add', timestamp: Date.now(),

@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import type { LayerId, ContentFrameId, PropertyTrackId, KeyframeId } from '../../../types/timeline';
 import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/layerCompositing';
+import { evaluateEffectBlock } from '../../../utils/effectsPipeline';
 import type { ContentFrameReorderHistoryAction } from '../../../types';
 
 // ============================================
@@ -573,8 +574,9 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
                 for (const et of allSources) {
                   const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (ctx.trackId as string));
                   if (pt) {
-                    const defaultValue = 0;
-                    addEffectKeyframe(et.effectBlock.id, pt.id, ctx.clickFrame, defaultValue);
+                    const resolved = evaluateEffectBlock(et.effectBlock, ctx.clickFrame);
+                    const currentValue = (resolved[pt.propertyPath] ?? 0) as import('../../../types/effectBlock').EffectKeyframe['value'];
+                    addEffectKeyframe(et.effectBlock.id, pt.id, ctx.clickFrame, currentValue);
                     return;
                   }
                 }
