@@ -264,6 +264,18 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
     );
   }
 
+  // Color swatch — opens ColorPickerOverlay on click
+  if (definition.valueType === 'color') {
+    return (
+      <ColorSwatchRow
+        definition={definition}
+        value={value as string | undefined}
+        onChange={onChange}
+        keyframeDiamond={keyframeDiamond}
+      />
+    );
+  }
+
   // Numeric input (default)
   return (
     <div className="flex items-center gap-1.5 py-0.5">
@@ -286,6 +298,51 @@ const EffectPropertyRow: React.FC<EffectPropertyRowProps> = ({ definition, value
           {definition.unit}
         </span>
       )}
+    </div>
+  );
+};
+
+// ============================================
+// COLOR SWATCH ROW COMPONENT
+// ============================================
+
+interface ColorSwatchRowProps {
+  definition: EffectPropertyDefinition;
+  value: string | undefined;
+  onChange: (value: unknown) => void;
+  keyframeDiamond: React.ReactNode;
+}
+
+const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({ definition, value, onChange, keyframeDiamond }) => {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const swatchRef = useRef<HTMLDivElement>(null);
+  const currentColor = value ?? (definition.defaultValue as string) ?? '#000000';
+
+  return (
+    <div className="flex items-center gap-1.5 py-0.5">
+      {keyframeDiamond}
+      <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
+        {definition.displayName}
+      </span>
+      <div
+        ref={swatchRef}
+        className="w-5 h-5 rounded border border-border/50 cursor-pointer hover:ring-1 hover:ring-primary flex-shrink-0"
+        style={{ backgroundColor: currentColor }}
+        title={currentColor}
+        onClick={() => setPickerOpen(!pickerOpen)}
+      />
+      <span className="text-[10px] text-muted-foreground/60 flex-1 min-w-0 truncate select-none">
+        {currentColor}
+      </span>
+      <ColorPickerOverlay
+        isOpen={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onColorSelect={(color) => { onChange(color); setPickerOpen(false); }}
+        onColorChange={(color) => onChange(color)}
+        initialColor={/^#[0-9a-fA-F]{6}$/.test(currentColor) ? currentColor : '#000000'}
+        triggerRef={swatchRef as React.RefObject<HTMLElement | null>}
+        anchorPosition="bottom-left"
+      />
     </div>
   );
 };
