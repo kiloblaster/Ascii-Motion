@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../ui/tooltip';
 import { Button } from '../../ui/button';
 import { getAllEffects, getEffect } from '../../../registry/effectRegistry';
 import { EffectTrackRow } from './EffectTrackRow';
@@ -30,6 +31,11 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
   const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
   const moveEffectTrack = useTimelineStore((s) => s.moveEffectTrack);
+  const addEffectKeyframe = useTimelineStore((s) => s.addEffectKeyframe);
+  const removeEffectKeyframe = useTimelineStore((s) => s.removeEffectKeyframe);
+  const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
+  const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
   const [isDragOverHeader, setIsDragOverHeader] = React.useState(false);
 
   const registeredEffects = getAllEffects();
@@ -176,7 +182,48 @@ export const GlobalEffectsTrackHeader: React.FC = function GlobalEffectsTrackHea
               >
                 <ChevronLeft className="w-3 h-3" />
               </button>
-              <Diamond className={`w-3 h-3 ${existingKfAtFrame ? 'text-yellow-400 fill-yellow-400' : 'text-muted-foreground/40'}`} />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="p-0.5 hover:bg-muted rounded"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (existingKfAtFrame) {
+                        pushToHistory({
+                          type: 'effect_keyframe_remove', timestamp: Date.now(),
+                          description: `Remove ${propDef?.displayName ?? pt.propertyPath} keyframe`,
+                          data: { ownerId: null, ownerType: 'global', blockId: track.effectBlock.id as string,
+                            trackId: pt.id as string, keyframe: structuredClone(existingKfAtFrame) },
+                        } as import('../../../types').EffectKeyframeRemoveHistoryAction);
+                        removeEffectKeyframe(track.effectBlock.id, pt.id, existingKfAtFrame.id as import('../../../types/timeline').KeyframeId);
+                      } else {
+                        const kfValue = (propDef?.defaultValue ?? 0) as import('../../../types/effectBlock').EffectKeyframe['value'];
+                        const kfId = addEffectKeyframe(track.effectBlock.id, pt.id, currentFrame, kfValue);
+                        pushToHistory({
+                          type: 'effect_keyframe_add', timestamp: Date.now(),
+                          description: `Add ${propDef?.displayName ?? pt.propertyPath} keyframe`,
+                          data: { ownerId: null, ownerType: 'global', blockId: track.effectBlock.id as string,
+                            trackId: pt.id as string,
+                            keyframe: { id: kfId, frame: currentFrame, value: kfValue, easing: { type: 'linear' as const } } },
+                        } as import('../../../types').EffectKeyframeAddHistoryAction);
+                        if (kfId) {
+                          selectKeyframes([kfId]);
+                          setEditingKeyframe(kfId);
+                        }
+                      }
+                    }}
+                  >
+                    {existingKfAtFrame ? (
+                      <Diamond className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                    ) : (
+                      <Diamond className="w-3 h-3 text-muted-foreground/40 hover:text-yellow-400" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {existingKfAtFrame ? 'Remove keyframe at current frame' : 'Add keyframe at current frame'}
+                </TooltipContent>
+              </Tooltip>
               <button
                 className="p-0.5 hover:bg-muted rounded"
                 onClick={(e) => {

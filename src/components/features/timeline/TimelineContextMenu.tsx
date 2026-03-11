@@ -351,16 +351,36 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
         destTrackId = destTrack.id;
       } else if (targetMatchesCopied) {
         // Single-layer multi-track: route to matching property
-        // Search layers and groups for matching track
+        // Search layers, groups, and effect property tracks for matching track
         let destTrackId2: typeof trackId | undefined;
         if (targetLayer) {
           const dt = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
           if (dt) destTrackId2 = dt.id;
+          // Search layer effect property tracks
+          if (!destTrackId2) {
+            for (const et of (targetLayer.effectTracks ?? [])) {
+              const pt = et.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+              if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
+            }
+          }
         }
         if (!destTrackId2) {
           for (const g of useTimelineStore.getState().layerGroups) {
             const dt = g.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
             if (dt) { destTrackId2 = dt.id; break; }
+            // Search group effect property tracks
+            for (const et of (g.effectTracks ?? [])) {
+              const pt = et.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+              if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
+            }
+            if (destTrackId2) break;
+          }
+        }
+        // Search global effects
+        if (!destTrackId2) {
+          for (const et of (useTimelineStore.getState().globalEffects ?? [])) {
+            const pt = et.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+            if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
           }
         }
         if (!destTrackId2) continue;
