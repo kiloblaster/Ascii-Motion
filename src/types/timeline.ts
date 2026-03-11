@@ -455,10 +455,12 @@ export interface EffectInstance {
 // ============================================
 
 /**
- * Session data format version 2.0.0 with layer support.
+ * Session data format version 2.x with layer support.
+ * v2.0.0: Initial layer timeline system
+ * v2.1.0: Added effectTracks to layers, groups, and globalEffects
  */
 export interface SessionDataV2 {
-  version: '2.0.0';
+  version: '2.0.0' | '2.1.0';
 
   // Project metadata
   name?: string;

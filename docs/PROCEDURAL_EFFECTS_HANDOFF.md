@@ -97,15 +97,30 @@
 ### Not Yet Implemented
 1. **Old effects system cleanup** — effectsStore.ts and timeEffectsStore.ts still exist. The old destructive effects panel (EffectsPanel.tsx) still exists. EffectsSection.tsx was updated to use new system, but old floating panel and time effects dialogs remain. Should be removed in a cleanup pass.
 2. **Session format version bump** — Currently still "2.0.0", should bump to "2.1.0" for the effectTracks additions
-3. **Export paths** — Verify all export formats (React, CLI, Video) correctly evaluate procedural effects during export. The compositing pipeline inject should handle this but hasn't been manually verified for all formats.
+3. **Export paths** — Verify all export formats (React, CLI, Video) correctly evaluate procedural effects during export. The compositing pipeline inject should handle this but hasn't been manually verified for all formats. Also verify session round-trip: .asciimtn file export/import and cloud save/load must preserve all effectTracks data (layers, groups, globalEffects) including blocks, property tracks, keyframes, and settings.
 4. **MCP server** — Needs effect block CRUD tools added (separate repo)
 5. **Performance optimization** — Effect evaluation memoization, lazy evaluation for non-visible layers during interactive editing
+6. **Community page playback** — The premium package community page renders shared session files for playback. Ensure the player correctly evaluates procedural effects (effectTracks on layers/groups, globalEffects) during playback compositing. The player may need `registerAllEffects()` called at startup and must pass effect data through to `compositeLayersAtFrame()`.
 
-### Potential Issues to Watch
-- The `structuredClone` used for track snapshots — ensure it handles all nested structures correctly (Maps, custom types)
-- The old effectsStore is still imported by the old EffectsPanel.tsx and some test files — removing it requires updating those consumers
-- Canvas analysis utility (analyzeCanvas from old effectsStore) is still used by the MappingEditor — if effectsStore is removed, extract as standalone
-- Frame synchronization during bake — the auto-save subscription may write stale data; the flush-before-bake pattern addresses this
+### QA & Refinements Completed
+- **Levels effect**: Removed "(Gamma)" from midtones label; changed range from 0.1–3.0 to 0–100 (step 1, default 50); removed unused Gamma property entirely; added 0–100 → gamma exponent conversion in processing
+- **Hue & Saturation effect**: Removed unused `preserveLuminance` property
+- **Remap Colors effect**: Removed Options section (matchExact, paletteMode, mappingAlgorithm — already inline in the MappingEditor UI); color mappings expanded by default
+- **Remap Characters effect**: Removed unused `preserveSpacing` property; replaced text input with `EnhancedCharacterPicker` dialog for character selection
+- **Scatter effect**: Bumped strength range to 0–400
+- **Wave Warp effect**: Fixed content clipping (now uses actual canvas dimensions via `EffectProcessOptions.canvasWidth/Height` instead of deriving from content bounds); updated amplitude range to -30–30 (default 5); updated speed range to -50–50 (default 5); fixed clipping in bake path too
+- **Wiggle effect**: Fixed same content clipping issue; removed waveSpeed (frequency controls speed); split noise into independent H/V axes (noiseHFrequency/noiseHAmplitude, noiseVFrequency/noiseVAmplitude); noise frequency range changed to 0–5; wave frequency range changed to 0–20 (step 1)
+- **All effect panels**: Removed frame range label; added Reset button (adds default keyframes for keyframed properties, resets static properties, with full undo); restructured footer to Apply + Reset row, then full-width Delete below; Apply icon changed from Diamond to Check
+- **`visibleWhen` property definition**: Added conditional visibility field to `EffectPropertyDefinition` — properties/categories hidden when condition not met (used by wiggle for wave/noise mode switching)
+- **`perFrameBake` registry flag**: Effects with `perFrameBake: true` always produce per-frame output when baked, even without keyframes (used by wave warp and wiggle since they're time-dependent)
+- **Canvas dimensions in pipeline**: Added `canvasWidth`/`canvasHeight` to `EffectProcessOptions`, passed through compositing and bake paths
+- **Effect block update undo**: Fixed `effect_block_update` undo handler to replace the full effect block (including propertyTracks/keyframes) via `setState` instead of individual store calls
+- **Auto-save race condition**: Eliminated all timer-based delays; auto-save subscription checks `isProcessingHistory` from store directly and syncs `lastCellsRef` during history processing; `isProcessingHistory` flag cleared synchronously
+- **Effect property sub-rows**: Font size increased to match effect title; shows `displayName` from registry; added prev/diamond/next keyframe navigation controls
+- **J/K and Ctrl+Arrow navigation**: Now includes effect keyframes from expanded effect tracks on layers, groups, and global effects
+- **Timeline scroll sync**: Unified vertical scrolling — wheel events intercepted and applied to both panels simultaneously; scrollbar on LayerList; no more bidirectional scroll sync race conditions
+- **Timeline vertical alignment**: Fixed 1px-per-component cumulative offset from outer wrapper `border-b` on LayerListItem, GroupHeader, GlobalEffectsTrackHeader — moved borders into inner header rows
+- **Effect block colors**: Distortion category (wave warp, wiggle, scatter) changed from purple to orange to avoid confusion with purple content frame blocks
 
 ## Files Changed (summary)
 

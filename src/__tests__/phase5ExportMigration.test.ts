@@ -119,9 +119,9 @@ function makeV1Session(): Record<string, unknown> {
 describe('timelineStore.getSessionData()', () => {
   beforeEach(resetStores);
 
-  it('returns v2.0.0 format', () => {
+  it('returns v2.1.0 format', () => {
     const data = useTimelineStore.getState().getSessionData();
-    expect(data.version).toBe('2.0.0');
+    expect(data.version).toBe('2.1.0');
   });
 
   it('includes canvas settings from canvasStore', () => {
@@ -305,7 +305,7 @@ describe('Session round-trip (v2)', () => {
     const serialized2 = useTimelineStore.getState().getSessionData();
 
     // Compare
-    expect(serialized2.version).toBe('2.0.0');
+    expect(serialized2.version).toBe('2.1.0');
     expect(serialized2.layers.length).toBe(serialized1.layers.length);
     expect(serialized2.timeline).toEqual(serialized1.timeline);
 
@@ -583,7 +583,7 @@ describe('SessionDataV2 format validation', () => {
     const json = JSON.stringify(data);
     const parsed = JSON.parse(json);
 
-    expect(parsed.version).toBe('2.0.0');
+    expect(parsed.version).toBe('2.1.0');
     expect(parsed.layers[0].contentFrames[0].data['0,0'].char).toBe('A');
   });
 

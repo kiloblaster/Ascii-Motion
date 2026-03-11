@@ -3168,7 +3168,7 @@ export const useTimelineStore = create<TimelineState>()(
       const canvasState = useCanvasStore.getState();
 
       return {
-        version: '2.0.0' as const,
+        version: '2.1.0' as const,
         canvas: {
           width: canvasState.width,
           height: canvasState.height,

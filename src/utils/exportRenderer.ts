@@ -400,7 +400,7 @@ export class ExportRenderer {
           description: data.metadata.projectDescription || data.description,
           metadata: settings.includeMetadata ? {
             exportedAt: new Date().toISOString(),
-            exportVersion: '2.0.0',
+            exportVersion: '2.1.0',
             userAgent: navigator.userAgent
           } : undefined,
           // Attach shared state that the timeline store doesn't track
