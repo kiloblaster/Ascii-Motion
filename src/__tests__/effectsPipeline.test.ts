@@ -10,7 +10,7 @@ import {
   evaluateEffectBlock,
   applyEffectsToLayer,
   hasActiveEffectsAtFrame,
-  bakeEffectBlock,
+  bakeEffectIntoFrames,
 } from '../utils/effectsPipeline';
 import { clearEffectRegistry, registerEffect } from '../registry/effectRegistry';
 import type { EffectRegistryEntry } from '../registry/effectRegistry';
@@ -200,7 +200,7 @@ describe('effectsPipeline', () => {
     });
   });
 
-  describe('bakeEffectBlock', () => {
+  describe('bakeEffectIntoFrames', () => {
     it('modifies content frame data within block range', () => {
       const cells = makeCells([['0,0', makeCell('a')]]);
       const contentFrames: ContentFrame[] = [{
@@ -211,7 +211,7 @@ describe('effectsPipeline', () => {
         data: cells,
       }];
       const block = makeBlock({ startFrame: 0, durationFrames: 10, settings: { amount: 1.0 } });
-      const result = bakeEffectBlock(block, contentFrames);
+      const result = bakeEffectIntoFrames(block, contentFrames);
       expect(result[0].data.get('0,0')?.color).toBe('#inverted');
     });
 
@@ -225,7 +225,7 @@ describe('effectsPipeline', () => {
         data: cells,
       }];
       const block = makeBlock({ startFrame: 0, durationFrames: 10 });
-      const result = bakeEffectBlock(block, contentFrames);
+      const result = bakeEffectIntoFrames(block, contentFrames);
       expect(result[0].data.get('0,0')?.color).toBe('#ffffff');
     });
   });
