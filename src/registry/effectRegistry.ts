@@ -33,6 +33,11 @@ export interface EffectProcessOptions {
   canvasWidth?: number;
   /** Canvas height in cells (for bounds-aware effects like wave warp) */
   canvasHeight?: number;
+  /**
+   * Callback to get the owning layer's composited (screen-space) cells at a given frame.
+   * Provided by the compositing pipeline for screen-space effects that need temporal access.
+   */
+  getLayerCompositeAtFrame?: (frame: number) => Map<string, Cell>;
 }
 
 /**
@@ -92,6 +97,13 @@ export interface EffectRegistryEntry {
    * Use for time-dependent effects (e.g., wave warp, wiggle) whose output varies per frame.
    */
   perFrameBake?: boolean;
+
+  /**
+   * When true, this effect operates in screen space (after layer transforms).
+   * The compositing pipeline will apply it post-transform and provide
+   * a getLayerCompositeAtFrame callback for temporal access to previous frames.
+   */
+  screenSpace?: boolean;
 }
 
 // ============================================

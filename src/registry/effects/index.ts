@@ -12,6 +12,7 @@ import { remapCharactersEffect } from './remapCharacters';
 import { scatterEffect } from './scatter';
 import { waveWarpEffect } from './waveWarp';
 import { wiggleEffect } from './wiggle';
+import { motionTrailsEffect } from './motionTrails';
 
 /**
  * Register all built-in effects. Safe to call multiple times —
@@ -26,6 +27,7 @@ export function registerAllEffects(): void {
     scatterEffect,
     waveWarpEffect,
     wiggleEffect,
+    motionTrailsEffect,
   ];
 
   for (const effect of effects) {
@@ -45,4 +47,5 @@ export {
   scatterEffect,
   waveWarpEffect,
   wiggleEffect,
+  motionTrailsEffect,
 };
