@@ -95,12 +95,12 @@
 ## Known Issues / Remaining Work
 
 ### Not Yet Implemented
-1. **Old effects system cleanup** — effectsStore.ts and timeEffectsStore.ts still exist. The old destructive effects panel (EffectsPanel.tsx) still exists. EffectsSection.tsx was updated to use new system, but old floating panel and time effects dialogs remain. Should be removed in a cleanup pass.
-2. **Session format version bump** — Currently still "2.0.0", should bump to "2.1.0" for the effectTracks additions
-3. **Export paths** — Verify all export formats (React, CLI, Video) correctly evaluate procedural effects during export. The compositing pipeline inject should handle this but hasn't been manually verified for all formats. Also verify session round-trip: .asciimtn file export/import and cloud save/load must preserve all effectTracks data (layers, groups, globalEffects) including blocks, property tracks, keyframes, and settings.
-4. **MCP server** — Needs effect block CRUD tools added (separate repo)
-5. **Performance optimization** — Effect evaluation memoization, lazy evaluation for non-visible layers during interactive editing
-6. **Community page playback** — The premium package community page renders shared session files for playback. Ensure the player correctly evaluates procedural effects (effectTracks on layers/groups, globalEffects) during playback compositing. The player may need `registerAllEffects()` called at startup and must pass effect data through to `compositeLayersAtFrame()`.
+1. ~~**Old effects system cleanup**~~ ✅ Completed — deleted 13 files, updated consumers
+2. ~~**Session format version bump**~~ ✅ Completed — v2.0.0 → v2.1.0 with backward compat
+3. ~~**Export paths**~~ ✅ Completed — fixed 5 gaps in globalEffects serialization/compositing across all export/import/cloud paths
+4. ~~**MCP server**~~ ✅ Completed — 6 new tools, updated types/state/prompts/guide, published v2.1.0 to npm
+5. ~~**Performance optimization**~~ ✅ Resolved — architecture already optimized (pre-computed playback, lazy layer skip, per-frame gating). No changes needed.
+6. ~~**Community page playback**~~ ✅ Verified — pre-composited frame architecture means effects are already baked into gallery frames. No changes needed.
 
 ### QA & Refinements Completed
 - **Levels effect**: Removed "(Gamma)" from midtones label; changed range from 0.1–3.0 to 0–100 (step 1, default 50); removed unused Gamma property entirely; added 0–100 → gamma exponent conversion in processing
