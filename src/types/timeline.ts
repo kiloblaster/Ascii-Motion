@@ -492,8 +492,8 @@ export interface SessionDataV2 {
   // Layer groups (NEW)
   layerGroups?: SessionLayerGroupV2[];
 
-  // Global effects (NEW)
-  globalEffects?: SessionEffectV2[];
+  // Global effects (v2.1.0)
+  globalEffects?: import('./effectBlock').SessionEffectTrackV2[];
 
   // Preserved from v1
   tools?: Record<string, unknown>;
