@@ -77,6 +77,7 @@ function makeV2Session(overrides?: Partial<SessionDataV2>): SessionDataV2 {
           },
         ],
         propertyTracks: [],
+        effectTracks: [],
       },
     ],
     ...overrides,
@@ -297,6 +298,7 @@ describe('Session round-trip (v2)', () => {
       })),
       staticProperties: sl.staticProperties ?? {},
       syncKeyframesToFrames: sl.syncKeyframesToFrames,
+      effectTracks: [],
     }));
 
     useTimelineStore.getState().loadFromSessionData(layers, serialized1.timeline);
@@ -348,6 +350,7 @@ describe('Session round-trip (v2)', () => {
       })),
       propertyTracks: [] as PropertyTrack[],
       staticProperties: {} as Record<string, number>,
+      effectTracks: [],
     }));
 
     useTimelineStore.getState().loadFromSessionData(layers, migrated.timeline);
@@ -411,6 +414,7 @@ describe('compositeLayersAtFrame for export', () => {
       }],
       propertyTracks: [],
       staticProperties: {},
+      effectTracks: [],
     }];
 
     const result = compositeLayersAtFrame(layers, 2, 80, 24, undefined, true);
@@ -435,6 +439,7 @@ describe('compositeLayersAtFrame for export', () => {
         }],
         propertyTracks: [],
         staticProperties: {},
+        effectTracks: [],
       },
       {
         id: 'top' as LayerId,
@@ -452,6 +457,7 @@ describe('compositeLayersAtFrame for export', () => {
         }],
         propertyTracks: [],
         staticProperties: {},
+        effectTracks: [],
       },
     ];
 
@@ -477,6 +483,7 @@ describe('compositeLayersAtFrame for export', () => {
       }],
       propertyTracks: [],
       staticProperties: {},
+      effectTracks: [],
     }];
 
     const result = compositeLayersAtFrame(layers, 0, 80, 24, undefined, true);
@@ -500,6 +507,7 @@ describe('compositeLayersAtFrame for export', () => {
       }],
       propertyTracks: [],
       staticProperties: {},
+      effectTracks: [],
     }];
 
     // Frame 2 is in the gap — should be empty
@@ -531,6 +539,7 @@ describe('compositeLayersAtFrame for export', () => {
       }],
       propertyTracks: [],
       staticProperties: {},
+      effectTracks: [],
     }];
 
     const result = compositeLayersAtFrame(layers, 0, 80, 24, undefined, true);
@@ -558,6 +567,7 @@ describe('compositeLayersAtFrame for export', () => {
       }],
       propertyTracks: [],
       staticProperties: {},
+      effectTracks: [],
     }];
 
     const result = compositeLayersAtFrame(layers, 0, 80, 24, undefined, false);
@@ -633,6 +643,7 @@ describe('Export compositing performance', () => {
       }],
       propertyTracks: [],
       staticProperties: {},
+      effectTracks: [],
     }));
 
     const start = performance.now();
