@@ -228,7 +228,7 @@ export interface MCPExportResult {
  * Server responses
  */
 export interface MCPServerMessage {
-  type: 'auth_result' | 'command' | 'state_request' | 'error';
+  type: 'auth_result' | 'command' | 'state_request' | 'export_request' | 'error';
   success?: boolean;
   error?: string;
   command?: MCPCommand;
