@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run build:packages && tsc -b && vite build",
-    "build:packages": "npm run build -w @ascii-motion/core -w @ascii-motion/premium",
+    "build:packages": "npm run build -w @ascii-motion/core && (npm run build -w @ascii-motion/premium 2>/dev/null || true)",
     "build:core": "npm run build -w @ascii-motion/core",
     "build:premium": "npm run build -w @ascii-motion/premium",
     "dev:packages": "npm run dev -ws --if-present",
