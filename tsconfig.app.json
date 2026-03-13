@@ -28,9 +28,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@ascii-motion/core": ["./packages/core/src"],
-      "@ascii-motion/premium": ["./packages/premium/src"]
+      "@ascii-motion/premium": ["./packages/premium/src", "./src/lib/premium-stub"]
     }
   },
-  "include": ["src", "packages/premium/src"],
+  "include": ["src"],
   "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"]
 }

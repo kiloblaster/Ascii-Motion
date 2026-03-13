@@ -1,6 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import fs from 'fs'
+
+// Resolve @ascii-motion/premium to the real package when the submodule is
+// initialised, or to a lightweight stub when it is absent (OSS contributors).
+const premiumSrc = path.resolve(__dirname, './packages/premium/src/index.ts')
+const premiumAlias = fs.existsSync(premiumSrc)
+  ? path.resolve(__dirname, './packages/premium/src')
+  : path.resolve(__dirname, './src/lib/premium-stub.ts')
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -9,7 +17,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
       "@ascii-motion/core": path.resolve(__dirname, "./packages/core/src"),
-      "@ascii-motion/premium": path.resolve(__dirname, "./packages/premium/src"),
+      "@ascii-motion/premium": premiumAlias,
     },
   },
   optimizeDeps: {
