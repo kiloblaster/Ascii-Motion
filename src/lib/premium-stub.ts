@@ -320,7 +320,12 @@ export function validateProjectDescription(description: string): ValidationResul
 
 export function sanitizeString(input: string): string {
   if (!input) return '';
-  return input.replace(/<[^>]*>/g, '').trim();
+  const tagPattern = /<[^>]*>/g;
+  let result = input;
+  while (tagPattern.test(result)) {
+    result = result.replace(tagPattern, '');
+  }
+  return result.trim();
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
