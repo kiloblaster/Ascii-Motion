@@ -31,7 +31,7 @@ export const VideoExportDialog: React.FC = () => {
   const projectName = useProjectMetadataStore((state) => state.projectName);
   
   const [videoSettings, setVideoSettings] = useState<VideoExportSettings>({
-    sizeMultiplier: 2,
+    sizeMultiplier: 1,
     frameRate: 'auto',
     frameRange: 'all',
     quality: 'high',
