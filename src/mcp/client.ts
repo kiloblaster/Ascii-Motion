@@ -13,7 +13,7 @@ import { useSelectionStore } from '../stores/selectionStore';
 import { useProjectMetadataStore } from '../stores/projectMetadataStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { useMCPStore } from './store';
-import type { MCPCommand, MCPServerMessage, MCPClientAuth, MCPClientHeartbeat, MCPClientStateSnapshot } from './types';
+import type { MCPCommand, MCPServerMessage, MCPClientAuth, MCPClientHeartbeat, MCPClientStateSnapshot, MCPExportRequest, MCPExportResult } from './types';
 
 const DEFAULT_PORT = 9876;
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
@@ -27,6 +27,8 @@ export class MCPClient {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private port: number = DEFAULT_PORT;
   private autoReconnect: boolean = true;
+  // Maps MCP server effect block IDs → browser effect block IDs
+  private effectBlockIdMap: Map<string, string> = new Map();
 
   constructor() {
     this.sessionId = this.generateSessionId();
@@ -351,6 +353,10 @@ export class MCPClient {
           this.sendStateSnapshot();
           break;
           
+        case 'export_request':
+          this.handleExportRequest(message as unknown as MCPExportRequest);
+          break;
+          
         case 'error':
           console.error('[MCP] Server error:', legacyMessage.error);
           break;
@@ -595,6 +601,164 @@ export class MCPClient {
         break;
       }
 
+      // =====================================================================
+      // Effect block operations (procedural effects)
+      // =====================================================================
+      case 'add_effect_block': {
+        const ebData = data as {
+          blockId: string;
+          trackId: string;
+          ownerId: string | null;
+          effectType: string;
+          startFrame: number;
+          durationFrames: number;
+          settings?: Record<string, unknown>;
+        };
+        const browserBlockId = useTimelineStore.getState().addEffectBlock(
+          ebData.ownerId as import('../types/timeline').LayerId | import('../types/timeline').LayerGroupId | null,
+          ebData.effectType,
+          ebData.startFrame,
+          ebData.durationFrames,
+        );
+        if (browserBlockId) {
+          // Store mapping from server block ID → browser block ID
+          this.effectBlockIdMap.set(ebData.blockId, browserBlockId);
+        }
+        console.log('[MCP] Effect block added:', ebData.effectType, 'on', ebData.ownerId ?? 'global', '| server:', ebData.blockId, '→ browser:', browserBlockId);
+        break;
+      }
+
+      case 'remove_effect_block': {
+        const rebData = data as { blockId: string };
+        const browserRemoveId = this.effectBlockIdMap.get(rebData.blockId) ?? rebData.blockId;
+        const ts = useTimelineStore.getState();
+        for (const layer of ts.layers) {
+          for (const et of (layer.effectTracks ?? [])) {
+            if (et.effectBlock.id === browserRemoveId) {
+              ts.removeEffectBlock(layer.id, browserRemoveId as import('../types/effectBlock').EffectBlockId);
+              break;
+            }
+          }
+        }
+        for (const group of ts.layerGroups) {
+          for (const et of (group.effectTracks ?? [])) {
+            if (et.effectBlock.id === browserRemoveId) {
+              ts.removeEffectBlock(group.id, browserRemoveId as import('../types/effectBlock').EffectBlockId);
+              break;
+            }
+          }
+        }
+        for (const et of ts.globalEffects) {
+          if (et.effectBlock.id === browserRemoveId) {
+            ts.removeEffectBlock(null, browserRemoveId as import('../types/effectBlock').EffectBlockId);
+            break;
+          }
+        }
+        this.effectBlockIdMap.delete(rebData.blockId);
+        console.log('[MCP] Effect block removed:', rebData.blockId);
+        break;
+      }
+
+      case 'update_effect_block': {
+        const uebData = data as { blockId: string; settings?: Record<string, unknown>; enabled?: boolean };
+        const browserUpdateId = this.effectBlockIdMap.get(uebData.blockId) ?? uebData.blockId;
+        if (uebData.settings) {
+          useTimelineStore.getState().updateEffectBlockSettings(
+            browserUpdateId as import('../types/effectBlock').EffectBlockId,
+            uebData.settings,
+          );
+        }
+        if (uebData.enabled !== undefined) {
+          useTimelineStore.getState().toggleEffectBlockEnabled(
+            browserUpdateId as import('../types/effectBlock').EffectBlockId,
+          );
+        }
+        console.log('[MCP] Effect block updated:', uebData.blockId);
+        break;
+      }
+
+      case 'add_effect_keyframe': {
+        const aekData = data as {
+          blockId: string;
+          propertyPath: string;
+          frame: number;
+          value: number | boolean | string;
+          keyframeId?: string;
+        };
+        // Translate server block ID → browser block ID
+        const browserBlkId = this.effectBlockIdMap.get(aekData.blockId) ?? aekData.blockId;
+        const timeline = useTimelineStore.getState();
+
+        // Find existing property track ID, or create one
+        let propTrackId: string | null = null;
+        const allEffectOwners = [
+          ...timeline.layers.flatMap(l => (l.effectTracks ?? []).map(et => et)),
+          ...timeline.layerGroups.flatMap(g => (g.effectTracks ?? []).map(et => et)),
+          ...timeline.globalEffects,
+        ];
+        for (const et of allEffectOwners) {
+          if (et.effectBlock.id === browserBlkId) {
+            const existingPt = et.effectBlock.propertyTracks.find(
+              pt => pt.propertyPath === aekData.propertyPath
+            );
+            if (existingPt) {
+              propTrackId = existingPt.id as string;
+            }
+            break;
+          }
+        }
+
+        // If no existing track, create one
+        if (!propTrackId) {
+          propTrackId = timeline.addEffectPropertyTrack(
+            browserBlkId as import('../types/effectBlock').EffectBlockId,
+            aekData.propertyPath,
+          );
+        }
+
+        if (propTrackId) {
+          timeline.addEffectKeyframe(
+            browserBlkId as import('../types/effectBlock').EffectBlockId,
+            propTrackId as import('../types/effectBlock').EffectPropertyTrackId,
+            aekData.frame,
+            aekData.value,
+          );
+          console.log('[MCP] Effect keyframe added:', aekData.propertyPath, '=', aekData.value, 'at frame', aekData.frame);
+        } else {
+          console.warn('[MCP] Could not add effect keyframe: property track creation failed for block', browserBlkId);
+        }
+        break;
+      }
+
+      case 'remove_effect_keyframe': {
+        const rekData = data as { blockId: string; keyframeId: string };
+        const browserRekId = this.effectBlockIdMap.get(rekData.blockId) ?? rekData.blockId;
+        const tsState = useTimelineStore.getState();
+        const allOwners = [
+          ...tsState.layers.flatMap(l => (l.effectTracks ?? []).map(et => ({ et, ownerId: l.id }))),
+          ...tsState.layerGroups.flatMap(g => (g.effectTracks ?? []).map(et => ({ et, ownerId: g.id }))),
+          ...tsState.globalEffects.map(et => ({ et, ownerId: null })),
+        ];
+        for (const { et } of allOwners) {
+          if (et.effectBlock.id === browserRekId) {
+            for (const pt of et.effectBlock.propertyTracks) {
+              const kf = pt.keyframes.find(k => k.id === rekData.keyframeId);
+              if (kf) {
+                tsState.removeEffectKeyframe(
+                  browserRekId as import('../types/effectBlock').EffectBlockId,
+                  pt.id,
+                  rekData.keyframeId as import('../types/timeline').KeyframeId,
+                );
+                break;
+              }
+            }
+            break;
+          }
+        }
+        console.log('[MCP] Effect keyframe removed:', rekData.keyframeId);
+        break;
+      }
+
       case 'create_group': {
         const grpData = data as { group: { id: string; name: string; childLayerIds: string[] } };
         console.log('[MCP] Group created:', grpData.group.name);
@@ -827,6 +991,156 @@ export class MCPClient {
 
   private handleClearSelection(): void {
     useSelectionStore.getState().clearSelection();
+  }
+
+  // ==========================================================================
+  // Export Request Handler
+  // ==========================================================================
+
+  private async handleExportRequest(request: MCPExportRequest): Promise<void> {
+    console.log('[MCP] Export request received:', request.exportType, request.format);
+
+    try {
+      // Dynamically import to avoid circular deps and keep initial bundle small
+      const { ExportDataCollector } = await import('../utils/exportDataCollector');
+      const { ExportRenderer } = await import('../utils/exportRenderer');
+
+      // Collect export data from current app state
+      const exportData = ExportDataCollector.collect();
+
+      // If a specific frame index was requested, navigate to it first
+      if (request.settings.frameIndex !== undefined && typeof request.settings.frameIndex === 'number') {
+        exportData.currentFrameIndex = request.settings.frameIndex;
+      }
+
+      // Create a renderer that captures the blob instead of saving via file-saver
+      let capturedBlob: Blob | null = null;
+      const renderer = new ExportRenderer();
+
+      if (request.exportType === 'image') {
+        const imageSettings = {
+          sizeMultiplier: (request.settings.sizeMultiplier as 1 | 2 | 3 | 4) ?? 1,
+          includeGrid: (request.settings.includeGrid as boolean) ?? false,
+          format: (request.settings.format as 'png' | 'jpg' | 'svg') ?? 'png',
+          quality: (request.settings.quality as number) ?? 90,
+          svgSettings: {
+            includeGrid: (request.settings.includeGrid as boolean) ?? false,
+            textAsOutlines: false,
+            includeBackground: true,
+            prettify: true,
+          },
+        };
+
+        if (imageSettings.format === 'svg') {
+          // SVG export produces a string, not a blob via canvas
+          // We'll capture it by overriding the save
+          capturedBlob = await this.captureExportBlob(
+            () => renderer.exportSvg(exportData, imageSettings, request.filename),
+          );
+        } else {
+          capturedBlob = await this.captureExportBlob(
+            () => renderer.exportImage(exportData, imageSettings, request.filename),
+          );
+        }
+      } else if (request.exportType === 'video') {
+        const videoSettings = {
+          sizeMultiplier: (request.settings.sizeMultiplier as 1 | 2 | 4) ?? 1,
+          frameRate: (request.settings.frameRate as number | 'auto') ?? 'auto',
+          frameRange: request.settings.frameRange === 'all'
+            ? { start: 0, end: exportData.frames.length - 1 }
+            : (request.settings.frameRange as { start: number; end: number }),
+          quality: (request.settings.quality as 'high' | 'medium' | 'low') ?? 'high',
+          crf: (request.settings.crf as number) ?? 24,
+          format: (request.settings.format as 'webm' | 'mp4') ?? 'mp4',
+          includeGrid: (request.settings.includeGrid as boolean) ?? false,
+          loops: (request.settings.loops as 'none' | '2x' | '4x' | '8x') ?? 'none',
+        };
+
+        capturedBlob = await this.captureExportBlob(
+          () => renderer.exportVideo(exportData, videoSettings, request.filename),
+        );
+      }
+
+      if (capturedBlob) {
+        // Convert blob to base64
+        const base64 = await this.blobToBase64(capturedBlob);
+        const result: MCPExportResult = {
+          type: 'export_result',
+          requestId: request.requestId,
+          success: true,
+          data: base64,
+          mimeType: capturedBlob.type,
+          filename: request.filename,
+          bytes: capturedBlob.size,
+        };
+        this.send(result);
+        console.log('[MCP] Export complete, sent', capturedBlob.size, 'bytes');
+      } else {
+        this.send({
+          type: 'export_result',
+          requestId: request.requestId,
+          success: false,
+          error: 'Export produced no data',
+        } as MCPExportResult);
+      }
+    } catch (err) {
+      console.error('[MCP] Export failed:', err);
+      this.send({
+        type: 'export_result',
+        requestId: request.requestId,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      } as MCPExportResult);
+    }
+  }
+
+  /**
+   * Intercept file-saver's saveAs to capture the blob instead of downloading.
+   * Uses a global intercept that patches the anchor click mechanism.
+   */
+  private async captureExportBlob(exportFn: () => Promise<void>): Promise<Blob | null> {
+    let captured: Blob | null = null;
+
+    // Intercept by patching HTMLAnchorElement.click and URL.createObjectURL
+    // file-saver creates an <a> element with a blob URL and clicks it
+    const originalClick = HTMLAnchorElement.prototype.click;
+    const originalCreateObjectURL = URL.createObjectURL;
+
+    URL.createObjectURL = (obj: Blob | MediaSource) => {
+      if (obj instanceof Blob) {
+        captured = obj;
+      }
+      return originalCreateObjectURL.call(URL, obj);
+    };
+
+    HTMLAnchorElement.prototype.click = function() {
+      // If we captured a blob, suppress the download
+      if (captured) return;
+      return originalClick.call(this);
+    };
+
+    try {
+      await exportFn();
+    } finally {
+      HTMLAnchorElement.prototype.click = originalClick;
+      URL.createObjectURL = originalCreateObjectURL;
+    }
+
+    return captured;
+  }
+
+  private blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        // Remove the data:...;base64, prefix
+        const base64 = result.split(',')[1] || result;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 }
 

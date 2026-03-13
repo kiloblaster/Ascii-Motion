@@ -199,6 +199,32 @@ export interface MCPClientStateSnapshot {
 }
 
 /**
+ * Export request sent from MCP server to browser
+ */
+export interface MCPExportRequest {
+  type: 'export_request';
+  requestId: string;
+  exportType: 'image' | 'video';
+  format: string;
+  settings: Record<string, unknown>;
+  filename: string;
+}
+
+/**
+ * Export result sent from browser back to MCP server
+ */
+export interface MCPExportResult {
+  type: 'export_result';
+  requestId: string;
+  success: boolean;
+  data?: string;       // base64-encoded file data
+  mimeType?: string;
+  filename?: string;
+  error?: string;
+  bytes?: number;
+}
+
+/**
  * Server responses
  */
 export interface MCPServerMessage {
