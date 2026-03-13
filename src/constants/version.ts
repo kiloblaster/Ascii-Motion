@@ -1,12 +1,36 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.0.8";
-export const BUILD_DATE = "2026-03-11T22:19:46.546Z";
-export const BUILD_HASH = "49582ed";
+export const VERSION = "2.0.9";
+export const BUILD_DATE = "2026-03-13T17:12:43.307Z";
+export const BUILD_HASH = "c940f76";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.9",
+    "date": "2026-03-13T17:12:43.307Z",
+    "commits": [
+      "Merge pull request #90 from CameronFoxly/video-export-default-1x",
+      "Merge pull request #93 from CameronFoxly/fix/decouple-premium-from-core",
+      "fix: use iterative sanitization to prevent nested tag bypass",
+      "fix: decouple premium subdirectory from core app build",
+      "Change video export resolution default from 2x to 1x",
+      "Update tests to match new effects system",
+      "Update flags",
+      "chore: update web submodule (next.js security fix)",
+      "fix: resolve remaining audit vulnerabilities (ajv, diff, express-rate-limit)",
+      "fix: update next.js to 16.1.6 to address CVE-2026-23864",
+      "Merge pull request #89 from CameronFoxly/update-docs-timeline-effects",
+      "Update flags",
+      "Update flags",
+      "chore: update package-lock.json for workspace resolution",
+      "docs: update web submodule for timeline & effects docs refresh",
+      "Merge pull request #88 from CameronFoxly/dependabot/npm_and_yarn/hono-4.12.7",
+      "chore(deps-dev): bump hono from 4.12.5 to 4.12.7",
+      "Update flags"
+    ]
+  },
   {
     "version": "2.0.8",
     "date": "2026-03-11T22:19:46.546Z",
