@@ -12,6 +12,7 @@ import { useToolStore } from '../stores/toolStore';
 import { useSelectionStore } from '../stores/selectionStore';
 import { useProjectMetadataStore } from '../stores/projectMetadataStore';
 import { useTimelineStore } from '../stores/timelineStore';
+import { getContentFrameAtTime } from '../utils/layerCompositing';
 import { useMCPStore } from './store';
 import type { MCPCommand, MCPServerMessage, MCPClientAuth, MCPClientHeartbeat, MCPClientStateSnapshot, MCPExportRequest, MCPExportResult } from './types';
 
@@ -126,31 +127,77 @@ export class MCPClient {
     if (!this.isConnected()) return;
     
     const canvas = useCanvasStore.getState();
-    const animation = useAnimationStore.getState();
     const projectMeta = useProjectMetadataStore.getState();
     const timeline = useTimelineStore.getState();
-    
-    // Convert frames to serializable format with full cell data
-    const frames = animation.frames.map(frame => {
-      const data: Record<string, { char: string; color: string; bgColor: string }> = {};
-      frame.data.forEach((cell, key) => {
-        data[key] = { char: cell.char, color: cell.color, bgColor: cell.bgColor };
-      });
-      return {
-        id: frame.id,
-        name: frame.name,
-        duration: frame.duration,
-        data,
-      };
-    });
 
-    // Build layer data for v2 if in layer mode
-    const isLayerMode = timeline.layers.length > 0;
-    let layerData: Record<string, unknown> | undefined;
+    // Flush current canvas cells into the active layer's content frame
+    // so the timeline store has the latest data for all reads below.
+    this.flushCanvasToActiveContentFrame();
+    
+    // Re-read timeline state after flush
+    const timelineAfterFlush = useTimelineStore.getState();
+
+    // Build layer data — always present since the app always has ≥1 layer.
+    const isLayerMode = timelineAfterFlush.layers.length > 0;
+
+    // Build animation.frames directly from timeline content frames (source of truth).
+    // The animationStore adapter caches frames and only re-derives on structural
+    // changes — NOT on cell edits — so reading it here produces stale/empty data.
+    type FrameRecord = { id: string; name: string; duration: number; data: Record<string, { char: string; color: string; bgColor: string }> };
+    let frames: FrameRecord[];
+    let frameCount: number;
+    let currentFrameIndex: number;
+    let frameRate: number;
+    let isPlaying: boolean;
+    let looping: boolean;
 
     if (isLayerMode) {
+      const activeLayer = timelineAfterFlush.layers.find(l => l.id === timelineAfterFlush.view.activeLayerId)
+        ?? timelineAfterFlush.layers[0];
+      frames = activeLayer.contentFrames.map(cf => {
+        const data: Record<string, { char: string; color: string; bgColor: string }> = {};
+        cf.data.forEach((cell, key) => {
+          data[key] = { char: cell.char, color: cell.color, bgColor: cell.bgColor };
+        });
+        return {
+          id: cf.id,
+          name: cf.name,
+          duration: cf.durationFrames * (1000 / timelineAfterFlush.config.frameRate),
+          data,
+        };
+      });
+      frameCount = activeLayer.contentFrames.length;
+      currentFrameIndex = timelineAfterFlush.view.currentFrame;
+      frameRate = timelineAfterFlush.config.frameRate;
+      isPlaying = timelineAfterFlush.view.isPlaying;
+      looping = timelineAfterFlush.view.looping;
+    } else {
+      // Fallback to adapter for non-layer (legacy) mode
+      const animation = useAnimationStore.getState();
+      frames = animation.frames.map(frame => {
+        const data: Record<string, { char: string; color: string; bgColor: string }> = {};
+        frame.data.forEach((cell, key) => {
+          data[key] = { char: cell.char, color: cell.color, bgColor: cell.bgColor };
+        });
+        return { id: frame.id, name: frame.name, duration: frame.duration, data };
+      });
+      frameCount = animation.frames.length;
+      currentFrameIndex = animation.currentFrameIndex;
+      frameRate = animation.frameRate;
+      isPlaying = animation.isPlaying;
+      looping = animation.looping;
+    }
+
+    // Serialize current canvas cells for the snapshot
+    const canvasCells: Record<string, { char: string; color: string; bgColor: string }> = {};
+    canvas.cells.forEach((cell, key) => {
+      canvasCells[key] = { char: cell.char, color: cell.color, bgColor: cell.bgColor };
+    });
+
+    let layerData: Record<string, unknown> | undefined;
+    if (isLayerMode) {
       layerData = {
-        layers: timeline.layers.map(l => ({
+        layers: timelineAfterFlush.layers.map(l => ({
           id: l.id,
           name: l.name,
           visible: l.visible,
@@ -186,7 +233,7 @@ export class MCPClient {
           })),
           staticProperties: l.staticProperties,
         })),
-        layerGroups: timeline.layerGroups.map(g => ({
+        layerGroups: timelineAfterFlush.layerGroups.map(g => ({
           id: g.id,
           name: g.name,
           childLayerIds: g.childLayerIds,
@@ -197,11 +244,11 @@ export class MCPClient {
           propertyTracks: g.propertyTracks,
           staticProperties: g.staticProperties,
         })),
-        activeLayerId: timeline.view.activeLayerId,
+        activeLayerId: timelineAfterFlush.view.activeLayerId,
         timeline: {
-          frameRate: timeline.config.frameRate,
-          durationFrames: timeline.config.durationFrames,
-          looping: timeline.view.looping,
+          frameRate: timelineAfterFlush.config.frameRate,
+          durationFrames: timelineAfterFlush.config.durationFrames,
+          looping: timelineAfterFlush.view.looping,
         },
       };
     }
@@ -212,14 +259,15 @@ export class MCPClient {
         width: canvas.width,
         height: canvas.height,
         cellCount: canvas.getCellCount(),
-        backgroundColor: canvas.canvasBackgroundColor
+        backgroundColor: canvas.canvasBackgroundColor,
+        cells: canvasCells,
       },
       animation: {
-        frameCount: animation.frames.length,
-        currentFrameIndex: animation.currentFrameIndex,
-        isPlaying: animation.isPlaying,
-        looping: animation.looping,
-        frameRate: animation.frameRate,
+        frameCount,
+        currentFrameIndex,
+        isPlaying,
+        looping,
+        frameRate,
         frames,
       },
       project: {
@@ -236,6 +284,28 @@ export class MCPClient {
   // ==========================================================================
   // Private Methods
   // ==========================================================================
+
+  /**
+   * Flush canvasStore cells into the active layer's content frame in
+   * timelineStore.  The canvas ↔ timeline sync is normally debounced (150ms)
+   * via useFrameSynchronization, so the content frame can be stale when the
+   * MCP server requests state or an export. This ensures the timeline has
+   * the latest cell data before we read from it.
+   */
+  private flushCanvasToActiveContentFrame(): void {
+    const timeline = useTimelineStore.getState();
+    if (timeline.layers.length === 0) return;
+
+    const activeLayer = timeline.layers.find(l => l.id === timeline.view.activeLayerId)
+      ?? timeline.layers[0];
+    if (!activeLayer) return;
+
+    const cf = getContentFrameAtTime(activeLayer, timeline.view.currentFrame);
+    if (!cf) return;
+
+    const cells = useCanvasStore.getState().cells;
+    timeline.updateContentFrameData(activeLayer.id, cf.id, new Map(cells));
+  }
 
   private generateSessionId(): string {
     const timestamp = Date.now();
@@ -1001,6 +1071,9 @@ export class MCPClient {
     console.log('[MCP] Export request received:', request.exportType, request.format);
 
     try {
+      // Flush canvas cells to timeline so the export sees latest data
+      this.flushCanvasToActiveContentFrame();
+
       // Dynamically import to avoid circular deps and keep initial bundle small
       const { ExportDataCollector } = await import('../utils/exportDataCollector');
       const { ExportRenderer } = await import('../utils/exportRenderer');

@@ -179,6 +179,7 @@ export interface MCPClientStateSnapshot {
     height: number;
     cellCount: number;
     backgroundColor: string;
+    cells: Record<string, { char: string; color: string; bgColor: string }>;
   };
   animation: {
     frameCount: number;
