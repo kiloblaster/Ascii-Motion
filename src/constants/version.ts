@@ -1,12 +1,52 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.0.9";
-export const BUILD_DATE = "2026-03-13T17:12:43.307Z";
-export const BUILD_HASH = "c940f76";
+export const VERSION = "2.0.14";
+export const BUILD_DATE = "2026-03-23T23:09:47.470Z";
+export const BUILD_HASH = "339856e";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.14",
+    "date": "2026-03-23T23:09:47.470Z",
+    "commits": [
+      "Merge pull request #97 from CameronFoxly/remove-300-frame-import-cap",
+      "Remove 300 frame cap on video imports",
+      "Merge pull request #95 from CameronFoxly/dependabot/npm_and_yarn/undici-7.24.4",
+      "chore(deps): bump undici from 7.20.0 to 7.24.4"
+    ]
+  },
+  {
+    "version": "2.0.13",
+    "date": "2026-03-16T03:23:57.993Z",
+    "commits": [
+      "Merge pull request #94 from CameronFoxly/fix/mcp-canvas-snapshot-stale-data",
+      "fix: flush canvas to timeline before MCP state snapshot and export"
+    ]
+  },
+  {
+    "version": "2.0.12",
+    "date": "2026-03-13T19:27:58.960Z",
+    "commits": [
+      "Initial version"
+    ]
+  },
+  {
+    "version": "2.0.11",
+    "date": "2026-03-13T19:25:47.806Z",
+    "commits": [
+      "fix: add export_request to MCPServerMessage type"
+    ]
+  },
+  {
+    "version": "2.0.10",
+    "date": "2026-03-13T19:24:21.190Z",
+    "commits": [
+      "Update version flags",
+      "feat: browser-delegated export via MCP and effect sync handlers"
+    ]
+  },
   {
     "version": "2.0.9",
     "date": "2026-03-13T17:12:43.307Z",
