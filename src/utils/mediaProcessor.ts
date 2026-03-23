@@ -315,10 +315,9 @@ export class MediaProcessor {
     const estimatedFrameRate = await this.estimateVideoFrameRate(video, originalFile);
     const frameDuration = Math.round(1000 / estimatedFrameRate); // Convert to milliseconds
     
-    // Extract all frames, but limit to reasonable maximum
-    const maxFrames = Math.min(300, Math.floor(video.duration * estimatedFrameRate)); // Cap at 300 frames
+    const totalFrames = Math.floor(video.duration * estimatedFrameRate);
     
-    for (let i = 0; i < maxFrames; i++) {
+    for (let i = 0; i < totalFrames; i++) {
       // Sample at the CENTER of each frame's time window to avoid boundary issues
       // Frame i spans from (i/fps) to ((i+1)/fps), so center is at ((i + 0.5) / fps)
       // This prevents the browser from rounding to an adjacent frame at exact boundaries
