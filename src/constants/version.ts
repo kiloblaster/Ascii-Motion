@@ -1,12 +1,22 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.0.14";
-export const BUILD_DATE = "2026-03-23T23:09:47.470Z";
-export const BUILD_HASH = "339856e";
+export const VERSION = "2.0.15";
+export const BUILD_DATE = "2026-03-31T22:34:50.336Z";
+export const BUILD_HASH = "f4c8fee";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.15",
+    "date": "2026-03-31T22:34:50.336Z",
+    "commits": [
+      "fix: update premium submodule for disk I/O optimization",
+      "Merge pull request #98 from CameronFoxly/dependabot/npm_and_yarn/flatted-3.4.2",
+      "Update flags",
+      "chore(deps-dev): bump flatted from 3.4.1 to 3.4.2"
+    ]
+  },
   {
     "version": "2.0.14",
     "date": "2026-03-23T23:09:47.470Z",
