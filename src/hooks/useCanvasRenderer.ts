@@ -16,6 +16,7 @@ import {
 } from '../utils/canvasTextRendering';
 import { getFontString } from '../utils/fontMetrics';
 import { scheduleCanvasRender } from '../utils/renderScheduler';
+import { notifyCanvasRendered } from '../utils/renderScheduler';
 import { markFullRedraw } from '../utils/dirtyTracker';
 import { calculateAdaptiveGridColor } from '../utils/gridColor';
 import type { Cell } from '../types';
@@ -502,6 +503,9 @@ export const useCanvasRenderer = () => {
     // Finish performance measurement
     const totalCells = width * height;
     finishCanvasRender(totalCells);
+
+    // Notify downstream consumers (post-effects overlay) that the canvas was rendered
+    notifyCanvasRendered();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- getCell and canvasBackgroundColor intentionally included as change triggers alongside memoized objects
   }, [
