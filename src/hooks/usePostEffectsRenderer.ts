@@ -10,8 +10,12 @@
  *
  * The hook subscribes to the same state that drives Canvas2D re-renders
  * (cells, grid, zoom, pan, background color, frame changes) and schedules
- * a post-processing pass via the renderScheduler so it runs in the same
- * rAF tick as the Canvas2D render, immediately after it.
+ * a post-processing pass via requestAnimationFrame so it runs after the
+ * Canvas2D render.
+ *
+ * For optimized playback (which bypasses React), the module-level
+ * `applyPlaybackPostEffects()` function is used directly in the playback
+ * loop — see useOptimizedPlayback.ts.
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -20,8 +24,19 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { WebGLPostProcessor } from '../utils/webgl/WebGLPostProcessor';
 import { buildPostEffectPasses, hasAnyPostEffects } from '../utils/postEffectsPipeline';
-import { renderScheduler } from '../utils/renderScheduler';
 import type { PostEffectTrack } from '../types/postEffect';
+
+// ============================================
+// MODULE-LEVEL OVERLAY CANVAS REF
+// ============================================
+// Allows non-React code (e.g., the optimized playback loop) to access
+// the overlay canvas without threading refs through React props.
+let _overlayCanvas: HTMLCanvasElement | null = null;
+
+/** Get the overlay canvas element for non-React use (e.g., playback loop). */
+export function getOverlayCanvas(): HTMLCanvasElement | null {
+  return _overlayCanvas;
+}
 
 // ============================================
 // HOOK
@@ -38,9 +53,18 @@ export function usePostEffectsRenderer(): {
   const { canvasRef, zoom } = useCanvasContext();
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const processorRef = useRef<WebGLPostProcessor | null>(null);
-  // Stable callback ref for the renderScheduler so only one instance
-  // exists in the Set, avoiding duplicate renders per frame.
+  // Stable callback ref — always points to the latest applyPostEffects
+  // so a single rAF callback can always invoke the current version.
   const applyPostEffectsRef = useRef<(() => void) | null>(null);
+  // Track rAF ID for cleanup on unmount only (not on state changes)
+  const rafIdRef = useRef<number>(0);
+
+  // Keep the module-level overlay ref in sync with the React ref.
+  // This runs after every render, but it's just a pointer assignment.
+  useEffect(() => {
+    _overlayCanvas = overlayRef.current;
+    return () => { _overlayCanvas = null; };
+  });
 
   // Subscribe to post effect tracks and current frame
   const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
@@ -146,30 +170,20 @@ export function usePostEffectsRenderer(): {
   // Keep the ref in sync with the latest applyPostEffects callback
   applyPostEffectsRef.current = applyPostEffects;
 
-  // Stable function reference for the renderScheduler — uses the ref
-  // so the same function identity is always scheduled, preventing
-  // duplicate entries in the scheduler's callback Set.
-  const stableApplyPostEffects = useCallback(() => {
-    applyPostEffectsRef.current?.();
-  }, []);
-
-  // Schedule post effects using the renderScheduler so they run in the
-  // same rAF tick as the Canvas2D render, immediately after it completes.
-  // This avoids the double-rAF issue where rapid frame changes during
-  // playback would cancel the pending post-effects rAF before it fires.
-  const schedulePostEffects = useCallback(() => {
-    renderScheduler.schedule(stableApplyPostEffects);
-  }, [stableApplyPostEffects]);
-
   // Re-apply post effects when ANY relevant state changes.
   // This mirrors the dependencies that trigger Canvas2D re-renders in
   // useCanvasRenderer, so the overlay always shows up-to-date output.
+  //
+  // NOTE: During optimized playback, this effect does NOT fire because
+  // the playback loop bypasses React state updates. Instead, the playback
+  // loop calls applyPlaybackPostEffects() directly (see below).
   useEffect(() => {
     if (!hasEffects) return;
-    schedulePostEffects();
+    rafIdRef.current = requestAnimationFrame(() => {
+      applyPostEffectsRef.current?.();
+    });
   }, [
     hasEffects,
-    schedulePostEffects,
     // Canvas content changes
     canvasCells,
     canvasWidth,
@@ -188,6 +202,78 @@ export function usePostEffectsRenderer(): {
     isActive: hasEffects,
     applyPostEffects,
   };
+}
+
+// ============================================
+// PLAYBACK-FOCUSED UTILITY
+// ============================================
+
+/**
+ * Apply post effects during optimized playback.
+ *
+ * The optimized playback loop bypasses React entirely, rendering directly
+ * to the Canvas2D via renderFrameDirectly(). This function applies the
+ * WebGL post effect chain to the overlay canvas, reading from the main
+ * canvas that was just rendered by the playback loop.
+ *
+ * Uses a persistent WebGL processor to avoid per-frame initialization cost.
+ *
+ * @param sourceCanvas - The main Canvas2D canvas (just rendered by playback)
+ * @param overlayCanvas - The WebGL overlay canvas
+ * @param postEffectTracks - Current post effect tracks from the store
+ * @param frame - Current timeline frame number
+ * @param frameRate - Project frame rate
+ */
+let playbackProcessor: WebGLPostProcessor | null = null;
+
+export function applyPlaybackPostEffects(
+  sourceCanvas: HTMLCanvasElement,
+  overlayCanvas: HTMLCanvasElement,
+  postEffectTracks: import('../types/postEffect').PostEffectTrack[],
+  frame: number,
+  frameRate: number,
+): void {
+  if (!hasAnyPostEffects(postEffectTracks)) return;
+
+  const passes = buildPostEffectPasses(postEffectTracks, frame);
+  if (passes.length === 0) return;
+
+  // Sync overlay canvas dimensions with source
+  if (
+    overlayCanvas.width !== sourceCanvas.width ||
+    overlayCanvas.height !== sourceCanvas.height
+  ) {
+    overlayCanvas.width = sourceCanvas.width;
+    overlayCanvas.height = sourceCanvas.height;
+    // Resize invalidates GL context — dispose old processor
+    if (playbackProcessor) {
+      playbackProcessor.dispose();
+      playbackProcessor = null;
+    }
+  }
+  overlayCanvas.style.width = sourceCanvas.style.width;
+  overlayCanvas.style.height = sourceCanvas.style.height;
+
+  // Initialize or re-initialize processor
+  if (!playbackProcessor || !playbackProcessor.isReady()) {
+    if (playbackProcessor) playbackProcessor.dispose();
+    playbackProcessor = new WebGLPostProcessor();
+    if (!playbackProcessor.initialize(overlayCanvas)) {
+      playbackProcessor = null;
+      return;
+    }
+  }
+
+  const time = frame / (frameRate || 12);
+  playbackProcessor.render(sourceCanvas, passes, time, frame);
+}
+
+/** Dispose the persistent playback processor (call when playback stops). */
+export function disposePlaybackPostEffects(): void {
+  if (playbackProcessor) {
+    playbackProcessor.dispose();
+    playbackProcessor = null;
+  }
 }
 
 // ============================================
