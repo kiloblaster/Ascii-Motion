@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { Button } from '../../ui/button';
 import { getAllPostEffects, getPostEffect } from '../../../registry/postEffectRegistry';
 import { evaluatePostEffectBlock } from '../../../utils/postEffectsPipeline';
+import { usePostEffectBlockHistory } from '../../../hooks/usePostEffectBlockHistory';
 import type { PostEffectBlockId, PostEffectPropertyTrackId } from '../../../types/postEffect';
 import type { KeyframeId } from '../../../types/timeline';
 
@@ -49,6 +50,8 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
   const addPostEffectPropertyTrack = useTimelineStore((s) => s.addPostEffectPropertyTrack);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+
+  const { recordAdd, recordRemove, recordUpdate } = usePostEffectBlockHistory();
 
   const registeredPostEffects = getAllPostEffects();
 
@@ -88,6 +91,7 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
                   // Post effects default to full timeline
                   const blockId = addPostEffectBlock(effect.type, 0, durationFrames);
                   if (blockId) {
+                    recordAdd(blockId);
                     setTimeout(() => {
                       const tl = useTimelineStore.getState();
                       if (!tl.view.postEffectsExpanded) {
@@ -155,7 +159,9 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
                 className="p-0.5 opacity-0 group-hover/petrow:opacity-100 hover:bg-muted rounded"
                 onClick={(e) => {
                   e.stopPropagation();
+                  const beforeBlock = structuredClone(block);
                   togglePostEffectBlockEnabled(block.id);
+                  recordUpdate(block.id, beforeBlock);
                 }}
               >
                 {block.enabled ? (
@@ -170,6 +176,7 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
                 className="p-0.5 opacity-0 group-hover/petrow:opacity-100 hover:bg-destructive/20 rounded"
                 onClick={(e) => {
                   e.stopPropagation();
+                  recordRemove(block.id);
                   removePostEffectBlock(block.id);
                 }}
               >

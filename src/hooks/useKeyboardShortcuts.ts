@@ -1559,10 +1559,20 @@ const processHistoryAction = (
     case 'effect_keyframe_add': {
       const tl = useTimelineStore.getState();
       const a = action as import('../types').EffectKeyframeAddHistoryAction;
-      if (isRedo) {
-        tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+      // Check if this is a post effect keyframe by searching postEffectTracks
+      const isPostEffect = tl.postEffectTracks.some((pet) => (pet.effectBlock.id as string) === a.data.blockId);
+      if (isPostEffect) {
+        if (isRedo) {
+          tl.addPostEffectKeyframe(a.data.blockId as import("../types/postEffect").PostEffectBlockId, a.data.trackId as import("../types/postEffect").PostEffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+        } else {
+          tl.removePostEffectKeyframe(a.data.blockId as import("../types/postEffect").PostEffectBlockId, a.data.trackId as import("../types/postEffect").PostEffectPropertyTrackId, a.data.keyframe.id);
+        }
       } else {
-        tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+        if (isRedo) {
+          tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+        } else {
+          tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+        }
       }
       break;
     }
@@ -1570,10 +1580,19 @@ const processHistoryAction = (
     case 'effect_keyframe_remove': {
       const tl = useTimelineStore.getState();
       const a = action as import('../types').EffectKeyframeRemoveHistoryAction;
-      if (isRedo) {
-        tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+      const isPostEffect = tl.postEffectTracks.some((pet) => (pet.effectBlock.id as string) === a.data.blockId);
+      if (isPostEffect) {
+        if (isRedo) {
+          tl.removePostEffectKeyframe(a.data.blockId as import("../types/postEffect").PostEffectBlockId, a.data.trackId as import("../types/postEffect").PostEffectPropertyTrackId, a.data.keyframe.id);
+        } else {
+          tl.addPostEffectKeyframe(a.data.blockId as import("../types/postEffect").PostEffectBlockId, a.data.trackId as import("../types/postEffect").PostEffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+        }
       } else {
-        tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+        if (isRedo) {
+          tl.removeEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.id);
+        } else {
+          tl.addEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframe.frame, a.data.keyframe.value);
+        }
       }
       break;
     }
@@ -1582,7 +1601,12 @@ const processHistoryAction = (
       const tl = useTimelineStore.getState();
       const a = action as import('../types').EffectKeyframeUpdateHistoryAction;
       const kf = isRedo ? a.data.newKeyframe : a.data.previousKeyframe;
-      tl.updateEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframeId as KeyframeId, { frame: kf.frame, value: kf.value, easing: kf.easing });
+      const isPostEffect = tl.postEffectTracks.some((pet) => (pet.effectBlock.id as string) === a.data.blockId);
+      if (isPostEffect) {
+        tl.updatePostEffectKeyframe(a.data.blockId as import("../types/postEffect").PostEffectBlockId, a.data.trackId as import("../types/postEffect").PostEffectPropertyTrackId, a.data.keyframeId as KeyframeId, { frame: kf.frame, value: kf.value, easing: kf.easing });
+      } else {
+        tl.updateEffectKeyframe(a.data.blockId as import("../types/effectBlock").EffectBlockId, a.data.trackId as import("../types/effectBlock").EffectPropertyTrackId, a.data.keyframeId as KeyframeId, { frame: kf.frame, value: kf.value, easing: kf.easing });
+      }
       break;
     }
 
@@ -1651,6 +1675,53 @@ const processHistoryAction = (
           }
         }
       }
+      break;
+    }
+
+    case 'post_effect_block_add': {
+      const a = action as import('../types').PostEffectBlockAddHistoryAction;
+      if (isRedo) {
+        useTimelineStore.setState((s) => ({
+          postEffectTracks: [...s.postEffectTracks, structuredClone(a.data.trackSnapshot)],
+        }));
+      } else {
+        useTimelineStore.setState((s) => ({
+          postEffectTracks: s.postEffectTracks.filter(
+            (t) => t.effectBlock.id !== a.data.trackSnapshot.effectBlock.id,
+          ),
+        }));
+      }
+      break;
+    }
+
+    case 'post_effect_block_remove': {
+      const a = action as import('../types').PostEffectBlockRemoveHistoryAction;
+      if (isRedo) {
+        useTimelineStore.setState((s) => ({
+          postEffectTracks: s.postEffectTracks.filter(
+            (t) => t.effectBlock.id !== a.data.trackSnapshot.effectBlock.id,
+          ),
+        }));
+      } else {
+        useTimelineStore.setState((s) => {
+          const tracks = [...s.postEffectTracks];
+          tracks.splice(a.data.trackIndex, 0, structuredClone(a.data.trackSnapshot));
+          return { postEffectTracks: tracks };
+        });
+      }
+      break;
+    }
+
+    case 'post_effect_block_update': {
+      const a = action as import('../types').PostEffectBlockUpdateHistoryAction;
+      const blockToApply = isRedo ? a.data.newBlock : a.data.previousBlock;
+      useTimelineStore.setState((s) => ({
+        postEffectTracks: s.postEffectTracks.map((t) =>
+          (t.effectBlock.id as string) === a.data.blockId
+            ? { ...t, effectBlock: structuredClone(blockToApply) }
+            : t,
+        ),
+      }));
       break;
     }
 

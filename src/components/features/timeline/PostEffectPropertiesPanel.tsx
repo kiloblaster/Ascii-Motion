@@ -15,6 +15,7 @@ import { Button } from '../../ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
 import { Trash2, Eye, EyeOff, X, Diamond, RotateCcw } from 'lucide-react';
 import { useScrubInput } from '../../../hooks/useScrubInput';
+import { usePostEffectBlockHistory } from '../../../hooks/usePostEffectBlockHistory';
 import type { PostEffectBlock, PostEffectPropertyTrackId } from '../../../types/postEffect';
 import type { PostEffectPropertyDefinition } from '../../../types/postEffect';
 import type { KeyframeId } from '../../../types/timeline';
@@ -294,6 +295,7 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
   const selectPostEffectBlock = useTimelineStore((s) => s.selectPostEffectBlock);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const pushToHistory = useToolStore((s) => s.pushToHistory);
+  const { recordUpdate, recordRemove } = usePostEffectBlockHistory();
 
   // Find the selected post effect track
   const selectedTrack = useMemo(() => {
@@ -333,7 +335,11 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
             <TooltipTrigger asChild>
               <button
                 className="p-0.5 hover:bg-muted rounded"
-                onClick={() => togglePostEffectBlockEnabled(block.id)}
+                onClick={() => {
+                  const beforeBlock = structuredClone(block);
+                  togglePostEffectBlockEnabled(block.id);
+                  recordUpdate(block.id, beforeBlock);
+                }}
               >
                 {block.enabled
                   ? <Eye className="w-3 h-3 text-muted-foreground" />
@@ -407,7 +413,9 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
                     } as import('../../../types').EffectKeyframeAddHistoryAction);
                   } else {
                     // No property track at all (static property) — update block settings
+                    const beforeBlock = structuredClone(block);
                     updatePostEffectBlockSettings(block.id, { [def.path]: newValue });
+                    recordUpdate(block.id, beforeBlock);
                   }
                 }}
                 block={block}
@@ -427,6 +435,7 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
           size="sm"
           className="w-full h-6 text-[10px]"
           onClick={() => {
+            const beforeBlock = structuredClone(block);
             const staticResets: Record<string, unknown> = {};
 
             for (const def of entry.propertyDefinitions) {
@@ -447,6 +456,7 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
             if (Object.keys(staticResets).length > 0) {
               updatePostEffectBlockSettings(block.id, staticResets);
             }
+            recordUpdate(block.id, beforeBlock);
           }}
         >
           <RotateCcw className="w-3 h-3 mr-1" />
@@ -457,6 +467,7 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
           size="sm"
           className="w-full h-6 text-[10px]"
           onClick={() => {
+            recordRemove(block.id);
             removePostEffectBlock(block.id);
             selectPostEffectBlock(null);
           }}

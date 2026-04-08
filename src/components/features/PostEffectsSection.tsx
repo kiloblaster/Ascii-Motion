@@ -15,6 +15,7 @@ import {
 import { CollapsibleHeader } from '../common/CollapsibleHeader';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { getAllPostEffects } from '../../registry/postEffectRegistry';
+import { usePostEffectBlockHistory } from '../../hooks/usePostEffectBlockHistory';
 import { Layers } from 'lucide-react';
 
 interface PostEffectsSectionProps {
@@ -27,6 +28,7 @@ export function PostEffectsSection({ className = '' }: PostEffectsSectionProps) 
   const addPostEffectBlock = useTimelineStore((s) => s.addPostEffectBlock);
   const selectPostEffectBlock = useTimelineStore((s) => s.selectPostEffectBlock);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const { recordAdd } = usePostEffectBlockHistory();
 
   const registeredPostEffects = getAllPostEffects();
 
@@ -34,6 +36,7 @@ export function PostEffectsSection({ className = '' }: PostEffectsSectionProps) 
     // Post effects default to filling the entire timeline
     const blockId = addPostEffectBlock(postEffectType, 0, durationFrames);
     if (blockId) {
+      recordAdd(blockId);
       selectPostEffectBlock(blockId);
       // Auto-expand the post effects section in the timeline
       const tl = useTimelineStore.getState();

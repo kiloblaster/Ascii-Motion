@@ -8,6 +8,7 @@
 import React, { useCallback, useRef } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { getPostEffect } from '../../../registry/postEffectRegistry';
+import { usePostEffectBlockHistory } from '../../../hooks/usePostEffectBlockHistory';
 import type { PostEffectTrack } from '../../../types/postEffect';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,7 @@ export const PostEffectBlockComponent: React.FC<PostEffectBlockProps> = React.me
     const selectedPostEffectBlockId = useTimelineStore((s) => s.view.selectedPostEffectBlockId);
     const selectPostEffectBlock = useTimelineStore((s) => s.selectPostEffectBlock);
     const updatePostEffectBlockTiming = useTimelineStore((s) => s.updatePostEffectBlockTiming);
+    const { recordUpdate } = usePostEffectBlockHistory();
 
     const isSelected = selectedPostEffectBlockId === block.id;
     const entry = getPostEffect(block.postEffectType);
@@ -52,6 +54,8 @@ export const PostEffectBlockComponent: React.FC<PostEffectBlockProps> = React.me
       (e: React.MouseEvent, mode: 'move' | 'resize-left' | 'resize-right') => {
         e.stopPropagation();
         e.preventDefault();
+
+        const beforeBlock = structuredClone(block);
 
         dragRef.current = {
           startX: e.clientX,
@@ -86,15 +90,21 @@ export const PostEffectBlockComponent: React.FC<PostEffectBlockProps> = React.me
         };
 
         const handleMouseUp = () => {
+          const changed = dragRef.current &&
+            (dragRef.current.originalStart !== block.startFrame ||
+             dragRef.current.originalDuration !== block.durationFrames);
           dragRef.current = null;
           window.removeEventListener('mousemove', handleMouseMove);
           window.removeEventListener('mouseup', handleMouseUp);
+          if (changed) {
+            recordUpdate(block.id, beforeBlock);
+          }
         };
 
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
       },
-      [block.id, block.startFrame, block.durationFrames, pxPerFrame, updatePostEffectBlockTiming],
+      [block, pxPerFrame, updatePostEffectBlockTiming, recordUpdate],
     );
 
     return (

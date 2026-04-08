@@ -305,7 +305,11 @@ export type HistoryActionType =
   | 'effect_keyframe_add'
   | 'effect_keyframe_remove'
   | 'effect_keyframe_update'
-  | 'effect_bake';
+  | 'effect_bake'
+  // Post effect block actions (WebGL shader effects)
+  | 'post_effect_block_add'
+  | 'post_effect_block_remove'
+  | 'post_effect_block_update';
 
 export interface HistoryAction {
   type: HistoryActionType;
@@ -948,7 +952,11 @@ export type AnyHistoryAction =
   | EffectKeyframeAddHistoryAction
   | EffectKeyframeRemoveHistoryAction
   | EffectKeyframeUpdateHistoryAction
-  | EffectBakeHistoryAction;
+  | EffectBakeHistoryAction
+  // Post effect block actions (WebGL shader effects)
+  | PostEffectBlockAddHistoryAction
+  | PostEffectBlockRemoveHistoryAction
+  | PostEffectBlockUpdateHistoryAction;
 
 export interface ApplyTransformsHistoryAction extends HistoryAction {
   type: 'apply_transforms';
@@ -1080,5 +1088,31 @@ export interface EffectBakeHistoryAction extends HistoryAction {
       layerId: string;
       contentFrames: import('../types/timeline').ContentFrame[];
     }>;
+  };
+}
+
+// Post effect block history actions (WebGL shader effects)
+
+export interface PostEffectBlockAddHistoryAction extends HistoryAction {
+  type: 'post_effect_block_add';
+  data: {
+    trackSnapshot: import('../types/postEffect').PostEffectTrack;
+  };
+}
+
+export interface PostEffectBlockRemoveHistoryAction extends HistoryAction {
+  type: 'post_effect_block_remove';
+  data: {
+    trackSnapshot: import('../types/postEffect').PostEffectTrack;
+    trackIndex: number;
+  };
+}
+
+export interface PostEffectBlockUpdateHistoryAction extends HistoryAction {
+  type: 'post_effect_block_update';
+  data: {
+    blockId: string;
+    previousBlock: import('../types/postEffect').PostEffectBlock;
+    newBlock: import('../types/postEffect').PostEffectBlock;
   };
 }
