@@ -6,8 +6,9 @@
  * determines the render order (first = applied first).
  */
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { cn } from '@/lib/utils';
 import { ChevronRight, ChevronLeft, Plus, Layers, Diamond, Eye, EyeOff, Trash2, GripVertical } from 'lucide-react';
 import {
@@ -50,8 +51,13 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
   const addPostEffectPropertyTrack = useTimelineStore((s) => s.addPostEffectPropertyTrack);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+  const reorderPostEffectTracks = useTimelineStore((s) => s.reorderPostEffectTracks);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   const { recordAdd, recordRemove, recordUpdate } = usePostEffectBlockHistory();
+
+  // Drag-to-reorder state
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const registeredPostEffects = getAllPostEffects();
 
@@ -111,7 +117,7 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
       </div>
 
       {/* Post effect track rows (when expanded) */}
-      {isExpanded && postEffectTracks.map((track) => {
+      {isExpanded && postEffectTracks.map((track, trackIndex) => {
         const block = track.effectBlock;
         const entry = getPostEffect(block.postEffectType);
         const colors = POST_EFFECT_CATEGORY_COLORS[entry?.category ?? 'distortion'] ?? DEFAULT_COLORS;
@@ -125,8 +131,47 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
               className={cn(
                 'flex items-center px-3 min-h-[24px] border-b border-border/30 cursor-pointer group/petrow',
                 isSelected ? 'bg-purple-500/15' : 'hover:bg-muted/30',
+                dragOverIndex === trackIndex && 'border-t-2 border-t-primary',
               )}
               onClick={() => selectPostEffectBlock(block.id)}
+              draggable
+              onDragStart={(e) => {
+                e.stopPropagation();
+                e.dataTransfer.setData('application/post-effect-block-id', block.id as string);
+                e.dataTransfer.setData('application/post-effect-index', String(trackIndex));
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('application/post-effect-block-id')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDragOverIndex(trackIndex);
+                }
+              }}
+              onDragLeave={() => setDragOverIndex(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverIndex(null);
+                const draggedBlockId = e.dataTransfer.getData('application/post-effect-block-id');
+                const sourceIndexStr = e.dataTransfer.getData('application/post-effect-index');
+                if (!draggedBlockId || draggedBlockId === (block.id as string)) return;
+                const sourceIndex = parseInt(sourceIndexStr, 10);
+                if (!isNaN(sourceIndex) && sourceIndex !== trackIndex) {
+                  reorderPostEffectTracks(sourceIndex, trackIndex);
+                  pushToHistory({
+                    type: 'post_effect_block_update' as const,
+                    timestamp: Date.now(),
+                    description: 'Reorder post effects',
+                    data: {
+                      blockId: draggedBlockId,
+                      previousBlock: structuredClone(postEffectTracks[sourceIndex].effectBlock),
+                      newBlock: structuredClone(postEffectTracks[sourceIndex].effectBlock),
+                    },
+                  });
+                }
+              }}
             >
               {/* Drag handle */}
               <GripVertical className="w-3 h-3 mr-1 text-muted-foreground/30 opacity-0 group-hover/petrow:opacity-100 cursor-grab" />
