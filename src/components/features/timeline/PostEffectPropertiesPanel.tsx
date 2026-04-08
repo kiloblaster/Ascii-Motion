@@ -8,12 +8,12 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
+import { useToolStore } from '../../../stores/toolStore';
 import { getPostEffect } from '../../../registry/postEffectRegistry';
 import { evaluatePostEffectBlock } from '../../../utils/postEffectsPipeline';
 import { Button } from '../../ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../ui/tooltip';
-import { Trash2, Eye, EyeOff, Diamond } from 'lucide-react';
+import { Trash2, Eye, EyeOff, X, Diamond, RotateCcw } from 'lucide-react';
 import { useScrubInput } from '../../../hooks/useScrubInput';
 import type { PostEffectBlock, PostEffectPropertyTrackId } from '../../../types/postEffect';
 import type { PostEffectPropertyDefinition } from '../../../types/postEffect';
@@ -44,11 +44,13 @@ const PostEffectPropertyRow: React.FC<PostEffectPropertyRowProps> = ({
   const addPostEffectKeyframe = useTimelineStore((s) => s.addPostEffectKeyframe);
   const removePostEffectKeyframe = useTimelineStore((s) => s.removePostEffectKeyframe);
   const togglePostEffectTrackExpanded = useTimelineStore((s) => s.togglePostEffectTrackExpanded);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   // Check if this property has a keyframe at current frame
   const propTrack = block.propertyTracks.find((pt) => pt.propertyPath === definition.path);
   const existingKfAtFrame = propTrack?.keyframes.find((kf) => kf.frame === currentFrame);
-  const hasKeyframes = propTrack && propTrack.keyframes.length > 0;
+  const isTracked = !!propTrack;
+  const hasKeyframeAtCurrentFrame = !!existingKfAtFrame;
 
   // Update local value when external value changes
   useEffect(() => {
@@ -57,195 +59,222 @@ const PostEffectPropertyRow: React.FC<PostEffectPropertyRowProps> = ({
     }
   }, [value, definition.defaultValue, isFocused]);
 
-  // Scrub input support for numeric fields
-  const scrubRef = useScrubInput({
-    value: typeof value === 'number' ? value : 0,
-    min: definition.min ?? 0,
-    max: definition.max ?? 100,
+  // Auto-expand the post effect track to reveal keyframes
+  const ensureExpanded = useCallback(() => {
+    const tl = useTimelineStore.getState();
+    if (!tl.view.expandedPostEffectTrackIds.has(block.id)) {
+      togglePostEffectTrackExpanded(block.id);
+    }
+  }, [block.id, togglePostEffectTrackExpanded]);
+
+  // Scrub input hook — attach onMouseDown to label for drag-to-scrub
+  const scrubValue = typeof value === 'number' ? value : (definition.defaultValue as number);
+  const scrub = useScrubInput({
+    value: scrubValue,
+    onChange: (v) => { setLocalValue(String(v)); onChange(v); },
     step: definition.step ?? 1,
-    onChange: (v: number) => onChange(v),
-    disabled: definition.valueType !== 'number',
+    min: definition.min,
+    max: definition.max,
   });
 
   // Toggle keyframe at current frame
-  const handleKeyframeToggle = useCallback(() => {
-    if (existingKfAtFrame && propTrack) {
+  const handleKeyframeToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isTracked) {
+      // Create property track + add keyframe at current frame
+      const trackId = addPostEffectPropertyTrack(block.id, definition.path);
+      if (trackId) {
+        const kfValue = (value ?? definition.defaultValue) as number | boolean | string;
+        const kfId = addPostEffectKeyframe(block.id, trackId, currentFrame, kfValue);
+        pushToHistory({
+          type: 'effect_keyframe_add', timestamp: Date.now(), description: `Add ${definition.displayName} keyframe`,
+          data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: trackId as string,
+            keyframe: { id: kfId, frame: currentFrame, value: kfValue, easing: { type: 'linear' as const } } },
+        } as import('../../../types').EffectKeyframeAddHistoryAction);
+        ensureExpanded();
+      }
+    } else if (hasKeyframeAtCurrentFrame && existingKfAtFrame && propTrack) {
+      // Remove keyframe at current frame — record before removing
+      pushToHistory({
+        type: 'effect_keyframe_remove', timestamp: Date.now(), description: `Remove ${definition.displayName} keyframe`,
+        data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: propTrack.id as string,
+          keyframe: structuredClone(existingKfAtFrame) },
+      } as import('../../../types').EffectKeyframeRemoveHistoryAction);
       removePostEffectKeyframe(
         block.id,
         propTrack.id as PostEffectPropertyTrackId,
         existingKfAtFrame.id as KeyframeId,
       );
-    } else {
-      // Ensure property track exists
-      let trackId = propTrack?.id as PostEffectPropertyTrackId | null;
-      if (!trackId) {
-        trackId = addPostEffectPropertyTrack(block.id, definition.path);
-      }
-      if (trackId) {
-        const currentVal = (value ?? definition.defaultValue) as number | boolean | string;
-        addPostEffectKeyframe(block.id, trackId, currentFrame, currentVal);
-        // Auto-expand the post effect track to reveal keyframes
-        const tl = useTimelineStore.getState();
-        if (!tl.view.expandedPostEffectTrackIds.has(block.id)) {
-          togglePostEffectTrackExpanded(block.id);
-        }
-      }
+    } else if (propTrack) {
+      // Add keyframe at current frame to existing track
+      const kfValue = (value ?? definition.defaultValue) as number | boolean | string;
+      const kfId = addPostEffectKeyframe(block.id, propTrack.id as PostEffectPropertyTrackId, currentFrame, kfValue);
+      pushToHistory({
+        type: 'effect_keyframe_add', timestamp: Date.now(), description: `Add ${definition.displayName} keyframe`,
+        data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: propTrack.id as string,
+          keyframe: { id: kfId, frame: currentFrame, value: kfValue, easing: { type: 'linear' as const } } },
+      } as import('../../../types').EffectKeyframeAddHistoryAction);
+      ensureExpanded();
     }
-  }, [
-    existingKfAtFrame, propTrack, block.id, definition.path,
-    value, definition.defaultValue, currentFrame,
-    addPostEffectPropertyTrack, addPostEffectKeyframe, removePostEffectKeyframe,
-    togglePostEffectTrackExpanded,
-  ]);
+  }, [isTracked, hasKeyframeAtCurrentFrame, block.id, definition.path, definition.displayName, definition.defaultValue, currentFrame, value, existingKfAtFrame, propTrack, addPostEffectPropertyTrack, addPostEffectKeyframe, removePostEffectKeyframe, ensureExpanded, pushToHistory]);
 
   // Check visibility condition
   if (definition.visibleWhen) {
-    const condTrack = block.propertyTracks.find(
-      (pt) => pt.propertyPath === definition.visibleWhen!.path,
-    );
-    const condValue = condTrack?.keyframes.length
-      ? String(block.settings[definition.visibleWhen.path] ?? '')
-      : String(block.settings[definition.visibleWhen.path] ?? '');
+    const condValue = String(block.settings[definition.visibleWhen.path] ?? '');
     if (!definition.visibleWhen.values.includes(condValue)) {
       return null;
     }
   }
 
-  const renderInput = () => {
-    switch (definition.valueType) {
-      case 'number':
-        return (
-          <div className="flex items-center gap-1">
-            <input
-              ref={scrubRef as React.RefObject<HTMLInputElement>}
-              type="number"
-              value={localValue}
-              min={definition.min}
-              max={definition.max}
-              step={definition.step}
-              className="w-16 bg-muted/50 border border-border/50 rounded px-1.5 py-0.5 text-[11px] text-center tabular-nums"
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => {
-                setIsFocused(false);
-                const num = parseFloat(localValue);
-                if (!isNaN(num)) {
-                  const clamped = Math.min(
-                    definition.max ?? Infinity,
-                    Math.max(definition.min ?? -Infinity, num),
-                  );
-                  onChange(clamped);
-                }
-              }}
-              onChange={(e) => setLocalValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  (e.target as HTMLInputElement).blur();
-                }
-              }}
-            />
-            {definition.unit && (
-              <span className="text-[9px] text-muted-foreground">{definition.unit}</span>
-            )}
-          </div>
-        );
+  const displayValue = isFocused ? localValue : String(value ?? definition.defaultValue);
 
-      case 'boolean':
-        return (
-          <button
-            className={`w-8 h-5 rounded-full transition-colors ${
-              value ? 'bg-purple-500' : 'bg-muted'
-            }`}
-            onClick={() => onChange(!value)}
-          >
-            <div
-              className={`w-3.5 h-3.5 rounded-full bg-white transition-transform ${
-                value ? 'translate-x-3.5' : 'translate-x-0.5'
-              }`}
-            />
-          </button>
-        );
+  const commitValue = useCallback(() => {
+    if (definition.valueType === 'number') {
+      const num = parseFloat(localValue);
+      if (!isNaN(num)) {
+        let clamped = num;
+        if (definition.min !== undefined) clamped = Math.max(definition.min, clamped);
+        if (definition.max !== undefined) clamped = Math.min(definition.max, clamped);
+        onChange(clamped);
+        setLocalValue(String(clamped));
+        return;
+      }
+    } else if (definition.valueType === 'boolean') {
+      onChange(!value);
+      return;
+    }
+    setLocalValue(String(value ?? definition.defaultValue));
+  }, [localValue, value, definition, onChange]);
 
-      case 'select':
-        return (
-          <Select
-            value={String(value ?? definition.defaultValue)}
-            onValueChange={(v) => onChange(v)}
-          >
-            <SelectTrigger className="h-6 text-[11px] w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {definition.options?.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value} className="text-[11px]">
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
-
-      case 'color':
-        return (
-          <div className="flex items-center gap-1">
-            <input
-              type="color"
-              value={String(value ?? definition.defaultValue)}
-              onChange={(e) => onChange(e.target.value)}
-              className="w-6 h-6 rounded cursor-pointer border border-border/50"
-            />
-            <span className="text-[10px] text-muted-foreground font-mono">
-              {String(value ?? definition.defaultValue)}
-            </span>
-          </div>
-        );
-
-      default:
-        return (
-          <input
-            type="text"
-            value={localValue}
-            className="w-20 bg-muted/50 border border-border/50 rounded px-1.5 py-0.5 text-[11px]"
-            onChange={(e) => {
-              setLocalValue(e.target.value);
-              onChange(e.target.value);
-            }}
-          />
-        );
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      commitValue();
+      (e.target as HTMLInputElement).blur();
+    } else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && definition.valueType === 'number') {
+      e.preventDefault();
+      const step = definition.step ?? 1;
+      const delta = e.key === 'ArrowUp' ? step : -step;
+      const current = parseFloat(localValue) || 0;
+      let next = current + delta;
+      if (definition.min !== undefined) next = Math.max(definition.min, next);
+      if (definition.max !== undefined) next = Math.min(definition.max, next);
+      setLocalValue(String(next));
+      onChange(next);
     }
   };
 
+  const keyframeDiamond = (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            className="flex-shrink-0 p-0.5 hover:bg-muted rounded"
+            onClick={handleKeyframeToggle}
+          >
+            <Diamond
+              className={`w-3 h-3 ${
+                hasKeyframeAtCurrentFrame
+                  ? 'text-yellow-400 fill-yellow-400'
+                  : isTracked
+                    ? 'text-yellow-500'
+                    : 'text-muted-foreground/40'
+              }`}
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="left">
+          {hasKeyframeAtCurrentFrame
+            ? 'Remove keyframe at playhead'
+            : isTracked
+              ? 'Add keyframe at playhead'
+              : 'Add property track + keyframe'}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+
+  // Boolean toggle
+  if (definition.valueType === 'boolean') {
+    return (
+      <div className="flex items-center gap-1.5 py-0.5">
+        {keyframeDiamond}
+        <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
+          {definition.displayName}
+        </span>
+        <button
+          className="h-5 px-2 text-[10px] rounded border border-border/50 bg-background hover:bg-muted"
+          onClick={() => onChange(!value)}
+        >
+          {value ? 'On' : 'Off'}
+        </button>
+      </div>
+    );
+  }
+
+  // Select dropdown
+  if (definition.valueType === 'select' && definition.options) {
+    return (
+      <div className="flex items-center gap-1.5 py-0.5">
+        {keyframeDiamond}
+        <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
+          {definition.displayName}
+        </span>
+        <select
+          className="h-5 text-[10px] px-1 flex-1 min-w-0 rounded border border-border/50 bg-background text-foreground outline-none"
+          value={String(value ?? definition.defaultValue)}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {definition.options.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  // Color swatch
+  if (definition.valueType === 'color') {
+    return (
+      <div className="flex items-center gap-1.5 py-0.5">
+        {keyframeDiamond}
+        <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
+          {definition.displayName}
+        </span>
+        <input
+          type="color"
+          value={String(value ?? definition.defaultValue)}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-5 h-5 rounded cursor-pointer border border-border/50 p-0"
+        />
+        <span className="text-[9px] text-muted-foreground/50 font-mono">
+          {String(value ?? definition.defaultValue)}
+        </span>
+      </div>
+    );
+  }
+
+  // Numeric input (default) — matches EffectPropertiesPanel layout
   return (
-    <div className="flex items-center justify-between py-1 px-2 hover:bg-muted/20 rounded group/proprow">
-      <span className="text-[11px] text-foreground/70 flex-1 truncate mr-2">
+    <div className="flex items-center gap-1.5 py-0.5">
+      {keyframeDiamond}
+      <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0 cursor-ew-resize" onMouseDown={scrub.onMouseDown}>
         {definition.displayName}
       </span>
-
-      {renderInput()}
-
-      {/* Keyframe toggle */}
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              className="p-0.5 ml-1 hover:bg-muted rounded"
-              onClick={handleKeyframeToggle}
-            >
-              {existingKfAtFrame ? (
-                <Diamond className="w-3 h-3 text-purple-400 fill-purple-400" />
-              ) : hasKeyframes ? (
-                <Diamond className="w-3 h-3 text-purple-400/60" />
-              ) : (
-                <Diamond className="w-3 h-3 text-muted-foreground/30 hover:text-purple-400" />
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="left">
-            {existingKfAtFrame
-              ? 'Remove keyframe at current frame'
-              : 'Add keyframe at current frame'}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={displayValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onFocus={() => { setIsFocused(true); setLocalValue(String(value ?? definition.defaultValue)); }}
+        onBlur={() => { setIsFocused(false); commitValue(); }}
+        onKeyDown={handleKeyDown}
+        className="h-5 text-[10px] px-1 flex-1 min-w-0 rounded border border-border/50 bg-background text-foreground outline-none focus:ring-1 focus:ring-ring [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      {definition.unit && (
+        <span className="text-[9px] text-muted-foreground/50 w-5 flex-shrink-0">
+          {definition.unit}
+        </span>
+      )}
     </div>
   );
 };
@@ -258,10 +287,13 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
   const selectedPostEffectBlockId = useTimelineStore((s) => s.view.selectedPostEffectBlockId);
   const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
   const updatePostEffectBlockSettings = useTimelineStore((s) => s.updatePostEffectBlockSettings);
+  const updatePostEffectKeyframe = useTimelineStore((s) => s.updatePostEffectKeyframe);
+  const addPostEffectKeyframe = useTimelineStore((s) => s.addPostEffectKeyframe);
   const removePostEffectBlock = useTimelineStore((s) => s.removePostEffectBlock);
   const togglePostEffectBlockEnabled = useTimelineStore((s) => s.togglePostEffectBlockEnabled);
   const selectPostEffectBlock = useTimelineStore((s) => s.selectPostEffectBlock);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
+  const pushToHistory = useToolStore((s) => s.pushToHistory);
 
   // Find the selected post effect track
   const selectedTrack = useMemo(() => {
@@ -279,6 +311,7 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
 
   // Evaluate current values (with keyframe interpolation)
   const resolvedSettings = evaluatePostEffectBlock(block, currentFrame);
+  const Icon = entry.icon;
 
   // Group properties by category
   const categories = new Map<string, PostEffectPropertyDefinition[]>();
@@ -289,79 +322,149 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
   }
 
   return (
-    <div className="space-y-1 p-2">
-      {/* Header */}
-      <div className="flex items-center gap-2 pb-2 border-b border-border/50">
-        <entry.icon className="w-4 h-4 text-purple-400" />
-        <span className="text-xs font-medium flex-1">{entry.name}</span>
+    <div className="w-56 flex-shrink-0 border-l border-border/50 bg-muted/10 flex flex-col">
+      {/* Header — matches EffectPropertiesPanel layout */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border/50 bg-muted/20">
+        <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <span className="text-[11px] font-medium truncate flex-1">{entry.name}</span>
 
-        {/* Enable/disable */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5"
-          onClick={() => togglePostEffectBlockEnabled(block.id)}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className="p-0.5 hover:bg-muted rounded"
+                onClick={() => togglePostEffectBlockEnabled(block.id)}
+              >
+                {block.enabled
+                  ? <Eye className="w-3 h-3 text-muted-foreground" />
+                  : <EyeOff className="w-3 h-3 text-muted-foreground/50" />
+                }
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="left">{block.enabled ? 'Disable' : 'Enable'}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <button
+          className="p-0.5 hover:bg-muted rounded"
+          onClick={() => selectPostEffectBlock(null)}
         >
-          {block.enabled ? (
-            <Eye className="w-3.5 h-3.5" />
-          ) : (
-            <EyeOff className="w-3.5 h-3.5 text-muted-foreground/50" />
-          )}
-        </Button>
+          <X className="w-3 h-3 text-muted-foreground" />
+        </button>
+      </div>
 
-        {/* Delete */}
+      {/* Properties by category */}
+      <div className="flex-1 overflow-y-auto px-2 py-1">
+        {[...categories.entries()].map(([category, defs]) => {
+          // Filter definitions by visibleWhen condition
+          const visibleDefs = defs.filter((def) => {
+            if (!def.visibleWhen) return true;
+            const depValue = resolvedSettings[def.visibleWhen.path];
+            return def.visibleWhen.values.includes(String(depValue));
+          });
+          if (visibleDefs.length === 0) return null;
+          return (
+          <div key={category} className="mb-2">
+            <div className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider mb-0.5">
+              {category}
+            </div>
+            {visibleDefs.map((def) => {
+              const propTrack = block.propertyTracks.find((pt) => pt.propertyPath === def.path);
+              const kfAtFrame = propTrack?.keyframes.find((kf) => kf.frame === currentFrame);
+              return (
+              <PostEffectPropertyRow
+                key={def.path}
+                definition={def}
+                value={resolvedSettings[def.path]}
+                onChange={(newValue) => {
+                  if (kfAtFrame && propTrack) {
+                    // Update the existing keyframe value directly
+                    const previousKf = structuredClone(kfAtFrame);
+                    updatePostEffectKeyframe(
+                      block.id,
+                      propTrack.id as PostEffectPropertyTrackId,
+                      kfAtFrame.id as KeyframeId,
+                      { value: newValue as number | boolean | string },
+                    );
+                    pushToHistory({
+                      type: 'effect_keyframe_update', timestamp: Date.now(), description: `Update ${def.displayName}`,
+                      data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: propTrack.id as string,
+                        keyframeId: kfAtFrame.id as string, previousKeyframe: previousKf,
+                        newKeyframe: { ...previousKf, value: newValue } },
+                    } as import('../../../types').EffectKeyframeUpdateHistoryAction);
+                  } else if (propTrack) {
+                    // Property is keyframed but no KF at playhead — auto-key: create one
+                    const kfId = addPostEffectKeyframe(
+                      block.id,
+                      propTrack.id as PostEffectPropertyTrackId,
+                      currentFrame,
+                      newValue as number | boolean | string,
+                    );
+                    pushToHistory({
+                      type: 'effect_keyframe_add', timestamp: Date.now(), description: `Auto-key ${def.displayName}`,
+                      data: { ownerId: null, ownerType: 'layer', blockId: block.id as string, trackId: propTrack.id as string,
+                        keyframe: { id: kfId, frame: currentFrame, value: newValue, easing: { type: 'linear' as const } } },
+                    } as import('../../../types').EffectKeyframeAddHistoryAction);
+                  } else {
+                    // No property track at all (static property) — update block settings
+                    updatePostEffectBlockSettings(block.id, { [def.path]: newValue });
+                  }
+                }}
+                block={block}
+                currentFrame={currentFrame}
+              />
+              );
+            })}
+          </div>
+          );
+        })}
+      </div>
+
+      {/* Footer actions — matches EffectPropertiesPanel pattern */}
+      <div className="px-2 py-1.5 border-t border-border/50 space-y-1">
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 hover:text-destructive"
+          variant="outline"
+          size="sm"
+          className="w-full h-6 text-[10px]"
+          onClick={() => {
+            const staticResets: Record<string, unknown> = {};
+
+            for (const def of entry.propertyDefinitions) {
+              const propTrack = block.propertyTracks.find((pt) => pt.propertyPath === def.path);
+              if (propTrack) {
+                // Keyframed property: add/update a keyframe at playhead with default value
+                const existingKf = propTrack.keyframes.find((kf) => kf.frame === currentFrame);
+                if (existingKf) {
+                  updatePostEffectKeyframe(block.id, propTrack.id as PostEffectPropertyTrackId, existingKf.id as KeyframeId, { value: def.defaultValue as number | boolean | string });
+                } else {
+                  addPostEffectKeyframe(block.id, propTrack.id as PostEffectPropertyTrackId, currentFrame, def.defaultValue as number | boolean | string);
+                }
+              } else {
+                staticResets[def.path] = def.defaultValue;
+              }
+            }
+
+            if (Object.keys(staticResets).length > 0) {
+              updatePostEffectBlockSettings(block.id, staticResets);
+            }
+          }}
+        >
+          <RotateCcw className="w-3 h-3 mr-1" />
+          Reset
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full h-6 text-[10px]"
           onClick={() => {
             removePostEffectBlock(block.id);
             selectPostEffectBlock(null);
           }}
         >
-          <Trash2 className="w-3.5 h-3.5" />
+          <Trash2 className="w-3 h-3 mr-1" />
+          Delete
         </Button>
       </div>
-
-      {/* Property groups */}
-      {Array.from(categories.entries()).map(([category, definitions]) => (
-        <div key={category}>
-          <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mt-2 mb-1 px-2">
-            {category}
-          </div>
-          {definitions.map((def) => (
-            <PostEffectPropertyRow
-              key={def.path}
-              definition={def}
-              value={resolvedSettings[def.path]}
-              onChange={(newValue) => {
-                updatePostEffectBlockSettings(block.id, {
-                  [def.path]: newValue,
-                });
-                // If a keyframe exists at current frame, update its value too
-                const pt = block.propertyTracks.find(
-                  (t) => t.propertyPath === def.path,
-                );
-                if (pt) {
-                  const kfAtFrame = pt.keyframes.find(
-                    (kf) => kf.frame === currentFrame,
-                  );
-                  if (kfAtFrame) {
-                    useTimelineStore.getState().updatePostEffectKeyframe(
-                      block.id,
-                      pt.id as import('../../../types/postEffect').PostEffectPropertyTrackId,
-                      kfAtFrame.id as import('../../../types/timeline').KeyframeId,
-                      { value: newValue as number | boolean | string },
-                    );
-                  }
-                }
-              }}
-              block={block}
-              currentFrame={currentFrame}
-            />
-          ))}
-        </div>
-      ))}
     </div>
   );
 };
