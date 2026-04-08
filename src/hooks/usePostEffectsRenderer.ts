@@ -5,14 +5,17 @@
  * render completions and applies the post effect chain via WebGL.
  *
  * The overlay canvas sits directly on top of the main Canvas2D canvas.
- * When post effects are active, the overlay is visible (showing the
- * processed output) and the main canvas is hidden. When there are no
- * post effects, the overlay is hidden and the main canvas is shown
- * directly, avoiding any GPU overhead.
+ * It mirrors the main canvas's internal resolution AND CSS display size
+ * (including high-DPI scaling) so they align pixel-perfectly.
+ *
+ * The hook subscribes to the same state that drives Canvas2D re-renders
+ * (cells, grid, zoom, pan, background color, frame changes) and schedules
+ * a post-processing pass via requestAnimationFrame after each change.
  */
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useCanvasContext } from '../contexts/CanvasContext';
+import { useCanvasStore } from '../stores/canvasStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { WebGLPostProcessor } from '../utils/webgl/WebGLPostProcessor';
 import { buildPostEffectPasses, hasAnyPostEffects } from '../utils/postEffectsPipeline';
@@ -30,27 +33,34 @@ export function usePostEffectsRenderer(): {
   /** Trigger a post-effect render pass for the current frame */
   applyPostEffects: () => void;
 } {
-  const { canvasRef } = useCanvasContext();
+  const { canvasRef, zoom } = useCanvasContext();
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const processorRef = useRef<WebGLPostProcessor | null>(null);
-  const isActiveRef = useRef(false);
+  const rafIdRef = useRef<number | null>(null);
 
   // Subscribe to post effect tracks and current frame
   const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const frameRate = useTimelineStore((s) => s.config.frameRate);
 
+  // Subscribe to canvas state that triggers Canvas2D re-renders.
+  // When any of these change, the main canvas re-draws, and we need
+  // to re-apply post effects to stay in sync.
+  const canvasCells = useCanvasStore((s) => s.cells);
+  const canvasWidth = useCanvasStore((s) => s.width);
+  const canvasHeight = useCanvasStore((s) => s.height);
+  const showGrid = useCanvasStore((s) => s.showGrid);
+  const canvasBgColor = useCanvasStore((s) => s.canvasBackgroundColor);
+
   const hasEffects = hasAnyPostEffects(postEffectTracks);
 
   // Initialize / dispose WebGL processor when overlay canvas mounts/unmounts
   useEffect(() => {
     if (!hasEffects) {
-      // No post effects — dispose processor
       if (processorRef.current) {
         processorRef.current.dispose();
         processorRef.current = null;
       }
-      isActiveRef.current = false;
       return;
     }
 
@@ -61,43 +71,117 @@ export function usePostEffectsRenderer(): {
     const processor = new WebGLPostProcessor();
     const ok = processor.initialize(overlayCanvas);
     if (!ok) {
-      console.warn('[Post Effects] WebGL2 initialization failed — post effects disabled');
-      isActiveRef.current = false;
+      console.warn('[Post Effects] WebGL2 initialization failed');
       return;
     }
 
     processorRef.current = processor;
-    isActiveRef.current = true;
 
     return () => {
       processor.dispose();
       processorRef.current = null;
-      isActiveRef.current = false;
     };
   }, [hasEffects]);
 
-  // Apply post effects whenever the frame or tracks change
+  /**
+   * Sync overlay canvas dimensions with the main canvas.
+   * Copies both the internal resolution (canvas.width/height, which includes
+   * devicePixelRatio scaling) and the CSS display size (style.width/height).
+   * This follows the same pattern as CanvasOverlay.tsx.
+   *
+   * Returns true if the canvas was resized (GL context was reset).
+   */
+  const syncOverlaySize = useCallback((): boolean => {
+    const mainCanvas = canvasRef.current;
+    const overlayCanvas = overlayRef.current;
+    if (!mainCanvas || !overlayCanvas) return false;
+
+    let resized = false;
+    if (
+      overlayCanvas.width !== mainCanvas.width ||
+      overlayCanvas.height !== mainCanvas.height
+    ) {
+      overlayCanvas.width = mainCanvas.width;
+      overlayCanvas.height = mainCanvas.height;
+      resized = true;
+    }
+    // Always sync CSS display size
+    overlayCanvas.style.width = mainCanvas.style.width;
+    overlayCanvas.style.height = mainCanvas.style.height;
+    return resized;
+  }, [canvasRef]);
+
+  // Apply post effects — reads from main Canvas2D, processes via WebGL,
+  // writes to overlay canvas.
   const applyPostEffects = useCallback(() => {
-    const processor = processorRef.current;
     const sourceCanvas = canvasRef.current;
     const overlayCanvas = overlayRef.current;
-    if (!processor || !processor.isReady() || !sourceCanvas || !overlayCanvas) return;
+    if (!sourceCanvas || !overlayCanvas) return;
 
+    // Sync overlay size before rendering
+    const resized = syncOverlaySize();
+
+    // If the canvas was resized, the GL context was lost — re-initialize
+    if (resized || !processorRef.current || !processorRef.current.isReady()) {
+      if (processorRef.current) {
+        processorRef.current.dispose();
+      }
+      const processor = new WebGLPostProcessor();
+      const ok = processor.initialize(overlayCanvas);
+      if (!ok) return;
+      processorRef.current = processor;
+    }
+
+    const processor = processorRef.current;
     const time = currentFrame / (frameRate || 12);
     const passes = buildPostEffectPasses(postEffectTracks, currentFrame);
 
     processor.render(sourceCanvas, passes, time, currentFrame);
-  }, [canvasRef, postEffectTracks, currentFrame, frameRate]);
+  }, [canvasRef, syncOverlaySize, postEffectTracks, currentFrame, frameRate]);
 
-  // Auto-apply when frame or tracks change
+  // Schedule a post-processing pass after the Canvas2D render completes.
+  // We use a double-rAF: the first rAF fires at the start of the next
+  // animation frame (when Canvas2D rendering is queued), the second fires
+  // after that frame's paint, ensuring the Canvas2D output is ready.
+  const schedulePostEffects = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+    }
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = requestAnimationFrame(() => {
+        applyPostEffects();
+        rafIdRef.current = null;
+      });
+    });
+  }, [applyPostEffects]);
+
+  // Re-apply post effects when ANY relevant state changes.
+  // This mirrors the dependencies that trigger Canvas2D re-renders in
+  // useCanvasRenderer, so the overlay always shows up-to-date output.
   useEffect(() => {
     if (!hasEffects) return;
-    // Small delay to ensure Canvas2D has finished rendering
-    const raf = requestAnimationFrame(() => {
-      applyPostEffects();
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [hasEffects, applyPostEffects]);
+    schedulePostEffects();
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, [
+    hasEffects,
+    schedulePostEffects,
+    // Canvas content changes
+    canvasCells,
+    canvasWidth,
+    canvasHeight,
+    showGrid,
+    canvasBgColor,
+    // Zoom/resize changes
+    zoom,
+    // Timeline changes
+    currentFrame,
+    postEffectTracks,
+  ]);
 
   return {
     overlayRef,

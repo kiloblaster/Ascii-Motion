@@ -166,13 +166,13 @@ export class WebGLPostProcessor {
     if (!this.gl || !this.canvas) return;
     const gl = this.gl;
 
-    // Ensure display canvas matches source dimensions
-    const width = sourceCanvas.width;
-    const height = sourceCanvas.height;
-    if (this.canvas.width !== width || this.canvas.height !== height) {
-      this.canvas.width = width;
-      this.canvas.height = height;
-    }
+    // Use the display canvas's current dimensions (set externally by the hook
+    // or the caller for exports). This avoids resetting the GL context by
+    // writing to canvas.width/height, which would destroy all GL state.
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+
+    if (width === 0 || height === 0) return;
 
     // Upload source canvas as input texture
     this.uploadTexture(this.inputTexture!, sourceCanvas);

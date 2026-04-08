@@ -446,7 +446,7 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
             // Width and height are set by canvas resize logic in useCanvasRenderer
           }}
         />
-        {/* WebGL post-effects overlay canvas — positioned on top, pointer-events pass through */}
+        {/* WebGL post-effects overlay canvas — sized to match main canvas via hook */}
         {postEffectsActive && (
           <canvas
             ref={overlayRef}
@@ -454,8 +454,6 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
               position: 'absolute',
               top: 0,
               left: 0,
-              width: '100%',
-              height: '100%',
               pointerEvents: 'none',
               display: 'block',
             }}
