@@ -183,6 +183,16 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
             }
           }
         }
+        // Search post effects
+        for (const pet of (tl.postEffectTracks ?? [])) {
+          for (const pt of pet.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (selectedIds.has(kf.id)) {
+                entries.push({ layerId: layerId, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+              }
+            }
+          }
+        }
       } else {
         entries.push({ layerId, trackId, kfId: keyframe.id, startFrame: keyframe.frame, value: keyframe.value as number, easing: keyframe.easing });
       }

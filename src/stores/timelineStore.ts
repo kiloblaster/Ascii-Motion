@@ -96,6 +96,21 @@ function findTrackKeyframeByFrame(
 }
 
 /**
+ * Helper: find the post effect block that owns a given property track.
+ * Returns { blockId, track } or null if not found.
+ */
+function findPostEffectTrackOwner(
+  postEffectTracks: PostEffectTrack[],
+  trackId: string,
+): { blockId: PostEffectBlockId; track: PostEffectTrack['effectBlock']['propertyTracks'][0] } | null {
+  for (const pet of postEffectTracks) {
+    const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === trackId);
+    if (pt) return { blockId: pet.effectBlock.id, track: pt };
+  }
+  return null;
+}
+
+/**
  * Helper: apply a keyframe updater to an effect property track by trackId.
  * Searches all layers' effectTracks, groups' effectTracks, and globalEffects.
  * Returns updated state slices if found, or null if the trackId was not found.
@@ -2144,9 +2159,17 @@ export const useTimelineStore = create<TimelineState>()(
           if (targetPath) break;
         }
       }
+      // Search global effects
       if (!targetPath) {
         for (const et of (get().globalEffects ?? [])) {
           const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+          if (pt) { targetPath = pt.propertyPath; break; }
+        }
+      }
+      // Search post effects
+      if (!targetPath) {
+        for (const pet of (get().postEffectTracks ?? [])) {
+          const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
           if (pt) { targetPath = pt.propertyPath; break; }
         }
       }
@@ -2199,8 +2222,9 @@ export const useTimelineStore = create<TimelineState>()(
       } else if (targetMatchesCopied) {
         // Single-layer multi-track paste: paste to matching property tracks
         for (const entry of copiedKeyframes) {
-          // Find dest track on layer or group
+          // Find dest track on layer, group, or post effect
           let destTrackId: typeof trackId | undefined;
+          let destPostEffect: ReturnType<typeof findPostEffectTrackOwner> = null;
           if (targetLayer) {
             const dt = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
             if (dt) destTrackId = dt.id;
@@ -2211,24 +2235,50 @@ export const useTimelineStore = create<TimelineState>()(
               if (dt) { destTrackId = dt.id; break; }
             }
           }
-          if (!destTrackId) continue;
+          // Search post effects for matching property path
+          if (!destTrackId) {
+            for (const pet of (get().postEffectTracks ?? [])) {
+              const pt = pet.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+              if (pt) {
+                destPostEffect = { blockId: pet.effectBlock.id, track: pt };
+                break;
+              }
+            }
+          }
+          if (!destTrackId && !destPostEffect) continue;
+
           const targetFrame = atFrame + entry.frameOffset;
-          get().addKeyframe(layerId, destTrackId, targetFrame, entry.value);
-          // Apply easing
-          const { kf: addedKf } = findTrackKeyframeByFrame(get(), destTrackId, targetFrame);
-          if (addedKf) {
-            get().updateKeyframe(layerId, destTrackId, addedKf.id, { easing: entry.easing });
+          if (destPostEffect) {
+            const kfId = get().addPostEffectKeyframe(destPostEffect.blockId, destPostEffect.track.id, targetFrame, entry.value);
+            if (kfId) {
+              get().updatePostEffectKeyframe(destPostEffect.blockId, destPostEffect.track.id, kfId, { easing: entry.easing });
+            }
+          } else {
+            get().addKeyframe(layerId, destTrackId!, targetFrame, entry.value);
+            const { kf: addedKf } = findTrackKeyframeByFrame(get(), destTrackId!, targetFrame);
+            if (addedKf) {
+              get().updateKeyframe(layerId, destTrackId!, addedKf.id, { easing: entry.easing });
+            }
           }
         }
       } else {
         // Unmatched track: paste only trackIndex 0 keyframes from layerIndex 0
+        // Check if the target is a post effect track
+        const postEffectOwner = findPostEffectTrackOwner(get().postEffectTracks ?? [], trackId as string);
         for (const entry of copiedKeyframes) {
           if (entry.trackIndex !== 0 || entry.layerIndex !== 0) continue;
           const targetFrame = atFrame + entry.frameOffset;
-          get().addKeyframe(layerId, trackId, targetFrame, entry.value);
-          const { kf: addedKf } = findTrackKeyframeByFrame(get(), trackId, targetFrame);
-          if (addedKf) {
-            get().updateKeyframe(layerId, trackId, addedKf.id, { easing: entry.easing });
+          if (postEffectOwner) {
+            const kfId = get().addPostEffectKeyframe(postEffectOwner.blockId, postEffectOwner.track.id, targetFrame, entry.value);
+            if (kfId) {
+              get().updatePostEffectKeyframe(postEffectOwner.blockId, postEffectOwner.track.id, kfId, { easing: entry.easing });
+            }
+          } else {
+            get().addKeyframe(layerId, trackId, targetFrame, entry.value);
+            const { kf: addedKf } = findTrackKeyframeByFrame(get(), trackId, targetFrame);
+            if (addedKf) {
+              get().updateKeyframe(layerId, trackId, addedKf.id, { easing: entry.easing });
+            }
           }
         }
       }
