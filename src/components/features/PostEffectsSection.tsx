@@ -1,0 +1,82 @@
+/**
+ * PostEffectsSection - Collapsible post effects section for the right panel
+ *
+ * Creates GPU-accelerated post-processing effect blocks on the timeline.
+ * Uses the post effect registry for available shader effects.
+ * Post effects default to spanning the entire timeline duration.
+ */
+
+import { useState } from 'react';
+import { Button } from '../ui/button';
+import {
+  Collapsible,
+  CollapsibleContent,
+} from '../ui/collapsible';
+import { CollapsibleHeader } from '../common/CollapsibleHeader';
+import { useTimelineStore } from '../../stores/timelineStore';
+import { getAllPostEffects } from '../../registry/postEffectRegistry';
+import { Layers } from 'lucide-react';
+
+interface PostEffectsSectionProps {
+  className?: string;
+}
+
+export function PostEffectsSection({ className = '' }: PostEffectsSectionProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const addPostEffectBlock = useTimelineStore((s) => s.addPostEffectBlock);
+  const selectPostEffectBlock = useTimelineStore((s) => s.selectPostEffectBlock);
+  const durationFrames = useTimelineStore((s) => s.config.durationFrames);
+
+  const registeredPostEffects = getAllPostEffects();
+
+  const handlePostEffectClick = (postEffectType: string) => {
+    // Post effects default to filling the entire timeline
+    const blockId = addPostEffectBlock(postEffectType, 0, durationFrames);
+    if (blockId) {
+      selectPostEffectBlock(blockId);
+      // Auto-expand the post effects section in the timeline
+      const tl = useTimelineStore.getState();
+      if (!tl.view.postEffectsExpanded) {
+        tl.togglePostEffectsExpanded();
+      }
+    }
+  };
+
+  return (
+    <div className={`space-y-3 ${className}`}>
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CollapsibleHeader isOpen={isOpen}>
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4" />
+            Post Effects
+          </div>
+        </CollapsibleHeader>
+
+        <CollapsibleContent className="collapsible-content mt-2">
+          <div className="space-y-2">
+            {registeredPostEffects.map((effect) => (
+              <Button
+                key={effect.type}
+                variant="outline"
+                size="sm"
+                onClick={() => handlePostEffectClick(effect.type)}
+                className="w-full justify-start gap-2 h-8 text-xs"
+                title={effect.description}
+              >
+                <effect.icon className="w-3 h-3" />
+                {effect.name}
+              </Button>
+            ))}
+
+            {registeredPostEffects.length === 0 && (
+              <div className="text-xs text-muted-foreground">
+                No post effects registered
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  );
+}

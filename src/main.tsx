@@ -6,9 +6,13 @@ import { AppReveal } from './components/common/AppReveal'
 import App from './App'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import { registerAllEffects } from './registry/effects'
+import { registerAllPostEffects } from './registry/postEffects'
 
 // Register all built-in effects in the procedural effects registry
 registerAllEffects()
+
+// Register all built-in post effects (WebGL shader-based)
+registerAllPostEffects()
 
 // Set initial theme from localStorage or default to dark
 const storedTheme = localStorage.getItem('ascii-motion-theme') || 'dark'

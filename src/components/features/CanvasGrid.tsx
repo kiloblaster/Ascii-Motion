@@ -13,6 +13,7 @@ import { ToolManager } from './ToolManager';
 import { ToolStatusManager } from './ToolStatusManager';
 import { ZoomControls } from './ZoomControls';
 import { CanvasOverlay } from './CanvasOverlay';
+import { usePostEffectsRenderer } from '../../hooks/usePostEffectsRenderer';
 import { PlaybackStatusBar } from './PlaybackStatusBar';
 import type { Tool } from '../../types';
 
@@ -71,6 +72,9 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
 
   // Use the new renderer hook that handles both grid and overlay rendering
   useCanvasRenderer();
+
+  // Post effects WebGL overlay renderer
+  const { overlayRef, isActive: postEffectsActive } = usePostEffectsRenderer();
   
   // Enable hover preview for tools (brush outline, etc.)
   useHoverPreview();
@@ -442,6 +446,21 @@ export const CanvasGrid: React.FC<CanvasGridProps> = ({ className = '' }) => {
             // Width and height are set by canvas resize logic in useCanvasRenderer
           }}
         />
+        {/* WebGL post-effects overlay canvas — positioned on top, pointer-events pass through */}
+        {postEffectsActive && (
+          <canvas
+            ref={overlayRef}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              pointerEvents: 'none',
+              display: 'block',
+            }}
+          />
+        )}
         <CanvasOverlay />
       </div>
       

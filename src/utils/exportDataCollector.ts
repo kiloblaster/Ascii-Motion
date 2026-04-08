@@ -223,6 +223,11 @@ export class ExportDataCollector {
 
       // Layer data for session exports (raw structure, not composited)
       sessionDataV2: isLayerMode ? timelineState.getSessionData() : undefined,
+
+      // Post effect tracks for WebGL post-processing in visual exports
+      postEffectTracks: timelineState.postEffectTracks.length > 0
+        ? timelineState.postEffectTracks
+        : undefined,
     };
   }
 }

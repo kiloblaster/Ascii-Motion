@@ -19,6 +19,7 @@ import type { TypographySettings } from './canvasSizeConversion';
 import type { FontMetrics } from './fontMetrics';
 import { setupTextRendering } from './canvasTextRendering';
 import { calculateAdaptiveGridColor } from './gridColor';
+import { applyPostEffectsToCanvas } from '../hooks/usePostEffectsRenderer';
 import { 
   generateSvgHeader, 
   generateSvgGrid, 
@@ -118,6 +119,16 @@ export class ExportRenderer {
           scale: exportCanvas.scale
         }
       );
+
+      // Apply post effects if enabled and available (raster formats only, not SVG)
+      if (settings.includePostEffects !== false && settings.format !== 'svg' && data.postEffectTracks) {
+        applyPostEffectsToCanvas(
+          exportCanvas.canvas,
+          data.postEffectTracks,
+          data.currentFrameIndex,
+          data.frameRate,
+        );
+      }
 
       this.updateProgress('Converting to image...', 70);
 
@@ -3772,6 +3783,16 @@ export class ExportRenderer {
             scale: frameCanvas.scale
           }
         );
+
+        // Apply post effects if enabled and available
+        if (settings.includePostEffects !== false && data.postEffectTracks) {
+          applyPostEffectsToCanvas(
+            frameCanvas.canvas,
+            data.postEffectTracks,
+            animFrameIndex,
+            data.frameRate,
+          );
+        }
         
         // 1 video frame per animation frame
         videoFrames.push(frameCanvas.canvas);

@@ -38,7 +38,8 @@ export const VideoExportDialog: React.FC = () => {
     crf: 24,
     format: 'mp4',
     includeGrid: false,
-    loops: 'none'
+    loops: 'none',
+    includePostEffects: true
   });
   
   const [filename, setFilename] = useState(projectName || 'ascii-motion-video');
@@ -112,6 +113,7 @@ export const VideoExportDialog: React.FC = () => {
 
   // Project frame rate from timeline
   const projectFrameRate = useTimelineStore(state => state.config.frameRate);
+  const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
   
   // Resolve effective frame rate (auto = project fps)
   const effectiveFrameRate = videoSettings.frameRate === 'auto' ? projectFrameRate : videoSettings.frameRate;
@@ -319,6 +321,20 @@ export const VideoExportDialog: React.FC = () => {
                   Include grid lines
                 </Label>
               </div>
+
+              {postEffectTracks.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="includePostEffects"
+                    checked={videoSettings.includePostEffects}
+                    onCheckedChange={(checked: boolean) => handleSettingChange('includePostEffects', checked)}
+                    disabled={isExporting}
+                  />
+                  <Label htmlFor="includePostEffects" className="text-sm">
+                    Include post effects
+                  </Label>
+                </div>
+              )}
             </div>
 
             {/* Video Preview Info */}

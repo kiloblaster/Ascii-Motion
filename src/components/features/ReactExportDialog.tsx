@@ -10,6 +10,7 @@ import { Separator } from '../ui/separator';
 import { FileCode, Download, Settings, Loader2, Copy, CheckCircle, Info } from 'lucide-react';
 import { useExportStore } from '../../stores/exportStore';
 import { useExportDataCollector } from '../../utils/exportDataCollector';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { ExportRenderer } from '../../utils/exportRenderer';
 
 const sanitizeFileName = (value: string): string => {
@@ -55,6 +56,7 @@ export const ReactExportDialog: React.FC = () => {
   const setProgress = useExportStore((state) => state.setProgress);
   const setIsExporting = useExportStore((state) => state.setIsExporting);
   const isExporting = useExportStore((state) => state.isExporting);
+  const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
 
   const isOpen = showExportModal && activeFormat === 'react';
   const exportData = useExportDataCollector(isOpen);
@@ -258,6 +260,21 @@ export const ReactExportDialog: React.FC = () => {
                     disabled={isExporting}
                   />
                 </div>
+
+                {postEffectTracks.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="react-post-effects">Include post effects</Label>
+                      <p className="text-xs text-muted-foreground">Apply WebGL shader effects to the export.</p>
+                    </div>
+                    <Switch
+                      id="react-post-effects"
+                      checked={reactSettings.includePostEffects !== false}
+                      onCheckedChange={(checked) => setReactSettings({ includePostEffects: checked })}
+                      disabled={isExporting}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 

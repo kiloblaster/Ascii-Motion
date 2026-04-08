@@ -47,6 +47,10 @@ Documentation for the welcome dialog and first-time user experience is maintaine
 - [`SCATTER_BLEND_COLORS_FEATURE.md`](./SCATTER_BLEND_COLORS_FEATURE.md) - Scatter blend colors feature documentation
 - [`TIME_EFFECTS_IMPLEMENTATION_PLAN.md`](./TIME_EFFECTS_IMPLEMENTATION_PLAN.md) - Time-based effects planning
 
+### **✨ Post Effects (WebGL Shaders)**
+- [`POST_EFFECTS_USER_GUIDE.md`](./POST_EFFECTS_USER_GUIDE.md) - User guide for GPU post-processing effects (Blur, Glow, Chromatic Aberration, Screen Distortion)
+- [`POST_EFFECTS_DEVELOPER_GUIDE.md`](./POST_EFFECTS_DEVELOPER_GUIDE.md) - Developer guide for adding new GLSL shader post effects
+
 ### **🖼️ Media Import & Processing**
 - [`MEDIA_IMPORT_ANALYSIS.md`](./MEDIA_IMPORT_ANALYSIS.md) - Media import system analysis
 - [`MEDIA_IMPORT_FIXES_COMPLETE.md`](./MEDIA_IMPORT_FIXES_COMPLETE.md) - Media import bug fixes summary

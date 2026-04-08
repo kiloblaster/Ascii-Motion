@@ -10,6 +10,7 @@ import { FileText, Download, Settings, Loader2 } from 'lucide-react';
 import { useExportStore } from '../../stores/exportStore';
 import { useExportDataCollector } from '../../utils/exportDataCollector';
 import { useProjectMetadataStore } from '../../stores/projectMetadataStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { ExportRenderer } from '../../utils/exportRenderer';
 import type { TextExportSettings } from '../../types/export';
 
@@ -31,6 +32,7 @@ export const TextExportDialog: React.FC = () => {
   const [filename, setFilename] = useState(projectName || 'ascii-motion-text');
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<{ message: string; progress: number } | null>(null);
+  const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
 
   // Sync filename with project name when dialog opens
   useEffect(() => {
@@ -211,6 +213,12 @@ export const TextExportDialog: React.FC = () => {
                     disabled={isExporting}
                   />
                 </div>
+
+                {postEffectTracks.length > 0 && (
+                  <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 mt-2">
+                    ℹ️ Post effects cannot be rendered in this format and will be excluded.
+                  </div>
+                )}
               </CardContent>
             </Card>
 

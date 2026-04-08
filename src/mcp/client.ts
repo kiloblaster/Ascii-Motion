@@ -273,6 +273,17 @@ export class MCPClient {
       project: {
         name: projectMeta.projectName,
       },
+      // Post effects data
+      postEffects: timelineAfterFlush.postEffectTracks.length > 0
+        ? timelineAfterFlush.postEffectTracks.map((t) => ({
+            blockId: t.effectBlock.id as string,
+            type: t.effectBlock.postEffectType,
+            enabled: t.effectBlock.enabled,
+            startFrame: t.effectBlock.startFrame,
+            durationFrames: t.effectBlock.durationFrames,
+            settings: { ...t.effectBlock.settings },
+          }))
+        : undefined,
       // v2 layer data (included when in layer mode)
       ...(layerData || {}),
     };
@@ -933,6 +944,35 @@ export class MCPClient {
       case 'clear_selection':
         this.handleClearSelection();
         break;
+
+      // Post Effect commands
+      case 'add_post_effect':
+        this.handleAddPostEffect(command);
+        break;
+
+      case 'remove_post_effect':
+        this.handleRemovePostEffect(command);
+        break;
+
+      case 'update_post_effect':
+        this.handleUpdatePostEffect(command);
+        break;
+
+      case 'set_post_effect_keyframe':
+        this.handleSetPostEffectKeyframe(command);
+        break;
+
+      case 'remove_post_effect_keyframe':
+        this.handleRemovePostEffectKeyframe(command);
+        break;
+
+      case 'list_post_effects':
+        this.handleListPostEffects();
+        break;
+
+      case 'get_post_effect_presets':
+        this.handleGetPostEffectPresets();
+        break;
         
       default:
         console.warn('[MCP] Unknown command type:', (command as { type: string }).type);
@@ -1062,6 +1102,133 @@ export class MCPClient {
   private handleClearSelection(): void {
     useSelectionStore.getState().clearSelection();
   }
+
+  // ==========================================================================
+  // Post Effect Command Handlers
+  // ==========================================================================
+
+  private handleAddPostEffect(cmd: { postEffectType: string; startFrame?: number; durationFrames?: number; settings?: Record<string, unknown> }): void {
+    const tl = useTimelineStore.getState();
+    const startFrame = cmd.startFrame ?? 0;
+    const durationFrames = cmd.durationFrames ?? tl.config.durationFrames;
+    const blockId = tl.addPostEffectBlock(cmd.postEffectType, startFrame, durationFrames);
+    if (blockId && cmd.settings) {
+      tl.updatePostEffectBlockSettings(blockId, cmd.settings);
+    }
+    if (blockId) {
+      // Store mapping for server reference
+      this.postEffectBlockIdMap.set(cmd.postEffectType + '-' + Date.now(), blockId as string);
+      console.log('[MCP] Added post effect:', cmd.postEffectType, 'blockId:', blockId);
+    }
+  }
+
+  private handleRemovePostEffect(cmd: { blockId: string }): void {
+    const tl = useTimelineStore.getState();
+    const track = tl.postEffectTracks.find((t) => (t.effectBlock.id as string) === cmd.blockId);
+    if (track) {
+      tl.removePostEffectBlock(track.effectBlock.id);
+      console.log('[MCP] Removed post effect:', cmd.blockId);
+    }
+  }
+
+  private handleUpdatePostEffect(cmd: { blockId: string; settings?: Record<string, unknown>; startFrame?: number; durationFrames?: number; enabled?: boolean }): void {
+    const tl = useTimelineStore.getState();
+    const track = tl.postEffectTracks.find((t) => (t.effectBlock.id as string) === cmd.blockId);
+    if (!track) return;
+    const blockId = track.effectBlock.id;
+
+    if (cmd.settings) {
+      tl.updatePostEffectBlockSettings(blockId, cmd.settings);
+    }
+    if (cmd.startFrame !== undefined || cmd.durationFrames !== undefined) {
+      tl.updatePostEffectBlockTiming(
+        blockId,
+        cmd.startFrame ?? track.effectBlock.startFrame,
+        cmd.durationFrames ?? track.effectBlock.durationFrames,
+      );
+    }
+    if (cmd.enabled !== undefined && cmd.enabled !== track.effectBlock.enabled) {
+      tl.togglePostEffectBlockEnabled(blockId);
+    }
+  }
+
+  private handleSetPostEffectKeyframe(cmd: { blockId: string; propertyPath: string; frame: number; value: number | boolean | string }): void {
+    const tl = useTimelineStore.getState();
+    const track = tl.postEffectTracks.find((t) => (t.effectBlock.id as string) === cmd.blockId);
+    if (!track) return;
+    const blockId = track.effectBlock.id;
+
+    // Ensure property track exists
+    let propTrack = track.effectBlock.propertyTracks.find((pt) => pt.propertyPath === cmd.propertyPath);
+    if (!propTrack) {
+      const ptId = tl.addPostEffectPropertyTrack(blockId, cmd.propertyPath);
+      if (!ptId) return;
+      // Re-read after creating
+      const updatedTrack = useTimelineStore.getState().postEffectTracks.find((t) => t.effectBlock.id === blockId);
+      propTrack = updatedTrack?.effectBlock.propertyTracks.find((pt) => pt.propertyPath === cmd.propertyPath);
+      if (!propTrack) return;
+    }
+
+    tl.addPostEffectKeyframe(blockId, propTrack.id, cmd.frame, cmd.value);
+  }
+
+  private handleRemovePostEffectKeyframe(cmd: { blockId: string; propertyPath: string; frame: number }): void {
+    const tl = useTimelineStore.getState();
+    const track = tl.postEffectTracks.find((t) => (t.effectBlock.id as string) === cmd.blockId);
+    if (!track) return;
+
+    const propTrack = track.effectBlock.propertyTracks.find((pt) => pt.propertyPath === cmd.propertyPath);
+    if (!propTrack) return;
+
+    const kf = propTrack.keyframes.find((k) => k.frame === cmd.frame);
+    if (kf) {
+      tl.removePostEffectKeyframe(track.effectBlock.id, propTrack.id, kf.id);
+    }
+  }
+
+  private handleListPostEffects(): void {
+    const tl = useTimelineStore.getState();
+    const effects = tl.postEffectTracks.map((t) => ({
+      blockId: t.effectBlock.id as string,
+      type: t.effectBlock.postEffectType,
+      enabled: t.effectBlock.enabled,
+      startFrame: t.effectBlock.startFrame,
+      durationFrames: t.effectBlock.durationFrames,
+      settings: { ...t.effectBlock.settings },
+    }));
+    console.log('[MCP] Post effects list:', JSON.stringify(effects));
+    // Send back via WebSocket if connected
+    this.send({ type: 'post_effects_list', effects });
+  }
+
+  private handleGetPostEffectPresets(): void {
+    // Dynamic import to avoid pulling in registry at init time
+    import('../registry/postEffectRegistry').then(({ getAllPostEffects }) => {
+      const presets = getAllPostEffects().map((entry) => ({
+        type: entry.type,
+        name: entry.name,
+        category: entry.category,
+        description: entry.description,
+        defaultSettings: { ...entry.defaultSettings },
+        properties: entry.propertyDefinitions.map((d) => ({
+          path: d.path,
+          displayName: d.displayName,
+          valueType: d.valueType,
+          defaultValue: d.defaultValue,
+          min: d.min,
+          max: d.max,
+          step: d.step,
+          unit: d.unit,
+          options: d.options,
+        })),
+      }));
+      console.log('[MCP] Post effect presets:', JSON.stringify(presets));
+      this.send({ type: 'post_effect_presets', presets });
+    });
+  }
+
+  // Post effect block ID mapping (server ref → browser ID)
+  private postEffectBlockIdMap = new Map<string, string>();
 
   // ==========================================================================
   // Export Request Handler

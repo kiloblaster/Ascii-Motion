@@ -7,6 +7,7 @@
 
 import type { Cell } from './index';
 import type { EffectTrack, SessionEffectTrackV2 } from './effectBlock';
+import type { PostEffectBlockId, SessionPostEffectTrackV2 } from './postEffect';
 
 // ============================================
 // BRANDED ID TYPES
@@ -417,6 +418,12 @@ export interface TimelineViewState {
   expandedEffectTrackIds: Set<import('./effectBlock').EffectBlockId>;
   editingEffectKeyframeId: KeyframeId | null;
   globalEffectsExpanded: boolean;
+
+  // Post effect selection & expansion (WebGL shader-based post-processing)
+  selectedPostEffectBlockId: PostEffectBlockId | null;
+  expandedPostEffectTrackIds: Set<PostEffectBlockId>;
+  editingPostEffectKeyframeId: KeyframeId | null;
+  postEffectsExpanded: boolean;
 }
 
 /**
@@ -494,6 +501,9 @@ export interface SessionDataV2 {
 
   // Global effects (v2.1.0)
   globalEffects?: import('./effectBlock').SessionEffectTrackV2[];
+
+  // Post effects (v2.1.0 – WebGL shader-based post-processing)
+  postEffectTracks?: SessionPostEffectTrackV2[];
 
   // Preserved from v1
   tools?: Record<string, unknown>;

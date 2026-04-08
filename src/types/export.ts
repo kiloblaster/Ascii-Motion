@@ -30,6 +30,7 @@ export interface ImageExportSettings {
   includeGrid: boolean;
   format: 'png' | 'jpg' | 'svg';
   quality: number; // 1-100 JPEG quality scale (ignored for PNG and SVG)
+  includePostEffects?: boolean; // Apply WebGL post effects (default: true)
   // SVG-specific settings (only used when format === 'svg')
   svgSettings?: SvgExportSettings;
 }
@@ -39,6 +40,7 @@ export interface ReactExportSettings {
   includeControls: boolean;
   includeBackground: boolean;
   fileName: string;
+  includePostEffects?: boolean; // Apply WebGL post effects (default: true)
 }
 
 export interface InkExportSettings {
@@ -72,6 +74,7 @@ export interface VideoExportSettings {
   format: 'webm' | 'mp4'; // WebM for WebCodecs, MP4 for broader compatibility
   includeGrid: boolean;
   loops: 'none' | '2x' | '4x' | '8x'; // Number of times to loop the animation
+  includePostEffects?: boolean; // Apply WebGL post effects (default: true)
 }
 
 export interface SessionExportSettings {
@@ -100,6 +103,7 @@ export interface HtmlExportSettings {
   fontFamily: 'monospace' | 'courier' | 'consolas';
   fontSize: number; // 8-24px
   loops: 'infinite' | number; // 'infinite' or specific number
+  includePostEffects?: boolean; // Apply WebGL post effects (default: true)
 }
 
 export interface PaletteExportState {
@@ -191,6 +195,9 @@ export interface ExportDataBundle {
   // Layer data (v2 session data for session exports — raw layer structure)
   // Present when layers exist; session export uses this instead of composited frames
   sessionDataV2?: SessionDataV2;
+
+  // Post effect tracks for WebGL post-processing during visual exports
+  postEffectTracks?: import('./postEffect').PostEffectTrack[];
 }
 
 // Export result from exporters

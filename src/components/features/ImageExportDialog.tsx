@@ -13,6 +13,7 @@ import { useExportStore } from '../../stores/exportStore';
 import { useExportDataCollector } from '../../utils/exportDataCollector';
 import { useProjectMetadataStore } from '../../stores/projectMetadataStore';
 import { useCanvasContext } from '../../contexts/CanvasContext';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { ExportRenderer } from '../../utils/exportRenderer';
 import type { SvgExportSettings } from '../../types/export';
 import { 
@@ -60,6 +61,7 @@ export const ImageExportDialog: React.FC = () => {
 	const exportData = useExportDataCollector(isOpen);
 	const projectName = useProjectMetadataStore((state) => state.projectName);
 	const { selectedFontId, actualFont: canvasActualFont, isFontDetecting: canvasIsFontDetecting } = useCanvasContext();
+	const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
 
 	const [filename, setFilename] = useState(projectName || 'ascii-motion-frame');
 	const [svgFontStatus, setSvgFontStatus] = useState<{
@@ -470,6 +472,23 @@ export const ImageExportDialog: React.FC = () => {
 										disabled={isExporting}
 									/>
 								</div>
+
+								{postEffectTracks.length > 0 && (
+									<div className="flex items-center justify-between">
+										<div className="space-y-0.5">
+											<Label htmlFor="include-post-effects">Include Post Effects</Label>
+											<p className="text-xs text-muted-foreground">
+												Apply WebGL shader effects to the export
+											</p>
+										</div>
+										<Switch
+											id="include-post-effects"
+											checked={imageSettings.includePostEffects !== false}
+											onCheckedChange={(checked) => setImageSettings({ includePostEffects: checked })}
+											disabled={isExporting}
+										/>
+									</div>
+								)}
 							</CardContent>
 						</Card>
 

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Terminal, Download, Settings, Loader2, Copy, CheckCircle, Info, Package } from 'lucide-react';
 import { useExportStore } from '../../stores/exportStore';
 import { useExportDataCollector } from '../../utils/exportDataCollector';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { ExportRenderer } from '../../utils/exportRenderer';
 
 const sanitizeFileName = (value: string): string => {
@@ -56,6 +57,7 @@ export const InkExportDialog: React.FC = () => {
   const setProgress = useExportStore((state) => state.setProgress);
   const setIsExporting = useExportStore((state) => state.setIsExporting);
   const isExporting = useExportStore((state) => state.isExporting);
+  const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
 
   const isOpen = showExportModal && activeFormat === 'ink';
   const exportData = useExportDataCollector(isOpen);
@@ -363,6 +365,12 @@ export const InkExportDialog: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {postEffectTracks.length > 0 && (
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 mt-2">
+                ℹ️ Post effects cannot be rendered in this format and will be excluded.
+              </div>
+            )}
           </div>
 
           {/* Sticky Actions */}
