@@ -264,7 +264,7 @@ export const ReactExportDialog: React.FC = () => {
                 {postEffectTracks.length > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
-                      <Label htmlFor="react-post-effects">Include post effects</Label>
+                      <Label htmlFor="react-post-effects">Include shaders</Label>
                       <p className="text-xs text-muted-foreground">Apply WebGL shader effects to the export.</p>
                     </div>
                     <Switch

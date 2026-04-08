@@ -211,7 +211,7 @@ export const HtmlExportDialog: React.FC = () => {
                 {postEffectTracks.length > 0 && (
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <Label className="text-sm">Include Post Effects</Label>
+                      <Label className="text-sm">Include Shaders</Label>
                       <p className="text-xs text-muted-foreground">
                         Apply WebGL shader effects to the export
                       </p>

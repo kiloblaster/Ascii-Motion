@@ -662,16 +662,19 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ className = '' }) => {
       {/* Effects Section */}
       <EffectsSection />
 
-      {/* Post Effects Section */}
-      <PostEffectsSection />
-
       {/* Divider between Effects and Generators */}
       <PanelSeparator side="right" />
 
       {/* Generators Section */}
       <GeneratorsSection />
 
-      {/* Divider after Effects/Generators */}
+      {/* Divider between Generators and Shaders */}
+      <PanelSeparator side="right" />
+
+      {/* Shaders Section */}
+      <PostEffectsSection />
+
+      {/* Divider after Shaders */}
       <PanelSeparator side="right" />
 
       {/* Color Picker Modal */}

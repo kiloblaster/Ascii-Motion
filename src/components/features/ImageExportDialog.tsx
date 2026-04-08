@@ -476,7 +476,7 @@ export const ImageExportDialog: React.FC = () => {
 								{postEffectTracks.length > 0 && (
 									<div className="flex items-center justify-between">
 										<div className="space-y-0.5">
-											<Label htmlFor="include-post-effects">Include Post Effects</Label>
+											<Label htmlFor="include-post-effects">Include Shaders</Label>
 											<p className="text-xs text-muted-foreground">
 												Apply WebGL shader effects to the export
 											</p>

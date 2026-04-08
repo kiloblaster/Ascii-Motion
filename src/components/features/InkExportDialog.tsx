@@ -368,7 +368,7 @@ export const InkExportDialog: React.FC = () => {
 
             {postEffectTracks.length > 0 && (
               <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 mt-2">
-                ℹ️ Post effects cannot be rendered in this format and will be excluded.
+                ℹ️ Shaders cannot be rendered in this format and will be excluded.
               </div>
             )}
           </div>

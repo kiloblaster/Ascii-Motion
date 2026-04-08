@@ -52,7 +52,7 @@ export function PostEffectsSection({ className = '' }: PostEffectsSectionProps) 
         <CollapsibleHeader isOpen={isOpen}>
           <div className="flex items-center gap-2">
             <Layers className="w-4 h-4" />
-            Post Effects
+            Shaders
           </div>
         </CollapsibleHeader>
 
@@ -74,7 +74,7 @@ export function PostEffectsSection({ className = '' }: PostEffectsSectionProps) 
 
             {registeredPostEffects.length === 0 && (
               <div className="text-xs text-muted-foreground">
-                No post effects registered
+                No shaders registered
               </div>
             )}
           </div>

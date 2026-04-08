@@ -25,15 +25,15 @@ import { usePostEffectBlockHistory } from '../../../hooks/usePostEffectBlockHist
 import type { PostEffectBlockId, PostEffectPropertyTrackId } from '../../../types/postEffect';
 import type { KeyframeId } from '../../../types/timeline';
 
-// Category colors for post effects — distinct purple/magenta palette
+// Category colors for shaders — matches global effects styling
 const POST_EFFECT_CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  distortion: { bg: 'bg-purple-500/20', border: 'border-purple-500/50', text: 'text-purple-400' },
-  blur: { bg: 'bg-fuchsia-500/20', border: 'border-fuchsia-500/50', text: 'text-fuchsia-400' },
-  glow: { bg: 'bg-pink-500/20', border: 'border-pink-500/50', text: 'text-pink-400' },
-  color: { bg: 'bg-violet-500/20', border: 'border-violet-500/50', text: 'text-violet-400' },
+  distortion: { bg: 'bg-muted/30', border: 'border-border/50', text: 'text-muted-foreground' },
+  blur: { bg: 'bg-muted/30', border: 'border-border/50', text: 'text-muted-foreground' },
+  glow: { bg: 'bg-muted/30', border: 'border-border/50', text: 'text-muted-foreground' },
+  color: { bg: 'bg-muted/30', border: 'border-border/50', text: 'text-muted-foreground' },
 };
 
-const DEFAULT_COLORS = { bg: 'bg-purple-500/20', border: 'border-purple-500/50', text: 'text-purple-400' };
+const DEFAULT_COLORS = { bg: 'bg-muted/30', border: 'border-border/50', text: 'text-muted-foreground' };
 
 export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader() {
   const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
@@ -68,22 +68,22 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
       {/* Header row */}
       <div
         className={cn(
-          'flex items-center px-2 min-h-[28px] bg-purple-500/5 cursor-pointer border-b border-border/50',
-          'hover:bg-purple-500/10 transition-colors',
+          'flex items-center px-2 min-h-[28px] bg-muted/30 cursor-pointer border-b border-border/50',
+          'hover:bg-muted/50 transition-colors',
         )}
         onClick={() => toggleExpanded()}
       >
-        <ChevronRight className={cn('w-3 h-3 mr-1 text-purple-400/60 transition-transform', isExpanded && 'rotate-90')} />
-        <Layers className="w-3 h-3 mr-1.5 text-purple-400/60" />
-        <span className="text-[11px] font-medium text-purple-300/80 flex-1">Post Effects</span>
+        <ChevronRight className={cn('w-3 h-3 mr-1 text-muted-foreground transition-transform', isExpanded && 'rotate-90')} />
+        <Layers className="w-3 h-3 mr-1.5 text-muted-foreground" />
+        <span className="text-[11px] font-medium text-foreground/80 flex-1">Shaders</span>
 
-        {/* Add post effect button */}
+        {/* Add shader button */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="h-4 w-4 p-0 text-purple-400/60 hover:text-purple-300"
+              className="h-4 w-4 p-0 text-muted-foreground/60 hover:text-foreground"
               onClick={(e) => e.stopPropagation()}
             >
               <Plus className="w-3 h-3" />
@@ -108,7 +108,7 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
                   }
                 }}
               >
-                <effect.icon className="w-3.5 h-3.5 mr-2 text-purple-400" />
+                <effect.icon className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
                 {effect.name}
               </DropdownMenuItem>
             ))}
@@ -130,7 +130,7 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
             <div
               className={cn(
                 'flex items-center px-3 min-h-[24px] border-b border-border/30 cursor-pointer group/petrow',
-                isSelected ? 'bg-purple-500/15' : 'hover:bg-muted/30',
+                isSelected ? 'bg-primary/10' : 'hover:bg-muted/30',
                 dragOverIndex === trackIndex && 'border-t-2 border-t-primary',
               )}
               onClick={() => selectPostEffectBlock(block.id)}
@@ -272,9 +272,9 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
                           }}
                         >
                           {existingKfAtFrame ? (
-                            <Diamond className="w-3 h-3 text-purple-400 fill-purple-400" />
+                            <Diamond className="w-3 h-3 text-yellow-400 fill-yellow-400" />
                           ) : (
-                            <Diamond className="w-3 h-3 text-muted-foreground/40 hover:text-purple-400" />
+                            <Diamond className="w-3 h-3 text-muted-foreground/40 hover:text-yellow-400" />
                           )}
                         </button>
                       </TooltipTrigger>

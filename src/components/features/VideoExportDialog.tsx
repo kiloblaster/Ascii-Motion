@@ -331,7 +331,7 @@ export const VideoExportDialog: React.FC = () => {
                     disabled={isExporting}
                   />
                   <Label htmlFor="includePostEffects" className="text-sm">
-                    Include post effects
+                    Include shaders
                   </Label>
                 </div>
               )}

@@ -12,15 +12,15 @@ import { usePostEffectBlockHistory } from '../../../hooks/usePostEffectBlockHist
 import type { PostEffectTrack } from '../../../types/postEffect';
 import { cn } from '@/lib/utils';
 
-// Category colors for post effect blocks
+// Category colors for shader blocks — matches global effects styling
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; selected: string }> = {
-  distortion: { bg: 'bg-purple-500/20', border: 'border-purple-500/50', selected: 'bg-purple-500/40 border-purple-400' },
-  blur: { bg: 'bg-fuchsia-500/20', border: 'border-fuchsia-500/50', selected: 'bg-fuchsia-500/40 border-fuchsia-400' },
-  glow: { bg: 'bg-pink-500/20', border: 'border-pink-500/50', selected: 'bg-pink-500/40 border-pink-400' },
-  color: { bg: 'bg-violet-500/20', border: 'border-violet-500/50', selected: 'bg-violet-500/40 border-violet-400' },
+  distortion: { bg: 'bg-muted/30', border: 'border-border/50', selected: 'bg-primary/20 border-primary/50' },
+  blur: { bg: 'bg-muted/30', border: 'border-border/50', selected: 'bg-primary/20 border-primary/50' },
+  glow: { bg: 'bg-muted/30', border: 'border-border/50', selected: 'bg-primary/20 border-primary/50' },
+  color: { bg: 'bg-muted/30', border: 'border-border/50', selected: 'bg-primary/20 border-primary/50' },
 };
 
-const DEFAULT_COLORS = { bg: 'bg-purple-500/20', border: 'border-purple-500/50', selected: 'bg-purple-500/40 border-purple-400' };
+const DEFAULT_COLORS = { bg: 'bg-muted/30', border: 'border-border/50', selected: 'bg-primary/20 border-primary/50' };
 
 export interface PostEffectBlockProps {
   track: PostEffectTrack;
@@ -126,7 +126,7 @@ export const PostEffectBlockComponent: React.FC<PostEffectBlockProps> = React.me
       >
         {/* Left resize handle */}
         <div
-          className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-400/40 rounded-l"
+          className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/40 rounded-l"
           onMouseDown={(e) => handleMouseDown(e, 'resize-left')}
         />
 
@@ -139,7 +139,7 @@ export const PostEffectBlockComponent: React.FC<PostEffectBlockProps> = React.me
 
         {/* Right resize handle */}
         <div
-          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-purple-400/40 rounded-r"
+          className="absolute right-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/40 rounded-r"
           onMouseDown={(e) => handleMouseDown(e, 'resize-right')}
         />
       </div>
