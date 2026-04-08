@@ -10,7 +10,8 @@
  *
  * The hook subscribes to the same state that drives Canvas2D re-renders
  * (cells, grid, zoom, pan, background color, frame changes) and schedules
- * a post-processing pass via requestAnimationFrame after each change.
+ * a post-processing pass via the renderScheduler so it runs in the same
+ * rAF tick as the Canvas2D render, immediately after it.
  */
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -19,6 +20,7 @@ import { useCanvasStore } from '../stores/canvasStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import { WebGLPostProcessor } from '../utils/webgl/WebGLPostProcessor';
 import { buildPostEffectPasses, hasAnyPostEffects } from '../utils/postEffectsPipeline';
+import { renderScheduler } from '../utils/renderScheduler';
 import type { PostEffectTrack } from '../types/postEffect';
 
 // ============================================
@@ -36,7 +38,9 @@ export function usePostEffectsRenderer(): {
   const { canvasRef, zoom } = useCanvasContext();
   const overlayRef = useRef<HTMLCanvasElement | null>(null);
   const processorRef = useRef<WebGLPostProcessor | null>(null);
-  const rafIdRef = useRef<number | null>(null);
+  // Stable callback ref for the renderScheduler so only one instance
+  // exists in the Set, avoiding duplicate renders per frame.
+  const applyPostEffectsRef = useRef<(() => void) | null>(null);
 
   // Subscribe to post effect tracks and current frame
   const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
@@ -139,21 +143,23 @@ export function usePostEffectsRenderer(): {
     processor.render(sourceCanvas, passes, time, currentFrame);
   }, [canvasRef, syncOverlaySize, postEffectTracks, currentFrame, frameRate]);
 
-  // Schedule a post-processing pass after the Canvas2D render completes.
-  // We use a double-rAF: the first rAF fires at the start of the next
-  // animation frame (when Canvas2D rendering is queued), the second fires
-  // after that frame's paint, ensuring the Canvas2D output is ready.
+  // Keep the ref in sync with the latest applyPostEffects callback
+  applyPostEffectsRef.current = applyPostEffects;
+
+  // Stable function reference for the renderScheduler — uses the ref
+  // so the same function identity is always scheduled, preventing
+  // duplicate entries in the scheduler's callback Set.
+  const stableApplyPostEffects = useCallback(() => {
+    applyPostEffectsRef.current?.();
+  }, []);
+
+  // Schedule post effects using the renderScheduler so they run in the
+  // same rAF tick as the Canvas2D render, immediately after it completes.
+  // This avoids the double-rAF issue where rapid frame changes during
+  // playback would cancel the pending post-effects rAF before it fires.
   const schedulePostEffects = useCallback(() => {
-    if (rafIdRef.current !== null) {
-      cancelAnimationFrame(rafIdRef.current);
-    }
-    rafIdRef.current = requestAnimationFrame(() => {
-      rafIdRef.current = requestAnimationFrame(() => {
-        applyPostEffects();
-        rafIdRef.current = null;
-      });
-    });
-  }, [applyPostEffects]);
+    renderScheduler.schedule(stableApplyPostEffects);
+  }, [stableApplyPostEffects]);
 
   // Re-apply post effects when ANY relevant state changes.
   // This mirrors the dependencies that trigger Canvas2D re-renders in
@@ -161,12 +167,6 @@ export function usePostEffectsRenderer(): {
   useEffect(() => {
     if (!hasEffects) return;
     schedulePostEffects();
-    return () => {
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
-    };
   }, [
     hasEffects,
     schedulePostEffects,
