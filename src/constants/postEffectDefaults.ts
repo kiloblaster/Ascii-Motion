@@ -54,6 +54,10 @@ export interface GlowSettings {
   radius: number;
   /** Brightness threshold for glow extraction (0–1) */
   threshold: number;
+  /** Blend mode for compositing glow onto scene */
+  blendMode: 'add' | 'screen' | 'softlight' | 'overlay';
+  /** Color shift toward cool tones on distant glow samples (0–1) */
+  colorShift: number;
   /** Tint color for the glow */
   color: string;
 }
@@ -62,6 +66,8 @@ export const DEFAULT_GLOW_SETTINGS: GlowSettings = {
   intensity: 0.5,
   radius: 10,
   threshold: 0.5,
+  blendMode: 'add',
+  colorShift: 0,
   color: '#ffffff',
 };
 
@@ -73,10 +79,8 @@ export interface BlurSettings {
   /** Blur radius in pixels (0–50) */
   radius: number;
   /** Blur algorithm type */
-  type: 'gaussian' | 'box' | 'radial';
-  /** Direction angle for directional blur in degrees (0–360) */
-  direction: number;
-  /** Center point for radial blur (normalized 0–1) */
+  type: 'gaussian' | 'box' | 'radial' | 'zoom';
+  /** Center point for radial/zoom blur (normalized 0–1) */
   centerX: number;
   centerY: number;
 }
@@ -84,7 +88,6 @@ export interface BlurSettings {
 export const DEFAULT_BLUR_SETTINGS: BlurSettings = {
   radius: 5,
   type: 'gaussian',
-  direction: 0,
   centerX: 0.5,
   centerY: 0.5,
 };

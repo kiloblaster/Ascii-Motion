@@ -1,8 +1,11 @@
 /**
  * Blur — Post Effect Registry Entry
  *
- * Separable Gaussian blur using 2 passes (horizontal + vertical).
- * Also supports box and radial blur modes.
+ * Supports multiple blur algorithms:
+ * - Gaussian: Separable 2-pass Gaussian blur
+ * - Box: Uniform-weight box blur
+ * - Radial: Samples radiate outward from a center point
+ * - Zoom: Samples along lines from center (motion zoom effect)
  */
 
 import { Focus } from 'lucide-react';
@@ -35,20 +38,8 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
       { label: 'Gaussian', value: 'gaussian' },
       { label: 'Box', value: 'box' },
       { label: 'Radial', value: 'radial' },
+      { label: 'Zoom', value: 'zoom' },
     ],
-  },
-  {
-    path: 'direction',
-    displayName: 'Direction',
-    category: 'Blur',
-    valueType: 'number',
-    defaultValue: DEFAULT_BLUR_SETTINGS.direction,
-    interpolation: 'numeric',
-    min: 0,
-    max: 360,
-    step: 1,
-    unit: '°',
-    visibleWhen: { path: 'type', values: ['gaussian'] },
   },
   {
     path: 'centerX',
@@ -60,7 +51,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     min: 0,
     max: 1,
     step: 0.01,
-    visibleWhen: { path: 'type', values: ['radial'] },
+    visibleWhen: { path: 'type', values: ['radial', 'zoom'] },
   },
   {
     path: 'centerY',
@@ -72,13 +63,14 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     min: 0,
     max: 1,
     step: 0.01,
-    visibleWhen: { path: 'type', values: ['radial'] },
+    visibleWhen: { path: 'type', values: ['radial', 'zoom'] },
   },
 ];
 
-// Horizontal blur pass
+// Horizontal blur pass — handles gaussian and box
 const horizontalBlurShader = buildFragmentShader(
   `uniform float u_radius;
+uniform float u_type;
 uniform float u_centerX;
 uniform float u_centerY;`,
   `  vec2 texelSize = 1.0 / u_resolution;
@@ -88,14 +80,63 @@ uniform float u_centerY;`,
     return;
   }
   
+  // Radial blur (type == 2) — single-pass, not separable
+  if (u_type > 1.5 && u_type < 2.5) {
+    vec2 center = vec2(u_centerX, u_centerY);
+    vec2 dir = v_texCoord - center;
+    float dist = length(dir);
+    vec3 result = vec3(0.0);
+    float totalWeight = 0.0;
+    int samples = int(min(u_radius, 25.0));
+    
+    for (int i = -samples; i <= samples; i++) {
+      float t = float(i) / float(samples);
+      float weight = exp(-2.0 * t * t);
+      vec2 sampleUV = v_texCoord + dir * t * u_radius * 0.02;
+      sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
+      result += texture(u_texture, sampleUV).rgb * weight;
+      totalWeight += weight;
+    }
+    
+    fragColor = vec4(result / totalWeight, texture(u_texture, v_texCoord).a);
+    return;
+  }
+  
+  // Zoom blur (type == 3) — single-pass, samples along radial lines
+  if (u_type > 2.5) {
+    vec2 center = vec2(u_centerX, u_centerY);
+    vec2 dir = v_texCoord - center;
+    vec3 result = vec3(0.0);
+    int samples = int(min(u_radius * 2.0, 40.0));
+    float strength = u_radius * 0.005;
+    
+    for (int i = 0; i < samples; i++) {
+      float t = float(i) / float(max(samples - 1, 1));
+      vec2 sampleUV = v_texCoord - dir * t * strength;
+      sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
+      result += texture(u_texture, sampleUV).rgb;
+    }
+    
+    fragColor = vec4(result / float(samples), texture(u_texture, v_texCoord).a);
+    return;
+  }
+  
+  // Gaussian (type == 0) or Box (type == 1) — horizontal pass
   vec3 result = vec3(0.0);
   float totalWeight = 0.0;
   int samples = int(min(u_radius, 25.0));
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
-    float sigma = max(u_radius * 0.5, 1.0);
-    float weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
+    float weight;
+    if (u_type < 0.5) {
+      // Gaussian
+      float sigma = max(u_radius * 0.5, 1.0);
+      weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
+    } else {
+      // Box — uniform weight
+      weight = 1.0;
+    }
     vec2 sampleUV = v_texCoord + vec2(offset * texelSize.x, 0.0);
     result += texture(u_texture, sampleUV).rgb * weight;
     totalWeight += weight;
@@ -104,26 +145,34 @@ uniform float u_centerY;`,
   fragColor = vec4(result / totalWeight, texture(u_texture, v_texCoord).a);`,
 );
 
-// Vertical blur pass
+// Vertical blur pass — handles gaussian and box (radial/zoom already complete)
 const verticalBlurShader = buildFragmentShader(
   `uniform float u_radius;
+uniform float u_type;
 uniform float u_centerX;
 uniform float u_centerY;`,
   `  vec2 texelSize = 1.0 / u_resolution;
   
-  if (u_radius < 0.5) {
+  // Radial and Zoom are complete in pass 0 — just pass through
+  if (u_type > 1.5 || u_radius < 0.5) {
     fragColor = texture(u_texture, v_texCoord);
     return;
   }
   
+  // Gaussian (type == 0) or Box (type == 1) — vertical pass
   vec3 result = vec3(0.0);
   float totalWeight = 0.0;
   int samples = int(min(u_radius, 25.0));
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
-    float sigma = max(u_radius * 0.5, 1.0);
-    float weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
+    float weight;
+    if (u_type < 0.5) {
+      float sigma = max(u_radius * 0.5, 1.0);
+      weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
+    } else {
+      weight = 1.0;
+    }
     vec2 sampleUV = v_texCoord + vec2(0.0, offset * texelSize.y);
     result += texture(u_texture, sampleUV).rgb * weight;
     totalWeight += weight;
@@ -137,10 +186,10 @@ export const blurEffect: PostEffectRegistryEntry = {
   name: 'Blur',
   icon: Focus,
   category: 'blur',
-  description: 'Apply gaussian, box, or radial blur',
+  description: 'Apply gaussian, box, radial, or zoom blur',
   defaultSettings: { ...DEFAULT_BLUR_SETTINGS } as unknown as Record<string, unknown>,
   propertyDefinitions,
-  fragmentShader: horizontalBlurShader, // Default (not used when passShaders provided)
+  fragmentShader: horizontalBlurShader,
   passes: 2,
   passShaders: [horizontalBlurShader, verticalBlurShader],
 };

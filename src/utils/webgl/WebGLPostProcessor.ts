@@ -195,15 +195,21 @@ export class WebGLPostProcessor {
       const isLast = i === effects.length - 1;
       const passes = effect.entry.passes ?? 1;
 
+      // Snapshot the texture that was the input BEFORE this effect's passes.
+      // Multi-pass shaders can bind this as u_original (texture unit 1) to
+      // composite their result with the pre-effect scene.
+      const effectOriginalInput = currentInput;
+
       for (let pass = 0; pass < passes; pass++) {
         const isLastPassOfLastEffect = isLast && pass === passes - 1;
 
         // Select shader for this pass
         const shaderSource = effect.entry.passShaders?.[pass] ?? effect.entry.fragmentShader;
 
-        // Build uniform names list
+        // Build uniform names list — include u_original for multi-pass shaders
         const uniformNames = [
           'u_texture',
+          'u_original',
           'u_resolution',
           'u_time',
           'u_frame',
@@ -231,10 +237,17 @@ export class WebGLPostProcessor {
         // Use program
         gl.useProgram(program.program);
 
-        // Bind input texture
+        // Bind input texture (result of previous pass) on unit 0
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, currentInput);
         this.setUniform(gl, program, 'u_texture', 0, 'int');
+
+        // Bind original pre-effect texture on unit 1 (for compositing)
+        if (passes > 1) {
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, effectOriginalInput);
+          this.setUniform(gl, program, 'u_original', 1, 'int');
+        }
 
         // Set standard uniforms
         this.setUniform(gl, program, 'u_resolution', [width, height], 'vec2');

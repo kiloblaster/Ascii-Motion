@@ -4,9 +4,11 @@
  * Multi-pass bloom effect:
  * Pass 0: Extract bright pixels above threshold
  * Pass 1: Horizontal Gaussian blur on extracted pixels
- * Pass 2: Vertical Gaussian blur + additive composite with original
+ * Pass 2: Vertical Gaussian blur + composite with original scene
  *
  * Uses 3 passes with separate shaders per pass.
+ * The final pass reads u_original (the pre-effect scene) from texture unit 1
+ * and composites the blurred glow on top using the selected blend mode.
  */
 
 import { Sparkles } from 'lucide-react';
@@ -51,6 +53,31 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     step: 0.01,
   },
   {
+    path: 'blendMode',
+    displayName: 'Blend Mode',
+    category: 'Glow',
+    valueType: 'select',
+    defaultValue: DEFAULT_GLOW_SETTINGS.blendMode,
+    interpolation: 'hold',
+    options: [
+      { label: 'Add', value: 'add' },
+      { label: 'Screen', value: 'screen' },
+      { label: 'Soft Light', value: 'softlight' },
+      { label: 'Overlay', value: 'overlay' },
+    ],
+  },
+  {
+    path: 'colorShift',
+    displayName: 'Color Shift',
+    category: 'Glow',
+    valueType: 'number',
+    defaultValue: DEFAULT_GLOW_SETTINGS.colorShift,
+    interpolation: 'numeric',
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
     path: 'color',
     displayName: 'Color',
     category: 'Glow',
@@ -87,7 +114,8 @@ const horizontalBlurShader = buildFragmentShader(
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
-    float weight = exp(-0.5 * (offset * offset) / max(u_radius * 0.5, 1.0));
+    float sigma = max(u_radius * 0.5, 1.0);
+    float weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
     vec2 sampleUV = v_texCoord + vec2(offset * texelSize.x, 0.0);
     result += texture(u_texture, sampleUV).rgb * weight;
     totalWeight += weight;
@@ -96,14 +124,15 @@ const horizontalBlurShader = buildFragmentShader(
   fragColor = vec4(result / totalWeight, 1.0);`,
 );
 
-// Pass 2: Vertical Gaussian blur + additive composite
-// Note: u_texture here is the horizontally blurred glow.
-// We need the original scene to composite with, but in a ping-pong setup
-// we don't have direct access. Instead, we re-read the blurred glow and
-// the pipeline will composite additively onto the original.
+// Pass 2: Vertical Gaussian blur + composite with original
+// u_texture = horizontally blurred glow (from pass 1)
+// u_original = the pre-effect original scene (bound on texture unit 1)
 const verticalBlurCompositeShader = buildFragmentShader(
-  `uniform float u_radius;
-uniform float u_intensity;`,
+  `uniform sampler2D u_original;
+uniform float u_radius;
+uniform float u_intensity;
+uniform float u_blendMode;
+uniform float u_colorShift;`,
   `  vec2 texelSize = 1.0 / u_resolution;
   vec3 result = vec3(0.0);
   float totalWeight = 0.0;
@@ -112,17 +141,56 @@ uniform float u_intensity;`,
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
-    float weight = exp(-0.5 * (offset * offset) / max(u_radius * 0.5, 1.0));
+    float sigma = max(u_radius * 0.5, 1.0);
+    float weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
     vec2 sampleUV = v_texCoord + vec2(0.0, offset * texelSize.y);
-    result += texture(u_texture, sampleUV).rgb * weight;
+    
+    vec3 sampleColor = texture(u_texture, sampleUV).rgb;
+    
+    // Color shift: push distant samples toward cooler (blue) tones
+    if (u_colorShift > 0.0) {
+      float dist = abs(offset) / max(float(samples), 1.0);
+      float shift = dist * u_colorShift;
+      sampleColor.r *= 1.0 - shift * 0.5;
+      sampleColor.g *= 1.0 - shift * 0.2;
+      sampleColor.b *= 1.0 + shift * 0.4;
+    }
+    
+    result += sampleColor * weight;
     totalWeight += weight;
   }
   
-  vec3 blurredGlow = result / totalWeight;
+  vec3 glow = (result / totalWeight) * u_intensity;
   
-  // Output the blurred glow scaled by intensity
-  // The pipeline will additively composite this with the original
-  fragColor = vec4(blurredGlow * u_intensity, 1.0);`,
+  // Read the original pre-effect scene
+  vec4 original = texture(u_original, v_texCoord);
+  vec3 base = original.rgb;
+  
+  // Blend glow onto original based on blend mode
+  vec3 blended;
+  if (u_blendMode < 0.5) {
+    // Add (0)
+    blended = base + glow;
+  } else if (u_blendMode < 1.5) {
+    // Screen (1)
+    blended = 1.0 - (1.0 - base) * (1.0 - glow);
+  } else if (u_blendMode < 2.5) {
+    // Soft Light (2)
+    blended = mix(
+      2.0 * base * glow + base * base * (1.0 - 2.0 * glow),
+      sqrt(base) * (2.0 * glow - 1.0) + 2.0 * base * (1.0 - glow),
+      step(0.5, glow)
+    );
+  } else {
+    // Overlay (3)
+    blended = mix(
+      2.0 * base * glow,
+      1.0 - 2.0 * (1.0 - base) * (1.0 - glow),
+      step(0.5, base)
+    );
+  }
+  
+  fragColor = vec4(clamp(blended, 0.0, 1.0), original.a);`,
 );
 
 export const glowEffect: PostEffectRegistryEntry = {
@@ -133,7 +201,7 @@ export const glowEffect: PostEffectRegistryEntry = {
   description: 'Add bloom glow to bright areas',
   defaultSettings: { ...DEFAULT_GLOW_SETTINGS } as unknown as Record<string, unknown>,
   propertyDefinitions,
-  fragmentShader: thresholdShader, // Default (not used when passShaders provided)
+  fragmentShader: thresholdShader,
   passes: 3,
   passShaders: [thresholdShader, horizontalBlurShader, verticalBlurCompositeShader],
 };

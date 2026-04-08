@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { Trash2, Eye, EyeOff, X, Diamond, RotateCcw } from 'lucide-react';
 import { useScrubInput } from '../../../hooks/useScrubInput';
 import { usePostEffectBlockHistory } from '../../../hooks/usePostEffectBlockHistory';
+import { ColorPickerOverlay } from '../ColorPickerOverlay';
 import type { PostEffectBlock, PostEffectPropertyTrackId } from '../../../types/postEffect';
 import type { PostEffectPropertyDefinition } from '../../../types/postEffect';
 import type { KeyframeId } from '../../../types/timeline';
@@ -233,24 +234,15 @@ const PostEffectPropertyRow: React.FC<PostEffectPropertyRowProps> = ({
     );
   }
 
-  // Color swatch
+  // Color swatch — uses app color picker overlay
   if (definition.valueType === 'color') {
     return (
-      <div className="flex items-center gap-1.5 py-0.5">
-        {keyframeDiamond}
-        <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
-          {definition.displayName}
-        </span>
-        <input
-          type="color"
-          value={String(value ?? definition.defaultValue)}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-5 h-5 rounded cursor-pointer border border-border/50 p-0"
-        />
-        <span className="text-[9px] text-muted-foreground/50 font-mono">
-          {String(value ?? definition.defaultValue)}
-        </span>
-      </div>
+      <ColorSwatchRow
+        definition={definition}
+        value={value}
+        onChange={onChange}
+        keyframeDiamond={keyframeDiamond}
+      />
     );
   }
 
@@ -276,6 +268,47 @@ const PostEffectPropertyRow: React.FC<PostEffectPropertyRowProps> = ({
           {definition.unit}
         </span>
       )}
+    </div>
+  );
+};
+
+// ============================================
+// COLOR SWATCH ROW (uses app ColorPickerOverlay)
+// ============================================
+
+interface ColorSwatchRowProps {
+  definition: PostEffectPropertyDefinition;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  keyframeDiamond: React.ReactNode;
+}
+
+const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({ definition, value, onChange, keyframeDiamond }) => {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const currentColor = String(value ?? definition.defaultValue ?? '#000000');
+
+  return (
+    <div className="flex items-center gap-1.5 py-0.5">
+      {keyframeDiamond}
+      <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
+        {definition.displayName}
+      </span>
+      <button
+        onClick={() => setPickerOpen(true)}
+        className="w-5 h-5 rounded cursor-pointer border border-border/50 p-0 flex-shrink-0"
+        style={{ backgroundColor: currentColor }}
+        title={currentColor}
+      />
+      <span className="text-[9px] text-muted-foreground/50 font-mono">
+        {currentColor}
+      </span>
+      <ColorPickerOverlay
+        isOpen={pickerOpen}
+        onOpenChange={setPickerOpen}
+        onColorSelect={(color) => { onChange(color); setPickerOpen(false); }}
+        onColorChange={(color) => onChange(color)}
+        initialColor={/^#[0-9a-fA-F]{6}$/.test(currentColor) ? currentColor : '#000000'}
+      />
     </div>
   );
 };
