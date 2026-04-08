@@ -247,7 +247,7 @@ export class WebGLPostProcessor {
           const uniformName = `u_${def.path}`;
           // Pass overrides take priority, then settings, then default
           const value = passOverrides?.[def.path] ?? effect.settings[def.path] ?? def.defaultValue;
-          this.setUniformFromValue(gl, program, uniformName, value, def.valueType);
+          this.setUniformFromValue(gl, program, uniformName, value, def);
         }
 
         // Draw fullscreen quad
@@ -431,17 +431,18 @@ export class WebGLPostProcessor {
     program: ShaderProgram,
     name: string,
     value: unknown,
-    valueType: string,
+    def: { valueType: string; options?: { value: string | number }[] },
   ): void {
     const loc = program.uniformLocations.get(name);
     if (!loc) return;
 
-    switch (valueType) {
+    switch (def.valueType) {
       case 'number':
         gl.uniform1f(loc, value as number);
         break;
       case 'boolean':
-        gl.uniform1i(loc, (value as boolean) ? 1 : 0);
+        // Shader uniforms are float; pass 1.0/0.0
+        gl.uniform1f(loc, (value as boolean) ? 1.0 : 0.0);
         break;
       case 'color': {
         // Convert hex color string to vec3
@@ -451,10 +452,12 @@ export class WebGLPostProcessor {
       }
       case 'select':
       case 'string':
-        // Select/string uniforms are typically handled via separate uniform bindings
-        // or conditional shader compilation. For now, pass as float if numeric-like.
+        // Map select option string values to their index (0, 1, 2, …)
         if (typeof value === 'number') {
           gl.uniform1f(loc, value);
+        } else if (typeof value === 'string' && def.options) {
+          const idx = def.options.findIndex((o) => o.value === value);
+          gl.uniform1f(loc, idx >= 0 ? idx : 0);
         }
         break;
     }

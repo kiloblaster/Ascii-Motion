@@ -58,10 +58,12 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
   },
 ];
 
-// The shader uses u_type as a float (0=barrel, 1=pincushion, 2=wave)
-// Type mapping is handled in the pipeline when setting uniforms.
+// u_type uniform: 0.0=barrel, 1.0=pincushion, 2.0=wave (mapped from select option index)
+// u_animate uniform: 0.0=off, 1.0=on (mapped from boolean)
+// u_type: 0.0 = barrel, 1.0 = pincushion, 2.0 = wave
 const fragmentShader = buildFragmentShader(
   `uniform float u_amount;
+uniform float u_type;
 uniform float u_frequency;
 uniform float u_animate;`,
   `  vec2 uv = v_texCoord;
@@ -69,23 +71,19 @@ uniform float u_animate;`,
   vec2 delta = uv - center;
   float dist = length(delta);
   
-  // Read type from u_frame context — we encode type as a separate approach
-  // For simplicity, we use the amount sign convention:
-  // The JS pipeline sets u_amount positive for barrel, negative for pincushion
-  // Wave mode is handled via u_frequency > 0 check
-  
   vec2 distorted = uv;
   
-  if (u_frequency > 0.05) {
-    // Wave distortion
+  if (u_type > 1.5) {
+    // Wave distortion (type == 2)
     float timeOffset = u_animate > 0.5 ? u_time * 2.0 : 0.0;
     float waveX = sin(uv.y * u_frequency * 6.28318 + timeOffset) * u_amount * 0.1;
     float waveY = cos(uv.x * u_frequency * 6.28318 + timeOffset) * u_amount * 0.1;
     distorted = uv + vec2(waveX, waveY);
   } else {
-    // Barrel / Pincushion distortion
+    // Barrel (type == 0) or Pincushion (type == 1)
+    float sign = u_type > 0.5 ? -1.0 : 1.0;
     float r2 = dist * dist;
-    float distortionFactor = 1.0 + u_amount * r2;
+    float distortionFactor = 1.0 + sign * u_amount * r2;
     distorted = center + delta * distortionFactor;
   }
   
