@@ -338,6 +338,23 @@ export const PostEffectPropertiesPanel: React.FC = function PostEffectProperties
                 updatePostEffectBlockSettings(block.id, {
                   [def.path]: newValue,
                 });
+                // If a keyframe exists at current frame, update its value too
+                const pt = block.propertyTracks.find(
+                  (t) => t.propertyPath === def.path,
+                );
+                if (pt) {
+                  const kfAtFrame = pt.keyframes.find(
+                    (kf) => kf.frame === currentFrame,
+                  );
+                  if (kfAtFrame) {
+                    useTimelineStore.getState().updatePostEffectKeyframe(
+                      block.id,
+                      pt.id as import('../../../types/postEffect').PostEffectPropertyTrackId,
+                      kfAtFrame.id as import('../../../types/timeline').KeyframeId,
+                      { value: newValue as number | boolean | string },
+                    );
+                  }
+                }
               }}
               block={block}
               currentFrame={currentFrame}

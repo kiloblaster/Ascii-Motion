@@ -50,6 +50,13 @@ function findTrackAndKeyframe(trackId: PropertyTrackId, kfId: KeyframeId) {
       return { track: ept as unknown as PropertyTrack, kf: (kf ?? null) as Keyframe | null };
     }
   }
+  for (const pet of (tl.postEffectTracks ?? [])) {
+    const ept = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+    if (ept) {
+      const kf = ept.keyframes.find((k) => k.id === kfId);
+      return { track: ept as unknown as PropertyTrack, kf: (kf ?? null) as Keyframe | null };
+    }
+  }
   return { track: null, kf: null };
 }
 

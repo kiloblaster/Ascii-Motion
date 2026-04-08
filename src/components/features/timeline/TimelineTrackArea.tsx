@@ -16,6 +16,7 @@ import { getPropertyValueAtFrame, getGroupPropertyValue } from '../../../utils/l
 import { ContentFrameBlock } from './ContentFrameBlock';
 import { KeyframeDiamond } from './KeyframeDiamond';
 import { EffectBlockComponent } from './EffectBlock';
+import { PostEffectBlockComponent } from './PostEffectBlock';
 import { PROPERTY_DISPLAY_ORDER, generateKeyframeId } from '../../../types/timeline';
 import { defaultEasing } from '../../../types/easing';
 import { usePlaybackOnlySnapshot } from '../../../hooks/usePlaybackOnlySnapshot';
@@ -47,6 +48,9 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
   const expandedEffectTrackIds = useTimelineStore((s) => s.view.expandedEffectTrackIds);
   const globalEffects = useTimelineStore((s) => s.globalEffects);
   const globalEffectsExpanded = useTimelineStore((s) => s.view.globalEffectsExpanded);
+  const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
+  const postEffectsExpanded = useTimelineStore((s) => s.view.postEffectsExpanded);
+  const expandedPostEffectTrackIds = useTimelineStore((s) => s.view.expandedPostEffectTrackIds);
   const selectKeyframes = useTimelineStore((s) => s.selectKeyframes);
   const clearContentFrameSelection = useTimelineStore((s) => s.clearContentFrameSelection);
   const clearKeyframeSelection = useTimelineStore((s) => s.clearKeyframeSelection);
@@ -158,6 +162,27 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
       const result: KeyframeId[] = [];
       let yOffset = 0;
       const renderedGroupIds = new Set<string>();
+
+      // Post effects (rendered before global effects)
+      yOffset += 28; // Post effects header
+      if (postEffectsExpanded && postEffectTracks.length > 0) {
+        for (const track of postEffectTracks) {
+          yOffset += EFFECT_TRACK_ROW_H;
+          if (expandedPostEffectTrackIds.has(track.effectBlock.id)) {
+            for (const pt of track.effectBlock.propertyTracks) {
+              const trackTop = yOffset;
+              const trackBottom = yOffset + EFFECT_PT_ROW_H;
+              for (const kf of pt.keyframes) {
+                const kfX = kf.frame * pxPerFrame;
+                if (kfX >= left - 6 && kfX <= right + 6 && trackBottom > top && trackTop < bottom) {
+                  result.push(kf.id as unknown as import('../../../types/timeline').KeyframeId);
+                }
+              }
+              yOffset += EFFECT_PT_ROW_H;
+            }
+          }
+        }
+      }
 
       // Global effects rows at top (always present for header)
       yOffset += 28; // Global header
@@ -277,7 +302,7 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
 
       return result;
     },
-    [displayLayers, expandedLayerIds, expandedEffectTrackIds, globalEffects, globalEffectsExpanded, pxPerFrame, layerGroups],
+    [displayLayers, expandedLayerIds, expandedEffectTrackIds, globalEffects, globalEffectsExpanded, postEffectTracks, postEffectsExpanded, expandedPostEffectTrackIds, pxPerFrame, layerGroups],
   );
 
   const handleTrackAreaMouseDown = useCallback(
@@ -379,6 +404,85 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
         {(() => {
           const renderedGroupIds = new Set<string>();
           const items: React.ReactNode[] = [];
+
+          // Post effects track rows (rendered before global effects)
+          items.push(
+            <div key="post-effects-header-spacer" className="relative border-b border-border/50 bg-purple-500/10" style={{ minHeight: 28 }}>
+              {/* Keyframe dots on collapsed post effects */}
+              {!postEffectsExpanded && postEffectTracks.length > 0 && (() => {
+                const kfFrames = new Set<number>();
+                for (const t of postEffectTracks) {
+                  for (const pt of t.effectBlock.propertyTracks) {
+                    for (const kf of pt.keyframes) kfFrames.add(kf.frame);
+                  }
+                }
+                if (kfFrames.size === 0) return null;
+                return [...kfFrames].map((frame) => (
+                  <div key={`pekf-dot-${frame}`} className="absolute w-[6px] h-[6px] rounded-full bg-purple-400/80 pointer-events-none z-10" style={{ left: frame * pxPerFrame - 3, top: '50%', transform: 'translateY(-50%)' }} />
+                ));
+              })()}
+            </div>
+          );
+          if (postEffectsExpanded && postEffectTracks.length > 0) {
+            for (const track of postEffectTracks) {
+              items.push(
+                <div key={`post-et-${track.id}`} className="relative border-b border-border/30 min-h-[24px] bg-purple-500/5">
+                  <PostEffectBlockComponent track={track} pxPerFrame={pxPerFrame} />
+                  {/* Keyframe dots on collapsed track */}
+                  {!expandedPostEffectTrackIds.has(track.effectBlock.id) && track.effectBlock.propertyTracks.length > 0 && (() => {
+                    const kfFrames = new Set<number>();
+                    for (const pt of track.effectBlock.propertyTracks) {
+                      for (const kf of pt.keyframes) kfFrames.add(kf.frame);
+                    }
+                    if (kfFrames.size === 0) return null;
+                    return [...kfFrames].map((frame) => (
+                      <div key={`pekf-dot-${frame}`} className="absolute w-[5px] h-[5px] rounded-full bg-purple-400/70 pointer-events-none z-10" style={{ left: frame * pxPerFrame - 2, bottom: 2 }} />
+                    ));
+                  })()}
+                </div>
+              );
+              // Property sub-rows with keyframe diamonds (24px each)
+              if (expandedPostEffectTrackIds.has(track.effectBlock.id)) {
+                const proxyLayerId = layers.length > 0 ? layers[0].id : ('' as LayerId);
+                for (const pt of track.effectBlock.propertyTracks) {
+                  items.push(
+                    <div
+                      key={`post-ept-${pt.id}`}
+                      className="relative border-b border-border/20 min-h-[24px] bg-purple-500/5 cursor-crosshair"
+                      onDoubleClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left;
+                        const frame = Math.max(0, Math.round(clickX / pxPerFrame));
+                        const currentValue = 0;
+                        const kfId = useTimelineStore.getState().addPostEffectKeyframe(
+                          track.effectBlock.id,
+                          pt.id as import('../../../types/postEffect').PostEffectPropertyTrackId,
+                          frame,
+                          currentValue,
+                        );
+                        if (kfId) {
+                          selectKeyframes([kfId as unknown as import('../../../types/timeline').KeyframeId]);
+                          setEditingKeyframe(kfId as unknown as import('../../../types/timeline').KeyframeId);
+                        }
+                      }}
+                    >
+                      {pt.keyframes.map((kf) => (
+                        <KeyframeDiamond
+                          key={kf.id}
+                          layerId={proxyLayerId}
+                          trackId={pt.id as unknown as import('../../../types/timeline').PropertyTrackId}
+                          keyframe={kf as unknown as import('../../../types/timeline').Keyframe}
+                          pxPerFrame={pxPerFrame}
+                          scrollX={scrollX}
+                          isSelected={selectedKeyframeIds.has(kf.id as unknown as import('../../../types/timeline').KeyframeId)}
+                        />
+                      ))}
+                    </div>
+                  );
+                }
+              }
+            }
+          }
 
           // Global effects track rows at top (always render header spacer)
           items.push(

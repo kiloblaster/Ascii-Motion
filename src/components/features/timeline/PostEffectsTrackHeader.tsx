@@ -119,7 +119,7 @@ export const PostEffectsTrackHeader: React.FC = function PostEffectsTrackHeader(
             {/* Effect track row */}
             <div
               className={cn(
-                'flex items-center px-3 min-h-[26px] border-b border-border/30 cursor-pointer group/petrow',
+                'flex items-center px-3 min-h-[24px] border-b border-border/30 cursor-pointer group/petrow',
                 isSelected ? 'bg-purple-500/15' : 'hover:bg-muted/30',
               )}
               onClick={() => selectPostEffectBlock(block.id)}
