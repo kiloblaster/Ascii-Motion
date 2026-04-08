@@ -632,11 +632,27 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
                     ...tl.layerGroups.flatMap((g) => (g.effectTracks ?? []).map((et) => et)),
                     ...(tl.globalEffects ?? []),
                   ];
+                  let found = false;
                   for (const et of allSources) {
                     const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (ctx.trackId as string));
                     if (pt) {
                       tl.removeEffectKeyframe(et.effectBlock.id, pt.id, kfId);
+                      found = true;
                       break;
+                    }
+                  }
+                  // Fall back to post effect tracks
+                  if (!found) {
+                    for (const pet of (tl.postEffectTracks ?? [])) {
+                      const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (ctx.trackId as string));
+                      if (pt) {
+                        tl.removePostEffectKeyframe(
+                          pet.effectBlock.id,
+                          pt.id as import('../../../types/postEffect').PostEffectPropertyTrackId,
+                          kfId,
+                        );
+                        break;
+                      }
                     }
                   }
                 }

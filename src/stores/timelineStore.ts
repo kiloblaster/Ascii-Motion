@@ -101,10 +101,10 @@ function findTrackKeyframeByFrame(
  * Returns updated state slices if found, or null if the trackId was not found.
  */
 function updateEffectPropertyTrackKeyframes(
-  state: { layers: Layer[]; layerGroups: LayerGroup[]; globalEffects: EffectTrack[] },
+  state: { layers: Layer[]; layerGroups: LayerGroup[]; globalEffects: EffectTrack[]; postEffectTracks: PostEffectTrack[] },
   trackId: string,
   updater: (keyframes: EffectKeyframe[]) => EffectKeyframe[],
-): { layers?: Layer[]; layerGroups?: LayerGroup[]; globalEffects?: EffectTrack[] } | null {
+): { layers?: Layer[]; layerGroups?: LayerGroup[]; globalEffects?: EffectTrack[]; postEffectTracks?: PostEffectTrack[] } | null {
   // Search layers
   for (const layer of state.layers) {
     for (const et of (layer.effectTracks ?? [])) {
@@ -157,6 +157,22 @@ function updateEffectPropertyTrackKeyframes(
             ...t.effectBlock,
             propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
               (pt.id as string) !== trackId ? pt : { ...pt, keyframes: updater(pt.keyframes) },
+            ),
+          },
+        }),
+      };
+    }
+  }
+  // Search post effects
+  for (const pet of state.postEffectTracks) {
+    if (pet.effectBlock.propertyTracks.some((pt) => (pt.id as string) === trackId)) {
+      return {
+        postEffectTracks: state.postEffectTracks.map((t) => t.id !== pet.id ? t : {
+          ...t,
+          effectBlock: {
+            ...t.effectBlock,
+            propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+              (pt.id as string) !== trackId ? pt : { ...pt, keyframes: updater(pt.keyframes as unknown as EffectKeyframe[]) as unknown as typeof pt.keyframes },
             ),
           },
         }),
@@ -2027,6 +2043,23 @@ export const useTimelineStore = create<TimelineState>()(
       }
       for (const et of (get().globalEffects ?? [])) {
         for (const pt of et.effectBlock.propertyTracks) {
+          for (const kf of pt.keyframes) {
+            if (keyframeIds.includes(kf.id as KeyframeId)) {
+              entries.push({
+                layerId: (get().layers[0]?.id ?? '') as string,
+                trackId: pt.id as string,
+                propertyPath: pt.propertyPath,
+                frame: kf.frame,
+                value: kf.value as number,
+                easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+              });
+            }
+          }
+        }
+      }
+      // Search post effect tracks
+      for (const pet of (get().postEffectTracks ?? [])) {
+        for (const pt of pet.effectBlock.propertyTracks) {
           for (const kf of pt.keyframes) {
             if (keyframeIds.includes(kf.id as KeyframeId)) {
               entries.push({

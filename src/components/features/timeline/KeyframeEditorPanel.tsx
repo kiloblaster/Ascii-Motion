@@ -36,6 +36,7 @@ export const KeyframeEditorPanel: React.FC = () => {
   const layers = useTimelineStore((s) => s.layers);
   const layerGroups = useTimelineStore((s) => s.layerGroups);
   const globalEffects = useTimelineStore((s) => s.globalEffects);
+  const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
   const setEditingKeyframe = useTimelineStore((s) => s.setEditingKeyframe);
   const moveKeyframe = useTimelineStore((s) => s.moveKeyframe);
   const updateKeyframe = useTimelineStore((s) => s.updateKeyframe);
@@ -90,8 +91,15 @@ export const KeyframeEditorPanel: React.FC = () => {
         if (kf) return { layerId: proxyId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0], track: pt as unknown as typeof layers[0]['propertyTracks'][0] };
       }
     }
+    // Search post effects
+    for (const pet of (postEffectTracks ?? [])) {
+      for (const pt of pet.effectBlock.propertyTracks) {
+        const kf = pt.keyframes.find((k) => k.id === editingKeyframeId);
+        if (kf) return { layerId: proxyId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0], track: pt as unknown as typeof layers[0]['propertyTracks'][0] };
+      }
+    }
     return null;
-  }, [editingKeyframeId, layers, layerGroups, globalEffects]);
+  }, [editingKeyframeId, layers, layerGroups, globalEffects, postEffectTracks]);
 
   // All selected keyframes (for batch operations)
   const selectedKeyframeEntries = useMemo(() => {
@@ -114,8 +122,51 @@ export const KeyframeEditorPanel: React.FC = () => {
         }
       }
     }
+    // Search effect property tracks across layers, groups, global, and post effects
+    const proxyId = layers.length > 0 ? layers[0].id : ('' as typeof layers[0]['id']);
+    for (const layer of layers) {
+      for (const et of (layer.effectTracks ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          for (const kf of pt.keyframes) {
+            if (selectedKeyframeIds.has(kf.id as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0]['id'])) {
+              entries.push({ layerId: layer.id, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0] });
+            }
+          }
+        }
+      }
+    }
+    for (const group of layerGroups) {
+      for (const et of (group.effectTracks ?? [])) {
+        for (const pt of et.effectBlock.propertyTracks) {
+          for (const kf of pt.keyframes) {
+            if (selectedKeyframeIds.has(kf.id as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0]['id'])) {
+              const proxyLayerId = group.childLayerIds[0] ?? ('' as typeof layers[0]['id']);
+              entries.push({ layerId: proxyLayerId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0] });
+            }
+          }
+        }
+      }
+    }
+    for (const et of (globalEffects ?? [])) {
+      for (const pt of et.effectBlock.propertyTracks) {
+        for (const kf of pt.keyframes) {
+          if (selectedKeyframeIds.has(kf.id as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0]['id'])) {
+            entries.push({ layerId: proxyId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0] });
+          }
+        }
+      }
+    }
+    for (const pet of (postEffectTracks ?? [])) {
+      for (const pt of pet.effectBlock.propertyTracks) {
+        for (const kf of pt.keyframes) {
+          if (selectedKeyframeIds.has(kf.id as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0]['id'])) {
+            entries.push({ layerId: proxyId, trackId: pt.id as unknown as typeof layers[0]['propertyTracks'][0]['id'], keyframe: kf as unknown as typeof layers[0]['propertyTracks'][0]['keyframes'][0] });
+          }
+        }
+      }
+    }
     return entries;
-  }, [selectedKeyframeIds, layers, layerGroups]);
+  }, [selectedKeyframeIds, layers, layerGroups, globalEffects, postEffectTracks]);
 
   const frameScrub = useScrubInput({
     value: kfData?.keyframe.frame ?? 0,

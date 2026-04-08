@@ -465,6 +465,14 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                           setEditingKeyframe(kfId as unknown as import('../../../types/timeline').KeyframeId);
                         }
                       }}
+                      onContextMenu={(e) => {
+                        if ((e.target as HTMLElement).closest('[data-keyframe]')) return;
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = e.clientX - rect.left + (internalRef.current?.scrollLeft ?? 0);
+                        const clickFrame = Math.max(0, Math.round(clickX / pxPerFrame));
+                        setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'property-track', layerId: proxyLayerId, trackId: pt.id as unknown as import('../../../types/timeline').PropertyTrackId, clickFrame } });
+                      }}
                     >
                       {pt.keyframes.map((kf) => (
                         <KeyframeDiamond
@@ -475,6 +483,15 @@ export const TimelineTrackArea: React.FC<TimelineTrackAreaProps> = ({ scrollRef 
                           pxPerFrame={pxPerFrame}
                           scrollX={scrollX}
                           isSelected={selectedKeyframeIds.has(kf.id as unknown as import('../../../types/timeline').KeyframeId)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const selKfIds = useTimelineStore.getState().view.selectedKeyframeIds;
+                            const kfIds = selKfIds.has(kf.id as unknown as import('../../../types/timeline').KeyframeId) && selKfIds.size > 0
+                              ? [...selKfIds] as import('../../../types/timeline').KeyframeId[]
+                              : [kf.id as unknown as import('../../../types/timeline').KeyframeId];
+                            setContextMenu({ x: e.clientX, y: e.clientY, context: { kind: 'keyframe', layerId: proxyLayerId, trackId: pt.id as unknown as import('../../../types/timeline').PropertyTrackId, keyframeIds: kfIds } });
+                          }}
                         />
                       ))}
                     </div>
