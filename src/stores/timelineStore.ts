@@ -3080,7 +3080,12 @@ export const useTimelineStore = create<TimelineState>()(
 
     selectEffectBlock: (blockId) => {
       set((state) => ({
-        view: { ...state.view, selectedEffectBlockId: blockId, editingKeyframeId: blockId ? null : state.view.editingKeyframeId },
+        view: {
+          ...state.view,
+          selectedEffectBlockId: blockId,
+          editingKeyframeId: blockId ? null : state.view.editingKeyframeId,
+          selectedPostEffectBlockId: blockId ? null : state.view.selectedPostEffectBlockId,
+        },
       }));
     },
 
