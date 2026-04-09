@@ -299,14 +299,15 @@ export function applyPostEffectsToCanvas(
     processor.render(sourceCanvas, passes, time, frame);
 
     // Read back WebGL output onto the source canvas.
-    // The source canvas may have a scaled context (e.g., ctx.scale(2, 2) for
-    // high-DPI export). We must reset the transform so we draw at exact pixel
-    // coordinates, then restore the previous transform for subsequent drawing.
+    // Use 'copy' composite mode to directly overwrite all pixel data including
+    // the alpha channel. The default 'source-over' composites against the
+    // destination alpha which can produce empty (transparent) PNGs when the
+    // WebGL canvas has premultiplied-alpha edge cases.
     const ctx = sourceCanvas.getContext('2d');
     if (ctx) {
       ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to identity (pixel coords)
-      ctx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'copy';
       ctx.drawImage(tempCanvas, 0, 0);
       ctx.restore();
     }

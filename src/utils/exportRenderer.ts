@@ -4382,7 +4382,7 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
     if (ctx) {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, w, h);
+      ctx.globalCompositeOperation = 'copy';
       ctx.drawImage(glCanvas, 0, 0);
       ctx.restore();
     }
