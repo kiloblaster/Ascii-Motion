@@ -298,17 +298,29 @@ export function applyPostEffectsToCanvas(
     const time = frame / (frameRate || 12);
     processor.render(sourceCanvas, passes, time, frame);
 
-    // Read back WebGL output onto the source canvas.
-    // Use 'copy' composite mode to directly overwrite all pixel data including
-    // the alpha channel. The default 'source-over' composites against the
-    // destination alpha which can produce empty (transparent) PNGs when the
-    // WebGL canvas has premultiplied-alpha edge cases.
+    // Read pixels from WebGL via readPixels + putImageData.
+    // drawImage from a WebGL canvas can produce blank output in some browsers
+    // due to alpha premultiplication / context incompatibilities. readPixels
+    // is the most reliable cross-browser readback method.
+    const gl = tempCanvas.getContext('webgl2');
     const ctx = sourceCanvas.getContext('2d');
-    if (ctx) {
+    if (gl && ctx) {
+      const w = tempCanvas.width;
+      const h = tempCanvas.height;
+      const pixels = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+      // WebGL readPixels returns bottom-to-top rows; flip vertically
+      const imageData = ctx.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        const srcRow = (h - 1 - y) * w * 4;
+        const dstRow = y * w * 4;
+        imageData.data.set(pixels.subarray(srcRow, srcRow + w * 4), dstRow);
+      }
+
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalCompositeOperation = 'copy';
-      ctx.drawImage(tempCanvas, 0, 0);
+      ctx.putImageData(imageData, 0, 0);
       ctx.restore();
     }
 
