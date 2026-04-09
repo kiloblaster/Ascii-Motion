@@ -433,8 +433,9 @@ export const BubbleteaExportDialog: React.FC = () => {
             </Card>
 
             {postEffectTracks.length > 0 && (
-              <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 mt-2">
-                ℹ️ Shaders cannot be rendered in this format and will be excluded.
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5 mt-2 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                Shaders cannot be rendered in this format and will be excluded.
               </div>
             )}
           </div>
