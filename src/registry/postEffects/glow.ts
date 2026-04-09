@@ -50,7 +50,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     interpolation: 'numeric',
     min: 0,
     max: 1,
-    step: 0.01,
+    step: 0.1,
   },
   {
     path: 'blendMode',
@@ -75,7 +75,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     interpolation: 'numeric',
     min: 0,
     max: 1,
-    step: 0.01,
+    step: 0.1,
   },
   {
     path: 'color',
