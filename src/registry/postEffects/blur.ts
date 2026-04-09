@@ -84,21 +84,19 @@ uniform float u_centerY;`,
   if (u_type > 1.5 && u_type < 2.5) {
     vec2 center = vec2(u_centerX, u_centerY);
     vec2 dir = v_texCoord - center;
-    float dist = length(dir);
     vec3 result = vec3(0.0);
     float totalWeight = 0.0;
-    int samples = int(min(u_radius, 25.0));
-    float angleStep = u_radius * 0.003;
+    const int RADIAL_SAMPLES = 64;
+    float angleSpread = u_radius * 0.008;
     
-    for (int i = -samples; i <= samples; i++) {
-      float angle = float(i) * angleStep;
+    for (int i = -RADIAL_SAMPLES; i <= RADIAL_SAMPLES; i++) {
+      float t = float(i) / float(RADIAL_SAMPLES);
+      float angle = t * angleSpread;
       float cosA = cos(angle);
       float sinA = sin(angle);
-      // Rotate dir around center
       vec2 rotated = vec2(dir.x * cosA - dir.y * sinA, dir.x * sinA + dir.y * cosA);
-      vec2 sampleUV = center + rotated;
-      sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
-      float weight = exp(-2.0 * float(i * i) / max(float(samples * samples), 1.0));
+      vec2 sampleUV = clamp(center + rotated, vec2(0.0), vec2(1.0));
+      float weight = exp(-2.0 * t * t);
       result += texture(u_texture, sampleUV).rgb * weight;
       totalWeight += weight;
     }
