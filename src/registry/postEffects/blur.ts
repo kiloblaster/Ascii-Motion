@@ -80,7 +80,7 @@ uniform float u_centerY;`,
     return;
   }
   
-  // Radial blur (type == 2) — single-pass, not separable
+  // Radial blur (type == 2) — rotational/spin blur around center
   if (u_type > 1.5 && u_type < 2.5) {
     vec2 center = vec2(u_centerX, u_centerY);
     vec2 dir = v_texCoord - center;
@@ -88,12 +88,17 @@ uniform float u_centerY;`,
     vec3 result = vec3(0.0);
     float totalWeight = 0.0;
     int samples = int(min(u_radius, 25.0));
+    float angleStep = u_radius * 0.003;
     
     for (int i = -samples; i <= samples; i++) {
-      float t = float(i) / float(samples);
-      float weight = exp(-2.0 * t * t);
-      vec2 sampleUV = v_texCoord + dir * t * u_radius * 0.02;
+      float angle = float(i) * angleStep;
+      float cosA = cos(angle);
+      float sinA = sin(angle);
+      // Rotate dir around center
+      vec2 rotated = vec2(dir.x * cosA - dir.y * sinA, dir.x * sinA + dir.y * cosA);
+      vec2 sampleUV = center + rotated;
       sampleUV = clamp(sampleUV, vec2(0.0), vec2(1.0));
+      float weight = exp(-2.0 * float(i * i) / max(float(samples * samples), 1.0));
       result += texture(u_texture, sampleUV).rgb * weight;
       totalWeight += weight;
     }

@@ -6,7 +6,7 @@
  * Follows the same patterns as EffectPropertiesPanel but for WebGL shader effects.
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTimelineStore } from '../../../stores/timelineStore';
 import { useToolStore } from '../../../stores/toolStore';
 import { getPostEffect } from '../../../registry/postEffectRegistry';
@@ -285,6 +285,7 @@ interface ColorSwatchRowProps {
 
 const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({ definition, value, onChange, keyframeDiamond }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const swatchRef = useRef<HTMLDivElement>(null);
   const currentColor = String(value ?? definition.defaultValue ?? '#000000');
 
   return (
@@ -293,13 +294,14 @@ const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({ definition, value, onCh
       <span className="text-[10px] text-muted-foreground w-20 truncate flex-shrink-0">
         {definition.displayName}
       </span>
-      <button
-        onClick={() => setPickerOpen(true)}
-        className="w-5 h-5 rounded cursor-pointer border border-border/50 p-0 flex-shrink-0"
+      <div
+        ref={swatchRef}
+        className="w-5 h-5 rounded border border-border/50 cursor-pointer hover:ring-1 hover:ring-primary flex-shrink-0"
         style={{ backgroundColor: currentColor }}
         title={currentColor}
+        onClick={() => setPickerOpen(!pickerOpen)}
       />
-      <span className="text-[9px] text-muted-foreground/50 font-mono">
+      <span className="text-[10px] text-muted-foreground/60 flex-1 min-w-0 truncate select-none">
         {currentColor}
       </span>
       <ColorPickerOverlay
@@ -308,6 +310,8 @@ const ColorSwatchRow: React.FC<ColorSwatchRowProps> = ({ definition, value, onCh
         onColorSelect={(color) => { onChange(color); setPickerOpen(false); }}
         onColorChange={(color) => onChange(color)}
         initialColor={/^#[0-9a-fA-F]{6}$/.test(currentColor) ? currentColor : '#000000'}
+        triggerRef={swatchRef as React.RefObject<HTMLElement | null>}
+        anchorPosition="bottom-left"
       />
     </div>
   );
