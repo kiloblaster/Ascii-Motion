@@ -105,7 +105,7 @@ export interface PixelateSettings {
 }
 
 export const DEFAULT_PIXELATE_SETTINGS: PixelateSettings = {
-  pixelSize: 8,
+  pixelSize: 3,
 };
 
 // ============================================
