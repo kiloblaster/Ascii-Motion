@@ -473,7 +473,7 @@ export const ImageExportDialog: React.FC = () => {
 									/>
 								</div>
 
-								{postEffectTracks.length > 0 && (
+								{postEffectTracks.length > 0 && imageSettings.format !== 'svg' && (
 									<div className="flex items-center justify-between">
 										<div className="space-y-0.5">
 											<Label htmlFor="include-post-effects">Include Shaders</Label>

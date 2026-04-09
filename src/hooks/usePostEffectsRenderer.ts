@@ -282,7 +282,7 @@ export function applyPostEffectsToCanvas(
   const passes = buildPostEffectPasses(postEffectTracks, frame);
   if (passes.length === 0) return false;
 
-  // Create temporary processor with offscreen canvas
+  // Create temporary processor with offscreen canvas at the same pixel resolution
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = sourceCanvas.width;
   tempCanvas.height = sourceCanvas.height;
@@ -298,11 +298,17 @@ export function applyPostEffectsToCanvas(
     const time = frame / (frameRate || 12);
     processor.render(sourceCanvas, passes, time, frame);
 
-    // Read back WebGL output onto the source canvas
+    // Read back WebGL output onto the source canvas.
+    // The source canvas may have a scaled context (e.g., ctx.scale(2, 2) for
+    // high-DPI export). We must reset the transform so we draw at exact pixel
+    // coordinates, then restore the previous transform for subsequent drawing.
     const ctx = sourceCanvas.getContext('2d');
     if (ctx) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to identity (pixel coords)
       ctx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
       ctx.drawImage(tempCanvas, 0, 0);
+      ctx.restore();
     }
 
     return true;
