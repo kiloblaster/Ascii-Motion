@@ -2,7 +2,6 @@
  * Screen Distortion — Post Effect Registry Entry
  *
  * Applies barrel, pincushion, or wave distortion to the rendered output.
- * Supports animated wave mode for dynamic visual effects.
  */
 
 import { MonitorOff } from 'lucide-react';
@@ -48,24 +47,13 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     step: 0.1,
     visibleWhen: { path: 'type', values: ['wave'] },
   },
-  {
-    path: 'animate',
-    displayName: 'Animate',
-    category: 'Screen Distortion',
-    valueType: 'boolean',
-    defaultValue: DEFAULT_SCREEN_DISTORTION_SETTINGS.animate,
-    interpolation: 'hold',
-  },
 ];
 
-// u_type uniform: 0.0=barrel, 1.0=pincushion, 2.0=wave (mapped from select option index)
-// u_animate uniform: 0.0=off, 1.0=on (mapped from boolean)
 // u_type: 0.0 = barrel, 1.0 = pincushion, 2.0 = wave
 const fragmentShader = buildFragmentShader(
   `uniform float u_amount;
 uniform float u_type;
-uniform float u_frequency;
-uniform float u_animate;`,
+uniform float u_frequency;`,
   `  vec2 uv = v_texCoord;
   vec2 center = vec2(0.5);
   vec2 delta = uv - center;
@@ -75,9 +63,8 @@ uniform float u_animate;`,
   
   if (u_type > 1.5) {
     // Wave distortion (type == 2)
-    float timeOffset = u_animate > 0.5 ? u_time * 2.0 : 0.0;
-    float waveX = sin(uv.y * u_frequency * 6.28318 + timeOffset) * u_amount * 0.1;
-    float waveY = cos(uv.x * u_frequency * 6.28318 + timeOffset) * u_amount * 0.1;
+    float waveX = sin(uv.y * u_frequency * 6.28318 + u_time * 2.0) * u_amount * 0.1;
+    float waveY = cos(uv.x * u_frequency * 6.28318 + u_time * 2.0) * u_amount * 0.1;
     distorted = uv + vec2(waveX, waveY);
   } else {
     // Barrel (type == 0) or Pincushion (type == 1)

@@ -32,15 +32,12 @@ export interface ScreenDistortionSettings {
   type: 'barrel' | 'pincushion' | 'wave';
   /** Wave frequency — only used when type is 'wave' (0.1–10) */
   frequency: number;
-  /** Whether to animate the distortion over time */
-  animate: boolean;
 }
 
 export const DEFAULT_SCREEN_DISTORTION_SETTINGS: ScreenDistortionSettings = {
   amount: 0.3,
   type: 'barrel',
   frequency: 1.0,
-  animate: false,
 };
 
 // ============================================
