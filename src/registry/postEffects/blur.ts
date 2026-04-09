@@ -50,7 +50,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     interpolation: 'numeric',
     min: 0,
     max: 1,
-    step: 0.01,
+    step: 0.1,
     visibleWhen: { path: 'type', values: ['radial', 'zoom'] },
   },
   {
@@ -62,7 +62,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     interpolation: 'numeric',
     min: 0,
     max: 1,
-    step: 0.01,
+    step: 0.1,
     visibleWhen: { path: 'type', values: ['radial', 'zoom'] },
   },
 ];
