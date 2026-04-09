@@ -9,6 +9,7 @@ import { chromaticAberrationEffect } from './chromaticAberration';
 import { screenDistortionEffect } from './screenDistortion';
 import { glowEffect } from './glow';
 import { blurEffect } from './blur';
+import { pixelateEffect } from './pixelate';
 
 /**
  * Register all built-in post effects. Safe to call multiple times —
@@ -20,6 +21,7 @@ export function registerAllPostEffects(): void {
     screenDistortionEffect,
     glowEffect,
     blurEffect,
+    pixelateEffect,
   ];
 
   for (const effect of effects) {

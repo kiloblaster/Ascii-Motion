@@ -36,117 +36,104 @@ Post effects are fundamentally different from standard (cell-based) effects:
 
 ## Step 1: Create the Effect File
 
-Create a new file in `src/registry/postEffects/`:
+Create a new file in `src/registry/postEffects/`. Export a `PostEffectRegistryEntry` object:
 
 ```typescript
-// src/registry/postEffects/myEffect.ts
+// src/registry/postEffects/pixelate.ts
 
-import { Sparkles } from 'lucide-react';  // Choose an appropriate icon
-import { registerPostEffect } from '../postEffectRegistry';
+import { Grid3X3 } from 'lucide-react';
+import type { PostEffectRegistryEntry } from '../postEffectRegistry';
+import type { PostEffectPropertyDefinition } from '../../types/postEffect';
+import { DEFAULT_PIXELATE_SETTINGS } from '../../constants/postEffectDefaults';
 import { buildFragmentShader } from '../../utils/webgl/commonShaders';
 
-// GLSL fragment shader
-const FRAGMENT_SHADER = buildFragmentShader(
-  // Uniform declarations (your effect's properties)
-  `
-    uniform float u_intensity;
-    uniform float u_threshold;
-  `,
+const propertyDefinitions: PostEffectPropertyDefinition[] = [
+  {
+    path: 'pixelSize',
+    displayName: 'Pixel Size',
+    category: 'Pixelate',
+    valueType: 'number',
+    defaultValue: DEFAULT_PIXELATE_SETTINGS.pixelSize,
+    interpolation: 'numeric',
+    min: 1,
+    max: 100,
+    step: 1,
+    unit: 'px',
+  },
+];
+
+const fragmentShader = buildFragmentShader(
+  // Uniform declarations (auto-prefixed properties become u_propertyName)
+  `uniform float u_pixelSize;`,
   // Main shader body
-  `
-    vec4 color = texture(u_texture, v_texCoord);
-    
-    // Your effect logic here
-    float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-    if (brightness > u_threshold) {
-      color.rgb *= 1.0 + u_intensity;
-    }
-    
-    fragColor = color;
-  `
+  `  vec2 cellSize = vec2(u_pixelSize) / u_resolution;
+  vec2 snapped = cellSize * floor(v_texCoord / cellSize) + cellSize * 0.5;
+  fragColor = texture(u_texture, snapped);`,
 );
 
-// Register the effect
-registerPostEffect({
-  type: 'my-effect',
-  name: 'My Effect',
-  icon: Sparkles,
-  category: 'color',  // 'distortion' | 'blur' | 'glow' | 'color'
-  description: 'Description of what this effect does.',
-  
-  // Default settings (must match property definitions)
-  defaultSettings: {
-    intensity: 0.5,
-    threshold: 0.5,
-  },
-  
-  // Property definitions (drive the UI and keyframe system)
-  propertyDefinitions: [
-    {
-      path: 'intensity',
-      displayName: 'Intensity',
-      category: 'main',
-      valueType: 'number',
-      defaultValue: 0.5,
-      interpolation: 'linear',
-      min: 0,
-      max: 2,
-      step: 0.01,
-    },
-    {
-      path: 'threshold',
-      displayName: 'Threshold',
-      category: 'main',
-      valueType: 'number',
-      defaultValue: 0.5,
-      interpolation: 'linear',
-      min: 0,
-      max: 1,
-      step: 0.01,
-    },
-  ],
-  
-  // The compiled fragment shader
-  fragmentShader: FRAGMENT_SHADER,
-});
+export const pixelateEffect: PostEffectRegistryEntry = {
+  type: 'pixelate',
+  name: 'Pixelate',
+  icon: Grid3X3,
+  category: 'distortion',
+  description: 'Crisp nearest-neighbor mosaic effect',
+  defaultSettings: { ...DEFAULT_PIXELATE_SETTINGS } as unknown as Record<string, unknown>,
+  propertyDefinitions,
+  fragmentShader,
+};
 ```
 
 ## Step 2: Register the Effect
 
-Add your effect to the registration entry point:
+Import and add your effect to the registration array in `src/registry/postEffects/index.ts`:
 
 ```typescript
-// src/registry/postEffects/index.ts
-
-import './myEffect';  // Add this import
+import { pixelateEffect } from './pixelate';
 
 export function registerAllPostEffects(): void {
-  // Effects are registered via side-effect imports
-  import('./chromaticAberration');
-  import('./screenDistortion');
-  import('./glow');
-  import('./blur');
-  import('./myEffect');  // Add your effect
+  const effects = [
+    chromaticAberrationEffect,
+    screenDistortionEffect,
+    glowEffect,
+    blurEffect,
+    pixelateEffect,  // Add your effect here
+  ];
+
+  for (const effect of effects) {
+    try {
+      registerPostEffect(effect);
+    } catch {
+      // Already registered — skip
+    }
+  }
 }
 ```
 
 ## Step 3: Add Default Settings
 
-Add your effect's default settings interface and constants:
+Add your effect's settings interface, defaults, and UI definition in `src/constants/postEffectDefaults.ts`:
 
 ```typescript
-// src/constants/postEffectDefaults.ts
-
-export interface MyEffectSettings {
-  intensity: number;
-  threshold: number;
+// 1. Interface and defaults
+export interface PixelateSettings {
+  pixelSize: number;
 }
 
-export const DEFAULT_MY_EFFECT_SETTINGS: MyEffectSettings = {
-  intensity: 0.5,
-  threshold: 0.5,
+export const DEFAULT_PIXELATE_SETTINGS: PixelateSettings = {
+  pixelSize: 8,
 };
+
+// 2. Add to POST_EFFECT_DEFINITIONS array
+{
+  id: 'pixelate',
+  name: 'Pixelate',
+  icon: 'Grid3X3',
+  description: 'Crisp nearest-neighbor mosaic effect',
+  category: 'distortion',
+}
 ```
+
+That's it — no other files need changing. The UI, timeline, keyframe system, export pipeline, undo/redo, and serialization all pick up the new effect automatically from the registry.
 
 ## 🎨 GLSL Shader Reference
 
@@ -158,27 +145,24 @@ export const DEFAULT_MY_EFFECT_SETTINGS: MyEffectSettings = {
 | `u_resolution` | `vec2` | Canvas dimensions in pixels |
 | `u_time` | `float` | Current time in seconds |
 | `u_frame` | `float` | Current frame number |
+| `u_bgColor` | `vec3` | Canvas background color (normalized 0–1 RGB) |
 
 ### Per-Effect Uniforms
 
 Property definitions are automatically mapped to uniforms with a `u_` prefix:
 - Property path `intensity` → uniform `u_intensity`
-- Property path `threshold` → uniform `u_threshold`
+- Property path `pixelSize` → uniform `u_pixelSize`
 
 ### Common GLSL Utilities
 
 The `buildFragmentShader()` helper injects these utilities:
 
 ```glsl
-// Random number generation
 float random(vec2 st);
-
-// 2D noise
 float noise(vec2 st);
-
-// Color space conversions
 vec3 rgb2hsv(vec3 c);
 vec3 hsv2rgb(vec3 c);
+float luminance(vec3 c);
 ```
 
 ### Shader Template
@@ -194,6 +178,7 @@ uniform sampler2D u_texture;
 uniform vec2 u_resolution;
 uniform float u_time;
 uniform float u_frame;
+uniform vec3 u_bgColor;
 
 // Your uniforms here
 uniform float u_intensity;
@@ -209,14 +194,14 @@ void main() {
 
 ## 🔄 Multi-Pass Effects
 
-For effects requiring multiple passes (like separable blur), use the `passes`, `passShaders`, and `passUniforms` fields:
+For effects requiring multiple passes (like separable blur or bloom), use the `passes`, `passShaders`, and `passUniforms` fields:
 
 ```typescript
-registerPostEffect({
+export const myEffect: PostEffectRegistryEntry = {
   type: 'my-multipass-effect',
   // ...
   
-  passes: 2,  // Number of passes
+  passes: 2,
   
   // Shader for each pass (falls back to fragmentShader if not specified)
   passShaders: [
@@ -224,24 +209,39 @@ registerPostEffect({
     VERTICAL_PASS_SHADER,    // Pass 1
   ],
   
-  // Override uniforms per pass
+  // Override uniforms per pass (optional)
   passUniforms: [
     { direction: 0 },  // Pass 0: horizontal
     { direction: 1 },  // Pass 1: vertical
   ],
-});
+};
 ```
 
 The WebGL processor uses ping-pong framebuffers: pass N reads from the output of pass N-1. The last pass of the last effect renders directly to the display canvas.
+
+**`u_original` texture:** For multi-pass effects, `u_original` (texture unit 1) is automatically bound to the input texture from *before* the effect's passes began. This allows a final composite pass to blend its result with the pre-effect scene (e.g., glow overlays blurred highlights onto the original). The processor uses a dedicated snapshot texture to preserve this input even when ping-pong writes would overwrite the source framebuffer.
 
 ## 🎹 Property Types
 
 | valueType | GLSL Type | Description |
 |-----------|-----------|-------------|
-| `'number'` | `float` | Numeric slider/input |
-| `'boolean'` | `int` (0/1) | Toggle switch |
-| `'color'` | `vec3` (normalized RGB) | Color picker |
-| `'select'` | `float` | Dropdown (needs `options` array) |
+| `'number'` | `float` | Numeric slider/drag-to-adjust input |
+| `'boolean'` | `float` (0.0/1.0) | Toggle switch |
+| `'color'` | `vec3` (normalized RGB) | App color picker |
+| `'select'` | `float` (option index) | Dropdown (needs `options` array) |
+
+### Conditional Visibility
+
+Properties can be shown/hidden based on another property's value:
+
+```typescript
+{
+  path: 'frequency',
+  displayName: 'Frequency',
+  // ...
+  visibleWhen: { path: 'type', values: ['wave'] },
+}
+```
 
 ### Select Properties with Shader Branching
 
@@ -252,23 +252,23 @@ The WebGL processor uses ping-pong framebuffers: pass N reads from the output of
   valueType: 'select',
   defaultValue: 'barrel',
   options: [
-    { value: 'barrel', label: 'Barrel' },
-    { value: 'pincushion', label: 'Pincushion' },
-    { value: 'wave', label: 'Wave' },
+    { value: 'barrel', label: 'Barrel' },      // → u_type = 0.0
+    { value: 'pincushion', label: 'Pincushion' }, // → u_type = 1.0
+    { value: 'wave', label: 'Wave' },           // → u_type = 2.0
   ],
 }
 ```
 
-In the shader, use conditional branching:
+In the shader, use conditional branching on the option index:
 ```glsl
-uniform float u_type;  // 0.0 = barrel, 1.0 = pincushion, 2.0 = wave
+uniform float u_type;
 
 if (u_type < 0.5) {
-    // barrel distortion
+    // barrel (index 0)
 } else if (u_type < 1.5) {
-    // pincushion distortion
+    // pincushion (index 1)
 } else {
-    // wave distortion
+    // wave (index 2)
 }
 ```
 
@@ -287,6 +287,7 @@ if (u_type < 0.5) {
 3. Verify keyframe interpolation by adding keyframes at different frames
 4. Test multi-pass effects by checking intermediate framebuffer outputs
 5. Verify export integration by exporting an image/video with the effect active
+6. Test stacking: ensure the effect works at any position in the shader stack
 
 ## 📁 File Structure
 
@@ -296,19 +297,19 @@ src/
 │   ├── postEffectRegistry.ts          # Registry (register/get/getAll)
 │   └── postEffects/
 │       ├── index.ts                   # Registration entry point
-│       ├── chromaticAberration.ts     # Chromatic Aberration effect
-│       ├── screenDistortion.ts        # Screen Distortion effect
-│       ├── glow.ts                    # Glow (bloom) effect
-│       ├── blur.ts                    # Gaussian Blur effect
-│       └── myEffect.ts               # Your new effect
+│       ├── chromaticAberration.ts     # Chromatic Aberration
+│       ├── screenDistortion.ts        # Screen Distortion
+│       ├── glow.ts                    # Glow (bloom, 3-pass)
+│       ├── blur.ts                    # Blur (gaussian/box/radial/zoom, 2-pass)
+│       └── pixelate.ts               # Pixelate (mosaic)
 ├── utils/
 │   ├── webgl/
 │   │   ├── WebGLPostProcessor.ts      # WebGL2 rendering engine
-│   │   ├── shaderCompiler.ts          # Shader compilation/caching
+│   │   ├── shaderCompiler.ts          # Shader compilation/caching (per-context)
 │   │   └── commonShaders.ts           # Shared GLSL code
 │   └── postEffectsPipeline.ts         # Keyframe evaluation & pipeline
 ├── types/
 │   └── postEffect.ts                  # Type definitions
 └── constants/
-    └── postEffectDefaults.ts          # Default settings
+    └── postEffectDefaults.ts          # Default settings & UI definitions
 ```

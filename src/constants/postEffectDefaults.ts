@@ -96,6 +96,19 @@ export const DEFAULT_BLUR_SETTINGS: BlurSettings = {
 };
 
 // ============================================
+// PIXELATE
+// ============================================
+
+export interface PixelateSettings {
+  /** Mosaic cell size in pixels (1–100) */
+  pixelSize: number;
+}
+
+export const DEFAULT_PIXELATE_SETTINGS: PixelateSettings = {
+  pixelSize: 8,
+};
+
+// ============================================
 // POST EFFECT UI DEFINITIONS
 // ============================================
 
@@ -135,6 +148,13 @@ export const POST_EFFECT_DEFINITIONS: PostEffectDefinition[] = [
     icon: 'Focus',
     description: 'Apply gaussian, box, or radial blur',
     category: 'blur',
+  },
+  {
+    id: 'pixelate',
+    name: 'Pixelate',
+    icon: 'Grid3X3',
+    description: 'Crisp nearest-neighbor mosaic effect',
+    category: 'distortion',
   },
 ];
 
