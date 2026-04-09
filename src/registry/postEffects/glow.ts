@@ -27,7 +27,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     interpolation: 'numeric',
     min: 0,
     max: 2,
-    step: 0.05,
+    step: 0.1,
   },
   {
     path: 'radius',
@@ -37,7 +37,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     defaultValue: DEFAULT_GLOW_SETTINGS.radius,
     interpolation: 'numeric',
     min: 1,
-    max: 50,
+    max: 200,
     step: 1,
     unit: 'px',
   },
