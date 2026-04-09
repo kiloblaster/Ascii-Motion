@@ -23,7 +23,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     defaultValue: DEFAULT_BLUR_SETTINGS.radius,
     interpolation: 'numeric',
     min: 0,
-    max: 50,
+    max: 200,
     step: 0.5,
     unit: 'px',
   },
@@ -110,7 +110,7 @@ uniform float u_centerY;`,
     vec2 center = vec2(u_centerX, u_centerY);
     vec2 dir = v_texCoord - center;
     vec3 result = vec3(0.0);
-    int samples = int(min(u_radius * 2.0, 40.0));
+    int samples = int(min(u_radius * 2.0, 200.0));
     float strength = u_radius * 0.005;
     
     for (int i = 0; i < samples; i++) {
@@ -127,14 +127,14 @@ uniform float u_centerY;`,
   // Gaussian (type == 0) or Box (type == 1) — horizontal pass
   vec3 result = vec3(0.0);
   float totalWeight = 0.0;
-  int samples = int(min(u_radius, 25.0));
+  int samples = int(min(u_radius, 200.0));
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
     float weight;
     if (u_type < 0.5) {
       // Gaussian
-      float sigma = max(u_radius * 0.5, 1.0);
+      float sigma = max(u_radius * 0.4, 1.0);
       weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
     } else {
       // Box — uniform weight
@@ -165,13 +165,13 @@ uniform float u_centerY;`,
   // Gaussian (type == 0) or Box (type == 1) — vertical pass
   vec3 result = vec3(0.0);
   float totalWeight = 0.0;
-  int samples = int(min(u_radius, 25.0));
+  int samples = int(min(u_radius, 200.0));
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
     float weight;
     if (u_type < 0.5) {
-      float sigma = max(u_radius * 0.5, 1.0);
+      float sigma = max(u_radius * 0.4, 1.0);
       weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
     } else {
       weight = 1.0;

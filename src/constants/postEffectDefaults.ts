@@ -48,18 +48,22 @@ export const DEFAULT_SCREEN_DISTORTION_SETTINGS: ScreenDistortionSettings = {
 // ============================================
 
 export interface GlowSettings {
-  /** Glow brightness multiplier (0–2) */
+  /** Glow brightness multiplier (0–10) */
   intensity: number;
-  /** Glow spread radius in pixels (1–50) */
+  /** Glow spread radius in pixels (1–200) */
   radius: number;
   /** Brightness threshold for glow extraction (0–1) */
   threshold: number;
   /** Blend mode for compositing glow onto scene */
   blendMode: 'add' | 'screen' | 'softlight' | 'overlay';
+  /** Color mode: source preserves original color, gradient blends between two colors */
+  colorMode: 'source' | 'gradient';
   /** Color shift toward cool tones on distant glow samples (0–1) */
   colorShift: number;
-  /** Tint color for the glow */
-  color: string;
+  /** Primary tint color for the glow */
+  colorA: string;
+  /** Secondary color for gradient mode */
+  colorB: string;
 }
 
 export const DEFAULT_GLOW_SETTINGS: GlowSettings = {
@@ -67,8 +71,10 @@ export const DEFAULT_GLOW_SETTINGS: GlowSettings = {
   radius: 10,
   threshold: 0.5,
   blendMode: 'add',
+  colorMode: 'source',
   colorShift: 0,
-  color: '#ffffff',
+  colorA: '#ffffff',
+  colorB: '#0066ff',
 };
 
 // ============================================
@@ -143,7 +149,7 @@ export const POST_EFFECT_LIMITS = {
   /** Maximum number of stacked post effects */
   MAX_POST_EFFECTS: 16,
   /** Maximum blur/glow radius (pixels) */
-  MAX_RADIUS: 50,
+  MAX_RADIUS: 200,
   /** Maximum chromatic aberration offset (pixels) */
   MAX_CA_INTENSITY: 50,
 } as const;

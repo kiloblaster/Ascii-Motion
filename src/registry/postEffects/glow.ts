@@ -26,7 +26,7 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     defaultValue: DEFAULT_GLOW_SETTINGS.intensity,
     interpolation: 'numeric',
     min: 0,
-    max: 2,
+    max: 10,
     step: 0.1,
   },
   {
@@ -67,6 +67,18 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     ],
   },
   {
+    path: 'colorMode',
+    displayName: 'Color Mode',
+    category: 'Glow',
+    valueType: 'select',
+    defaultValue: DEFAULT_GLOW_SETTINGS.colorMode,
+    interpolation: 'hold',
+    options: [
+      { label: 'Source Color', value: 'source' },
+      { label: 'A & B Gradient', value: 'gradient' },
+    ],
+  },
+  {
     path: 'colorShift',
     displayName: 'Color Shift',
     category: 'Glow',
@@ -78,27 +90,45 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
     step: 0.1,
   },
   {
-    path: 'color',
-    displayName: 'Color',
+    path: 'colorA',
+    displayName: 'Color A',
     category: 'Glow',
     valueType: 'color',
-    defaultValue: DEFAULT_GLOW_SETTINGS.color,
+    defaultValue: DEFAULT_GLOW_SETTINGS.colorA,
     interpolation: 'hold',
+  },
+  {
+    path: 'colorB',
+    displayName: 'Color B',
+    category: 'Glow',
+    valueType: 'color',
+    defaultValue: DEFAULT_GLOW_SETTINGS.colorB,
+    interpolation: 'hold',
+    visibleWhen: { path: 'colorMode', values: ['gradient'] },
   },
 ];
 
 // Pass 0: Threshold extraction — extract bright pixels
 const thresholdShader = buildFragmentShader(
   `uniform float u_threshold;
-uniform vec3 u_color;`,
+uniform vec3 u_colorA;
+uniform vec3 u_colorB;
+uniform float u_colorMode;`,
   `  vec4 texel = texture(u_texture, v_texCoord);
   float lum = luminance(texel.rgb);
   
   // Soft threshold with smooth transition
   float brightness = smoothstep(u_threshold, u_threshold + 0.1, lum);
   
-  // Tint with glow color
-  vec3 glowColor = texel.rgb * brightness * u_color;
+  // Color mode: 0 = source (tint with colorA), 1 = gradient (lerp A→B by luminance)
+  vec3 tint;
+  if (u_colorMode < 0.5) {
+    tint = texel.rgb * u_colorA;
+  } else {
+    tint = mix(u_colorA, u_colorB, lum);
+  }
+  
+  vec3 glowColor = tint * brightness;
   
   fragColor = vec4(glowColor, texel.a * brightness);`,
 );
@@ -110,11 +140,11 @@ const horizontalBlurShader = buildFragmentShader(
   vec3 result = vec3(0.0);
   float totalWeight = 0.0;
   
-  int samples = int(min(u_radius, 25.0));
+  int samples = int(min(u_radius, 200.0));
+  float sigma = max(u_radius * 0.4, 1.0);
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
-    float sigma = max(u_radius * 0.5, 1.0);
     float weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
     vec2 sampleUV = v_texCoord + vec2(offset * texelSize.x, 0.0);
     result += texture(u_texture, sampleUV).rgb * weight;
@@ -137,11 +167,11 @@ uniform float u_colorShift;`,
   vec3 result = vec3(0.0);
   float totalWeight = 0.0;
   
-  int samples = int(min(u_radius, 25.0));
+  int samples = int(min(u_radius, 200.0));
+  float sigma = max(u_radius * 0.4, 1.0);
   
   for (int i = -samples; i <= samples; i++) {
     float offset = float(i);
-    float sigma = max(u_radius * 0.5, 1.0);
     float weight = exp(-0.5 * (offset * offset) / (sigma * sigma));
     vec2 sampleUV = v_texCoord + vec2(0.0, offset * texelSize.y);
     
