@@ -51,6 +51,11 @@ export class WebGLPostProcessor {
   // Input texture (uploaded from Canvas2D)
   private inputTexture: WebGLTexture | null = null;
 
+  // Snapshot texture for multi-pass effects (preserves pre-effect input
+  // so ping-pong writes don't overwrite it)
+  private originalSnapshot: WebGLTexture | null = null;
+  private snapshotFb: WebGLFramebuffer | null = null;
+
   // Passthrough program
   private passthroughProgram: ShaderProgram | null = null;
 
@@ -121,6 +126,10 @@ export class WebGLPostProcessor {
     // Delete input texture
     if (this.inputTexture) gl.deleteTexture(this.inputTexture);
 
+    // Delete snapshot texture and framebuffer
+    if (this.originalSnapshot) gl.deleteTexture(this.originalSnapshot);
+    if (this.snapshotFb) gl.deleteFramebuffer(this.snapshotFb);
+
     // Delete quad geometry
     if (this.quadVBO) gl.deleteBuffer(this.quadVBO);
     if (this.quadVAO) gl.deleteVertexArray(this.quadVAO);
@@ -130,6 +139,8 @@ export class WebGLPostProcessor {
     this.gl = null;
     this.canvas = null;
     this.inputTexture = null;
+    this.originalSnapshot = null;
+    this.snapshotFb = null;
     this.quadVAO = null;
     this.quadVBO = null;
     this.passthroughProgram = null;
@@ -197,10 +208,20 @@ export class WebGLPostProcessor {
       const isLast = i === effects.length - 1;
       const passes = effect.entry.passes ?? 1;
 
-      // Snapshot the texture that was the input BEFORE this effect's passes.
-      // Multi-pass shaders can bind this as u_original (texture unit 1) to
-      // composite their result with the pre-effect scene.
-      const effectOriginalInput = currentInput;
+      // For multi-pass effects, snapshot the current input to a dedicated
+      // texture so ping-pong writes can't overwrite it. Without this, when
+      // glow (3-pass) runs after another effect, pass 1 can overwrite the
+      // FB texture that effectOriginalInput points to, corrupting u_original.
+      let effectOriginalInput = currentInput;
+      if (passes > 1 && currentInput !== this.inputTexture) {
+        // Copy currentInput → originalSnapshot via blit
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.framebuffers[1 - currentFbIndex]);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.snapshotFb);
+        gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        effectOriginalInput = this.originalSnapshot!;
+      }
 
       for (let pass = 0; pass < passes; pass++) {
         const isLastPassOfLastEffect = isLast && pass === passes - 1;
@@ -403,6 +424,25 @@ export class WebGLPostProcessor {
       this.framebuffers[i] = fb;
       this.fbTextures[i] = tex;
     }
+
+    // Snapshot texture + framebuffer for multi-pass effect u_original preservation
+    if (this.originalSnapshot) gl.deleteTexture(this.originalSnapshot);
+    if (this.snapshotFb) gl.deleteFramebuffer(this.snapshotFb);
+
+    const snapTex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, snapTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+    const snapFb = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, snapFb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, snapTex, 0);
+
+    this.originalSnapshot = snapTex;
+    this.snapshotFb = snapFb;
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     this.fbWidth = width;
