@@ -27,6 +27,10 @@ import {
   convertTextToPath,
   minifySvg
 } from './svgExportUtils';
+import { getPostEffect } from '../registry/postEffectRegistry';
+import { evaluatePostEffectBlock, getActivePostEffects } from './postEffectsPipeline';
+import type { PostEffectTrack } from '../types/postEffect';
+import { FULLSCREEN_VERTEX_SHADER } from './webgl/commonShaders';
 
 interface JsonExportFrameColors {
   foreground?: Record<string, string> | string;
@@ -757,6 +761,23 @@ export class ExportRenderer {
 
       this.updateProgress('Building CSS styles...', 40);
 
+      // Build shader bundle if post effects are enabled
+      const htmlShaderBundle = (settings.includePostEffects !== false && data.postEffectTracks)
+        ? this.buildShaderExportBundle(data.postEffectTracks, data.frames.length)
+        : null;
+
+      // Canvas dimensions for shader overlay
+      const htmlFontSize = settings.fontSize || data.typography?.fontSize || 16;
+      const htmlCharSpacing = data.typography?.characterSpacing ?? 1.0;
+      const htmlLineSpacing = data.typography?.lineSpacing ?? 1.0;
+      const htmlBaseCharW = htmlFontSize * 0.6;
+      const htmlBaseCharH = htmlFontSize;
+      const htmlCellW = htmlBaseCharW * htmlCharSpacing;
+      const htmlCellH = htmlBaseCharH * htmlLineSpacing;
+      const htmlCanvasW = Number((htmlCellW * data.canvasDimensions.width).toFixed(2));
+      const htmlCanvasH = Number((htmlCellH * data.canvasDimensions.height).toFixed(2));
+      const htmlFontFamily = data.fontMetrics?.fontFamily || 'SF Mono, Monaco, Cascadia Code, Consolas, monospace';
+
       const animationDuration = (data.frames.reduce((sum, frame) => sum + frame.duration, 0) / 1000) / settings.animationSpeed;
 
       // Generate complete HTML document
@@ -806,6 +827,7 @@ export class ExportRenderer {
     }
 
     .animation-stage {
+      position: relative;
       --cols: ${data.canvasDimensions.width};
       --rows: ${data.canvasDimensions.height};
       background-color: ${data.canvasBackgroundColor};
@@ -952,7 +974,8 @@ export class ExportRenderer {
   <main class="layout">
     <div class="animation-shell">
       <div class="animation-stage" id="animationStage">
-        <div class="animation-canvas" id="animationCanvas"></div>
+        <div class="animation-canvas" id="animationCanvas"></div>${htmlShaderBundle ? `
+        <canvas id="shaderCanvas" width="${htmlCanvasW}" height="${htmlCanvasH}" style="position:absolute;top:16px;left:16px;width:${htmlCanvasW}px;height:${htmlCanvasH}px;pointer-events:none;"></canvas>` : ''}
       </div>
 
       <div class="controls">
@@ -1132,7 +1155,8 @@ export class ExportRenderer {
         activeFrameElement = nextFrame;
         currentFrameIndex = index;
         updateFrameIndicator();
-        updateControlStates();
+        updateControlStates();${htmlShaderBundle ? `
+        renderShaderFrame(index);` : ''}
       }
 
       function scheduleNextFrame() {
@@ -1228,7 +1252,66 @@ export class ExportRenderer {
           stopAnimation({ reset: false });
         }
       });
+${htmlShaderBundle ? `
+      // Canvas-based shader rendering
+      var shaderCanvas = document.getElementById('shaderCanvas');
+      var _shaderRenderCanvas = document.createElement('canvas');
+      _shaderRenderCanvas.width = ${htmlCanvasW};
+      _shaderRenderCanvas.height = ${htmlCanvasH};
+      var _shaderCtx = _shaderRenderCanvas.getContext('2d');
+      var _shaderCellW = ${Number(htmlCellW.toFixed(4))};
+      var _shaderCellH = ${Number(htmlCellH.toFixed(4))};
+      var _shaderFontSize = ${htmlFontSize};
+      var _shaderFontFamily = ${JSON.stringify(htmlFontFamily)};
+      var _shaderBgColor = ${JSON.stringify(data.canvasBackgroundColor)};
 
+      function renderShaderFrame(index) {
+        if (!_shaderCtx || !shaderCanvas) return;
+        var frame = frameData[index];
+        if (!frame) return;
+
+        // Render frame to offscreen canvas
+        if (_shaderBgColor && _shaderBgColor !== 'transparent') {
+          _shaderCtx.fillStyle = _shaderBgColor;
+          _shaderCtx.fillRect(0, 0, ${htmlCanvasW}, ${htmlCanvasH});
+        } else {
+          _shaderCtx.clearRect(0, 0, ${htmlCanvasW}, ${htmlCanvasH});
+        }
+        _shaderCtx.textAlign = 'center';
+        _shaderCtx.textBaseline = 'middle';
+        _shaderCtx.font = _shaderFontSize + 'px ' + _shaderFontFamily;
+        _shaderCtx.imageSmoothingEnabled = false;
+
+        for (var y = 0; y < frame.characters.length; y++) {
+          for (var x = 0; x < frame.characters[y].length; x++) {
+            var ch = frame.characters[y][x];
+            var color = frame.colors[y][x];
+            var bg = frame.backgrounds[y][x];
+
+            if (bg && bg !== 'transparent') {
+              _shaderCtx.fillStyle = bg;
+              _shaderCtx.fillRect(x * _shaderCellW, y * _shaderCellH, _shaderCellW, _shaderCellH);
+            }
+            if (ch && ch !== ' ') {
+              _shaderCtx.fillStyle = color || '#ffffff';
+              _shaderCtx.fillText(ch, x * _shaderCellW + _shaderCellW / 2, y * _shaderCellH + _shaderCellH / 2);
+            }
+          }
+        }
+
+        // Copy to shader canvas, apply shaders, copy back to visible canvas
+        var sCtx = shaderCanvas.getContext('2d');
+        if (sCtx) {
+          sCtx.clearRect(0, 0, shaderCanvas.width, shaderCanvas.height);
+          sCtx.drawImage(_shaderRenderCanvas, 0, 0);
+        }
+        if (typeof window._applyShaders === 'function') {
+          window._applyShaders(shaderCanvas, index, index / ${data.frameRate || 12});
+        }
+      }
+
+${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
+` : ''}
       window.onload = function() {
         initializeFrames();
 
@@ -1349,6 +1432,11 @@ export class ExportRenderer {
 
       this.updateProgress('Generating component code...', 60);
 
+      // Build shader bundle if post effects are enabled
+      const shaderBundle = (settings.includePostEffects !== false && data.postEffectTracks)
+        ? this.buildShaderExportBundle(data.postEffectTracks, data.frames.length)
+        : null;
+
       const componentCode = this.generateReactComponentCode({
         componentName,
         framesJson,
@@ -1361,7 +1449,9 @@ export class ExportRenderer {
         cellHeight,
         fontSize,
         fontFamily: fontStack,
-        backgroundColor: settings.includeBackground ? data.canvasBackgroundColor : null
+        backgroundColor: settings.includeBackground ? data.canvasBackgroundColor : null,
+        shaderBundle,
+        frameRate: data.frameRate,
       });
 
       this.updateProgress('Saving file...', 90);
@@ -1419,6 +1509,8 @@ export class ExportRenderer {
     fontSize: number;
     fontFamily: string;
     backgroundColor: string | null;
+    shaderBundle: ReturnType<ExportRenderer['buildShaderExportBundle']>;
+    frameRate: number;
   }): string {
     const {
       componentName,
@@ -1432,7 +1524,9 @@ export class ExportRenderer {
       cellHeight,
       fontSize,
       fontFamily,
-      backgroundColor
+      backgroundColor,
+      shaderBundle,
+      frameRate,
     } = options;
 
     const cellWidthLiteral = Number(cellWidth.toFixed(4));
@@ -1628,6 +1722,14 @@ export class ExportRenderer {
     if (includeControls) {
       effectLines.push('');
       effectLines.push('  setActiveFrame(index);');
+    }
+
+    // Add shader post-processing call at the end of drawFrame
+    if (shaderBundle) {
+      effectLines.push('');
+      effectLines.push('  if (typeof window._applyShaders === "function") {');
+      effectLines.push(`    window._applyShaders(canvas, index, index / ${frameRate || 12});`);
+      effectLines.push('  }');
     }
 
     effectLines.push('};');
@@ -1833,6 +1935,16 @@ export class ExportRenderer {
     lines.push(`const FONT_SIZE = ${fontSize};`);
     lines.push(`const FONT_FAMILY = ${fontFamilyLiteral};`);
     lines.push(`const BACKGROUND_COLOR = ${backgroundLiteral};`);
+
+    // Embed WebGL shader runtime if shaders are included
+    if (shaderBundle) {
+      lines.push('');
+      lines.push('// WebGL Shader Post-Processing');
+      lines.push('if (typeof window !== "undefined") {');
+      lines.push(this.generateWebGLShaderRuntime(shaderBundle));
+      lines.push('}');
+    }
+
     lines.push('');
     lines.push(componentBlock);
     lines.push('');
@@ -3952,8 +4064,332 @@ export class ExportRenderer {
     }
   }
 
+  // ============================================
+  // SHADER EXPORT HELPERS
+  // ============================================
+
   /**
-   * Update export progress
+   * Build a self-contained shader data bundle for embedding in React/HTML exports.
+   * Pre-computes per-frame resolved settings so we don't need to embed
+   * keyframe interpolation logic in the exported file.
+   */
+  private buildShaderExportBundle(
+    postEffectTracks: PostEffectTrack[],
+    totalFrames: number,
+  ): {
+    /** Unique shader effect descriptors used across all frames */
+    shaders: Array<{
+      type: string;
+      fragmentShader: string;
+      passes: number;
+      passShaders: string[];
+      properties: Array<{
+        path: string;
+        valueType: string;
+        options?: { value: string | number }[];
+      }>;
+      passUniforms?: Array<Record<string, unknown>>;
+    }>;
+    /** Per-frame array: list of { shaderIndex, settings } */
+    perFramePasses: Array<Array<{ shaderIndex: number; settings: Record<string, unknown> }>>;
+  } | null {
+    if (!postEffectTracks || postEffectTracks.length === 0) return null;
+
+    // Collect unique effect types used
+    const usedTypes = new Set<string>();
+    for (const track of postEffectTracks) {
+      usedTypes.add(track.effectBlock.postEffectType);
+    }
+
+    // Build shader descriptors (indexed)
+    const typeToIndex = new Map<string, number>();
+    const shaders: Array<{
+      type: string;
+      fragmentShader: string;
+      passes: number;
+      passShaders: string[];
+      properties: Array<{
+        path: string;
+        valueType: string;
+        options?: { value: string | number }[];
+      }>;
+      passUniforms?: Array<Record<string, unknown>>;
+    }> = [];
+
+    for (const type of usedTypes) {
+      const entry = getPostEffect(type);
+      if (!entry) continue;
+
+      typeToIndex.set(type, shaders.length);
+      const passes = entry.passes ?? 1;
+      const passShaders: string[] = [];
+      for (let p = 0; p < passes; p++) {
+        passShaders.push(entry.passShaders?.[p] ?? entry.fragmentShader);
+      }
+
+      shaders.push({
+        type,
+        fragmentShader: entry.fragmentShader,
+        passes,
+        passShaders,
+        properties: entry.propertyDefinitions.map((d) => ({
+          path: d.path,
+          valueType: d.valueType,
+          options: d.options,
+        })),
+        passUniforms: entry.passUniforms,
+      });
+    }
+
+    if (shaders.length === 0) return null;
+
+    // Pre-compute per-frame passes
+    const perFramePasses: Array<Array<{ shaderIndex: number; settings: Record<string, unknown> }>> = [];
+    for (let frame = 0; frame < totalFrames; frame++) {
+      const activeBlocks = getActivePostEffects(postEffectTracks, frame);
+      const framePasses: Array<{ shaderIndex: number; settings: Record<string, unknown> }> = [];
+
+      for (const block of activeBlocks) {
+        const idx = typeToIndex.get(block.postEffectType);
+        if (idx === undefined) continue;
+        const settings = evaluatePostEffectBlock(block, frame);
+        framePasses.push({ shaderIndex: idx, settings });
+      }
+
+      perFramePasses.push(framePasses);
+    }
+
+    return { shaders, perFramePasses };
+  }
+
+  /**
+   * Generate self-contained vanilla JavaScript code for a WebGL2 post-processing
+   * pipeline. This code can be embedded directly in HTML or React exports.
+   *
+   * The generated code exposes a single function:
+   *   applyShaders(canvas, frameIndex, time)
+   *
+   * It initializes lazily on first call, creating a hidden WebGL2 canvas,
+   * compiling shaders, and building the fullscreen quad.
+   */
+  private generateWebGLShaderRuntime(bundle: NonNullable<ReturnType<ExportRenderer['buildShaderExportBundle']>>): string {
+    const vertexShaderStr = JSON.stringify(FULLSCREEN_VERTEX_SHADER);
+
+    // Build the SHADER_DEFS array literal
+    const shaderDefsEntries = bundle.shaders.map((s) => {
+      const passShadersSerialized = '[' + s.passShaders.map((ps) => JSON.stringify(ps)).join(',\n') + ']';
+      const propertiesSerialized = JSON.stringify(s.properties);
+      const passUniformsSerialized = s.passUniforms ? JSON.stringify(s.passUniforms) : 'null';
+      return `{
+    passes: ${s.passes},
+    passShaders: ${passShadersSerialized},
+    properties: ${propertiesSerialized},
+    passUniforms: ${passUniformsSerialized}
+  }`;
+    });
+
+    const perFrameJson = JSON.stringify(bundle.perFramePasses);
+
+    return `
+// ── WebGL Shader Post-Processing Runtime ──
+(function() {
+  var VERTEX_SRC = ${vertexShaderStr};
+  var SHADER_DEFS = [${shaderDefsEntries.join(',\n')}];
+  var FRAME_PASSES = ${perFrameJson};
+
+  var gl = null;
+  var glCanvas = null;
+  var quadVAO = null;
+  var programCache = {};
+  var fbA = null, fbB = null, texA = null, texB = null;
+  var inputTex = null;
+  var fbW = 0, fbH = 0;
+
+  function hexToRgb(hex) {
+    var c = hex.replace('#', '');
+    return [parseInt(c.substring(0,2),16)/255, parseInt(c.substring(2,4),16)/255, parseInt(c.substring(4,6),16)/255];
+  }
+
+  function initGL() {
+    if (gl) return true;
+    glCanvas = document.createElement('canvas');
+    gl = glCanvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true, antialias: false });
+    if (!gl) return false;
+
+    // Fullscreen quad
+    var verts = new Float32Array([-1,-1,0,0, 1,-1,1,0, -1,1,0,1, 1,1,1,1]);
+    quadVAO = gl.createVertexArray();
+    var vbo = gl.createBuffer();
+    gl.bindVertexArray(quadVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+    gl.bindVertexArray(null);
+
+    inputTex = gl.createTexture();
+    return true;
+  }
+
+  function getProgram(fragSrc) {
+    if (programCache[fragSrc]) return programCache[fragSrc];
+    var vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, VERTEX_SRC);
+    gl.compileShader(vs);
+    var fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, fragSrc);
+    gl.compileShader(fs);
+    var prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.bindAttribLocation(prog, 0, 'a_position');
+    gl.bindAttribLocation(prog, 1, 'a_texCoord');
+    gl.linkProgram(prog);
+    programCache[fragSrc] = prog;
+    return prog;
+  }
+
+  function uploadTex(tex, source) {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  }
+
+  function ensureFBs(w, h) {
+    if (fbW === w && fbH === h) return;
+    [fbA, fbB].forEach(function(f) { if (f) gl.deleteFramebuffer(f); });
+    [texA, texB].forEach(function(t) { if (t) gl.deleteTexture(t); });
+    var fbs = [null, null], texs = [null, null];
+    for (var i = 0; i < 2; i++) {
+      var t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      var fb = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      fbs[i] = fb; texs[i] = t;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    fbA = fbs[0]; fbB = fbs[1]; texA = texs[0]; texB = texs[1];
+    fbW = w; fbH = h;
+  }
+
+  function setUniformValue(prog, name, value, prop) {
+    var loc = gl.getUniformLocation(prog, name);
+    if (!loc) return;
+    if (prop.valueType === 'number') { gl.uniform1f(loc, value); }
+    else if (prop.valueType === 'boolean') { gl.uniform1f(loc, value ? 1.0 : 0.0); }
+    else if (prop.valueType === 'color') { var rgb = hexToRgb(value); gl.uniform3fv(loc, rgb); }
+    else if (prop.valueType === 'select' || prop.valueType === 'string') {
+      if (typeof value === 'number') { gl.uniform1f(loc, value); }
+      else if (typeof value === 'string' && prop.options) {
+        var idx = -1;
+        for (var j = 0; j < prop.options.length; j++) { if (prop.options[j].value === value) { idx = j; break; } }
+        gl.uniform1f(loc, idx >= 0 ? idx : 0);
+      }
+    }
+  }
+
+  window._applyShaders = function(canvas, frameIndex, time) {
+    if (!initGL()) return;
+    var passes = FRAME_PASSES[frameIndex];
+    if (!passes || passes.length === 0) return;
+
+    var w = canvas.width, h = canvas.height;
+    glCanvas.width = w;
+    glCanvas.height = h;
+
+    uploadTex(inputTex, canvas);
+    ensureFBs(w, h);
+
+    var curInput = inputTex;
+    var curFbIdx = 0;
+    var fbs = [fbA, fbB], texs = [texA, texB];
+    var totalPasses = 0;
+    for (var e = 0; e < passes.length; e++) { totalPasses += SHADER_DEFS[passes[e].shaderIndex].passes; }
+
+    var passCount = 0;
+    for (var ei = 0; ei < passes.length; ei++) {
+      var entry = passes[ei];
+      var def = SHADER_DEFS[entry.shaderIndex];
+      var effectOriginal = curInput;
+
+      for (var p = 0; p < def.passes; p++) {
+        passCount++;
+        var isLast = (passCount === totalPasses);
+        var fragSrc = def.passShaders[p];
+        var prog = getProgram(fragSrc);
+
+        if (isLast) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        } else {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, fbs[curFbIdx]);
+        }
+        gl.viewport(0, 0, w, h);
+        gl.useProgram(prog);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, curInput);
+        var uTex = gl.getUniformLocation(prog, 'u_texture');
+        if (uTex) gl.uniform1i(uTex, 0);
+
+        if (def.passes > 1) {
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, effectOriginal);
+          var uOrig = gl.getUniformLocation(prog, 'u_original');
+          if (uOrig) gl.uniform1i(uOrig, 1);
+        }
+
+        var uRes = gl.getUniformLocation(prog, 'u_resolution');
+        if (uRes) gl.uniform2fv(uRes, [w, h]);
+        var uTime = gl.getUniformLocation(prog, 'u_time');
+        if (uTime) gl.uniform1f(uTime, time || 0);
+        var uFrame = gl.getUniformLocation(prog, 'u_frame');
+        if (uFrame) gl.uniform1f(uFrame, frameIndex);
+
+        var overrides = def.passUniforms ? def.passUniforms[p] : null;
+        for (var pi = 0; pi < def.properties.length; pi++) {
+          var prop = def.properties[pi];
+          var uName = 'u_' + prop.path;
+          var val = (overrides && overrides[prop.path] !== undefined) ? overrides[prop.path] : entry.settings[prop.path];
+          if (val !== undefined) setUniformValue(prog, uName, val, prop);
+        }
+
+        gl.bindVertexArray(quadVAO);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.bindVertexArray(null);
+
+        if (!isLast) {
+          curInput = texs[curFbIdx];
+          curFbIdx = 1 - curFbIdx;
+        }
+      }
+    }
+
+    // Read back result onto source canvas
+    var ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(glCanvas, 0, 0);
+      ctx.restore();
+    }
+  };
+})();
+`;
+  }
    */
   private updateProgress(message: string, percentage: number): void {
     if (this.progressCallback) {
