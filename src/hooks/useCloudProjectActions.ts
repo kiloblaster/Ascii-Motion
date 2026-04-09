@@ -209,11 +209,14 @@ export function useCloudProjectActions() {
               const preview = await generatePreview(
                 [frame],
                 {
+                  frameIndex: 0,
                   width: sessionData.canvas.width,
                   height: sessionData.canvas.height,
                   backgroundColor: sessionData.canvas.canvasBackgroundColor,
                   fontSize: sessionData.typography?.fontSize || 16,
-                  fontFamily: getFontStack(sessionData.typography?.selectedFontId)
+                  fontFamily: getFontStack(sessionData.typography?.selectedFontId),
+                  postEffectTracks: sessionData.postEffectTracks,
+                  timelineFrameIndex: frameIndex,
                 }
               );
 
