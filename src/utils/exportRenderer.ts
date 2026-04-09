@@ -1307,7 +1307,7 @@ ${htmlShaderBundle ? `
           sCtx.drawImage(_shaderRenderCanvas, 0, 0);
         }
         if (typeof window._applyShaders === 'function') {
-          window._applyShaders(shaderCanvas, index, index / ${data.frameRate || 12});
+          window._applyShaders(shaderCanvas, index, index / ${data.frameRate || 12}, _shaderBgColor);
         }
       }
 
@@ -1729,7 +1729,7 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
     if (shaderBundle) {
       effectLines.push('');
       effectLines.push('  if (typeof window._applyShaders === "function") {');
-      effectLines.push(`    window._applyShaders(canvas, index, index / ${frameRate || 12});`);
+      effectLines.push(`    window._applyShaders(canvas, index, index / ${frameRate || 12}, BACKGROUND_COLOR);`);
       effectLines.push('  }');
     }
 
@@ -4204,6 +4204,7 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
   var quadVAO = null;
   var programCache = {};
   var fbA = null, fbB = null, texA = null, texB = null;
+  var snapFb = null, snapTex = null;
   var inputTex = null;
   var fbW = 0, fbH = 0;
 
@@ -4266,10 +4267,10 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
 
   function ensureFBs(w, h) {
     if (fbW === w && fbH === h) return;
-    [fbA, fbB].forEach(function(f) { if (f) gl.deleteFramebuffer(f); });
-    [texA, texB].forEach(function(t) { if (t) gl.deleteTexture(t); });
-    var fbs = [null, null], texs = [null, null];
-    for (var i = 0; i < 2; i++) {
+    [fbA, fbB, snapFb].forEach(function(f) { if (f) gl.deleteFramebuffer(f); });
+    [texA, texB, snapTex].forEach(function(t) { if (t) gl.deleteTexture(t); });
+    var fbs = [null, null, null], texs = [null, null, null];
+    for (var i = 0; i < 3; i++) {
       var t = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, t);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -4284,6 +4285,7 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     fbA = fbs[0]; fbB = fbs[1]; texA = texs[0]; texB = texs[1];
+    snapFb = fbs[2]; snapTex = texs[2];
     fbW = w; fbH = h;
   }
 
@@ -4303,7 +4305,7 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
     }
   }
 
-  window._applyShaders = function(canvas, frameIndex, time) {
+  window._applyShaders = function(canvas, frameIndex, time, bgColor) {
     if (!initGL()) return;
     var passes = FRAME_PASSES[frameIndex];
     if (!passes || passes.length === 0) return;
@@ -4315,6 +4317,8 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
     uploadTex(inputTex, canvas);
     ensureFBs(w, h);
 
+    var bgRgb = bgColor ? hexToRgb(bgColor) : [0, 0, 0];
+
     var curInput = inputTex;
     var curFbIdx = 0;
     var fbs = [fbA, fbB], texs = [texA, texB];
@@ -4325,7 +4329,17 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
     for (var ei = 0; ei < passes.length; ei++) {
       var entry = passes[ei];
       var def = SHADER_DEFS[entry.shaderIndex];
+
+      // Snapshot curInput for multi-pass u_original to avoid ping-pong corruption
       var effectOriginal = curInput;
+      if (def.passes > 1 && (curInput === texA || curInput === texB)) {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, curInput === texA ? fbA : fbB);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, snapFb);
+        gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+        effectOriginal = snapTex;
+      }
 
       for (var p = 0; p < def.passes; p++) {
         passCount++;
@@ -4359,6 +4373,8 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
         if (uTime) gl.uniform1f(uTime, time || 0);
         var uFrame = gl.getUniformLocation(prog, 'u_frame');
         if (uFrame) gl.uniform1f(uFrame, frameIndex);
+        var uBg = gl.getUniformLocation(prog, 'u_bgColor');
+        if (uBg) gl.uniform3fv(uBg, bgRgb);
 
         var overrides = def.passUniforms ? def.passUniforms[p] : null;
         for (var pi = 0; pi < def.properties.length; pi++) {
