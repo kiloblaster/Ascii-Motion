@@ -67,9 +67,9 @@ export interface GlowSettings {
 }
 
 export const DEFAULT_GLOW_SETTINGS: GlowSettings = {
-  intensity: 0.5,
-  radius: 10,
-  threshold: 0.5,
+  intensity: 2,
+  radius: 48,
+  threshold: 0,
   blendMode: 'add',
   colorMode: 'source',
   colorShift: 0,
