@@ -4390,6 +4390,9 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
 })();
 `;
   }
+
+  /**
+   * Update export progress
    */
   private updateProgress(message: string, percentage: number): void {
     if (this.progressCallback) {
