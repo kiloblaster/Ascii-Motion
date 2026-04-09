@@ -120,7 +120,11 @@ export function createShaderProgram(
 // PROGRAM CACHE
 // ============================================
 
+// Cache is keyed by GL context + shader source to avoid cross-context reuse.
+// WebGL programs are tied to a specific GL context — using a program compiled
+// for context A on context B silently produces no output.
 const programCache = new Map<string, ShaderProgram>();
+let cacheContext: WebGL2RenderingContext | null = null;
 
 /**
  * Generate a cache key from shader sources.
@@ -137,6 +141,7 @@ function cacheKey(vertexSource: string, fragmentSource: string): string {
 
 /**
  * Get or create a shader program (cached by source).
+ * Cache is automatically invalidated when the GL context changes.
  */
 export function getOrCreateProgram(
   gl: WebGL2RenderingContext,
@@ -144,6 +149,12 @@ export function getOrCreateProgram(
   fragmentSource: string,
   uniformNames: string[],
 ): ShaderProgram {
+  // Invalidate cache if context changed — programs are not portable across contexts
+  if (cacheContext !== gl) {
+    programCache.clear();
+    cacheContext = gl;
+  }
+
   const key = cacheKey(vertexSource, fragmentSource);
   const cached = programCache.get(key);
   if (cached) return cached;
@@ -158,4 +169,5 @@ export function getOrCreateProgram(
  */
 export function clearProgramCache(): void {
   programCache.clear();
+  cacheContext = null;
 }
