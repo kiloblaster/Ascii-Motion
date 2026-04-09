@@ -131,6 +131,7 @@ export class ExportRenderer {
           data.postEffectTracks,
           data.currentFrameIndex,
           data.frameRate,
+          data.canvasBackgroundColor,
         );
       }
 
@@ -3903,6 +3904,7 @@ ${this.generateWebGLShaderRuntime(htmlShaderBundle!)}
             data.postEffectTracks,
             animFrameIndex,
             data.frameRate,
+            data.canvasBackgroundColor,
           );
         }
         

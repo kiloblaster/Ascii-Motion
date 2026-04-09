@@ -219,6 +219,7 @@ export const useOptimizedPlayback = () => {
           postEffectTracks,
           startingFrame,
           config.frameRate,
+          useCanvasStore.getState().canvasBackgroundColor,
         );
       }
     }
@@ -264,6 +265,7 @@ export const useOptimizedPlayback = () => {
                 postEffectTracks,
                 currentIndex,
                 config.frameRate,
+                useCanvasStore.getState().canvasBackgroundColor,
               );
             }
           }
@@ -312,6 +314,7 @@ export const useOptimizedPlayback = () => {
                 postEffectTracks,
                 currentIndex,
                 config.frameRate,
+                useCanvasStore.getState().canvasBackgroundColor,
               );
             }
           }

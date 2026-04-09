@@ -53,7 +53,8 @@ const propertyDefinitions: PostEffectPropertyDefinition[] = [
 const fragmentShader = buildFragmentShader(
   `uniform float u_amount;
 uniform float u_type;
-uniform float u_frequency;`,
+uniform float u_frequency;
+uniform vec3 u_bgColor;`,
   `  vec2 uv = v_texCoord;
   vec2 center = vec2(0.5);
   vec2 delta = uv - center;
@@ -74,10 +75,12 @@ uniform float u_frequency;`,
     distorted = center + delta * distortionFactor;
   }
   
-  // Clamp to valid UV range
-  distorted = clamp(distorted, vec2(0.0), vec2(1.0));
-  
-  fragColor = texture(u_texture, distorted);`,
+  // Fill out-of-bounds pixels with canvas background color
+  if (distorted.x < 0.0 || distorted.x > 1.0 || distorted.y < 0.0 || distorted.y > 1.0) {
+    fragColor = vec4(u_bgColor, 1.0);
+  } else {
+    fragColor = texture(u_texture, distorted);
+  }`,
 );
 
 export const screenDistortionEffect: PostEffectRegistryEntry = {

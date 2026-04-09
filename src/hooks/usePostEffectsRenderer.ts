@@ -19,10 +19,20 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useCanvasContext } from '../contexts/CanvasContext';
 import { useTimelineStore } from '../stores/timelineStore';
+import { useCanvasStore } from '../stores/canvasStore';
 import { WebGLPostProcessor } from '../utils/webgl/WebGLPostProcessor';
 import { buildPostEffectPasses, hasAnyPostEffects } from '../utils/postEffectsPipeline';
 import { onCanvasRendered } from '../utils/renderScheduler';
 import type { PostEffectTrack } from '../types/postEffect';
+
+/** Convert a hex color string to normalized [r, g, b] (0–1). */
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16) / 255;
+  const g = parseInt(h.substring(2, 4), 16) / 255;
+  const b = parseInt(h.substring(4, 6), 16) / 255;
+  return [r, g, b];
+}
 
 // ============================================
 // MODULE-LEVEL OVERLAY CANVAS REF
@@ -63,6 +73,7 @@ export function usePostEffectsRenderer(): {
   const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
   const currentFrame = useTimelineStore((s) => s.view.currentFrame);
   const frameRate = useTimelineStore((s) => s.config.frameRate);
+  const canvasBgColor = useCanvasStore((s) => s.canvasBackgroundColor);
 
   const hasEffects = hasAnyPostEffects(postEffectTracks);
 
@@ -146,8 +157,8 @@ export function usePostEffectsRenderer(): {
     const time = currentFrame / (frameRate || 12);
     const passes = buildPostEffectPasses(postEffectTracks, currentFrame);
 
-    processor.render(sourceCanvas, passes, time, currentFrame);
-  }, [canvasRef, syncOverlaySize, postEffectTracks, currentFrame, frameRate]);
+    processor.render(sourceCanvas, passes, time, currentFrame, hexToRgb(canvasBgColor || '#000000'));
+  }, [canvasRef, syncOverlaySize, postEffectTracks, currentFrame, frameRate, canvasBgColor]);
 
   // Keep the callback ref in sync so the listener always invokes the
   // latest version without re-subscribing.
@@ -212,6 +223,7 @@ export function applyPlaybackPostEffects(
   postEffectTracks: import('../types/postEffect').PostEffectTrack[],
   frame: number,
   frameRate: number,
+  bgColor?: string,
 ): void {
   if (!hasAnyPostEffects(postEffectTracks)) return;
 
@@ -245,7 +257,7 @@ export function applyPlaybackPostEffects(
   }
 
   const time = frame / (frameRate || 12);
-  playbackProcessor.render(sourceCanvas, passes, time, frame);
+  playbackProcessor.render(sourceCanvas, passes, time, frame, hexToRgb(bgColor || '#000000'));
 }
 
 /** Dispose the persistent playback processor (call when playback stops). */
@@ -276,6 +288,7 @@ export function applyPostEffectsToCanvas(
   postEffectTracks: PostEffectTrack[],
   frame: number,
   frameRate: number,
+  bgColor?: string,
 ): boolean {
   if (!hasAnyPostEffects(postEffectTracks)) return false;
 
@@ -296,7 +309,7 @@ export function applyPostEffectsToCanvas(
 
   try {
     const time = frame / (frameRate || 12);
-    processor.render(sourceCanvas, passes, time, frame);
+    processor.render(sourceCanvas, passes, time, frame, hexToRgb(bgColor || '#000000'));
 
     // Read pixels from WebGL via readPixels + putImageData.
     // drawImage from a WebGL canvas can produce blank output in some browsers

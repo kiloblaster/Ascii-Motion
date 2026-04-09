@@ -156,12 +156,14 @@ export class WebGLPostProcessor {
    * @param effects - Ordered list of active post effects with resolved settings
    * @param time - Current time in seconds
    * @param frame - Current frame number
+   * @param bgColor - Canvas background color as [r, g, b] normalized (0–1)
    */
   render(
     sourceCanvas: HTMLCanvasElement,
     effects: PostEffectPass[],
     time: number,
     frame: number,
+    bgColor?: [number, number, number],
   ): void {
     if (!this.gl || !this.canvas) return;
     const gl = this.gl;
@@ -213,6 +215,7 @@ export class WebGLPostProcessor {
           'u_resolution',
           'u_time',
           'u_frame',
+          'u_bgColor',
           ...effect.entry.propertyDefinitions.map((d) => `u_${d.path}`),
         ];
 
@@ -253,6 +256,9 @@ export class WebGLPostProcessor {
         this.setUniform(gl, program, 'u_resolution', [width, height], 'vec2');
         this.setUniform(gl, program, 'u_time', time, 'float');
         this.setUniform(gl, program, 'u_frame', frame, 'float');
+        if (bgColor) {
+          this.setUniform(gl, program, 'u_bgColor', bgColor, 'vec3');
+        }
 
         // Set per-effect property uniforms
         const passOverrides = effect.entry.passUniforms?.[pass];
