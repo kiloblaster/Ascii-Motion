@@ -11,6 +11,7 @@ import {
   Collapsible,
   CollapsibleContent,
 } from '../ui/collapsible';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { CollapsibleHeader } from '../common/CollapsibleHeader';
 import { useTimelineStore } from '../../stores/timelineStore';
 import { useEffectBlockHistory } from '../../hooks/useEffectBlockHistory';
@@ -61,19 +62,26 @@ export function EffectsSection({ className = '' }: EffectsSectionProps) {
         
         <CollapsibleContent className="collapsible-content mt-2">
           <div className="space-y-2">
-            {registeredEffects.map((effect) => (
-              <Button
-                key={effect.type}
-                variant="outline"
-                size="sm"
-                onClick={() => handleEffectClick(effect.type)}
-                className="w-full justify-start gap-2 h-8 text-xs"
-                title={effect.description}
-              >
-                <effect.icon className="w-3 h-3" />
-                {effect.name}
-              </Button>
-            ))}
+            <TooltipProvider>
+              {registeredEffects.map((effect) => (
+                <Tooltip key={effect.type}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEffectClick(effect.type)}
+                      className="w-full justify-start gap-2 h-8 text-xs"
+                    >
+                      <effect.icon className="w-3 h-3" />
+                      {effect.name}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    <p className="text-xs">{effect.description}</p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+            </TooltipProvider>
 
             {registeredEffects.length === 0 && (
               <div className="text-xs text-muted-foreground">

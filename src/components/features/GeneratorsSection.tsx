@@ -14,6 +14,7 @@ import {
   Collapsible,
   CollapsibleContent,
 } from '../ui/collapsible';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { CollapsibleHeader } from '../common/CollapsibleHeader';
 import { useGeneratorActions } from '../../stores/generatorsStore';
 import { GENERATOR_DEFINITIONS } from '../../constants/generators';
@@ -63,24 +64,31 @@ export function GeneratorsSection({ className = '' }: GeneratorsSectionProps) {
           <div className="space-y-3">
             {/* Generator Buttons */}
             <div className="space-y-2">
-              {GENERATOR_DEFINITIONS.map(generator => {
-                const IconComponent = GENERATOR_ICONS[generator.icon as keyof typeof GENERATOR_ICONS];
-                
-                return (
-                  <Button
-                    key={generator.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleGeneratorClick(generator.id)}
-                    disabled={isGenerating}
-                    className="w-full justify-start gap-2 h-8 text-xs"
-                    title={generator.description}
-                  >
-                    {IconComponent && <IconComponent className="w-3 h-3" />}
-                    {generator.name}
-                  </Button>
-                );
-              })}
+              <TooltipProvider>
+                {GENERATOR_DEFINITIONS.map(generator => {
+                  const IconComponent = GENERATOR_ICONS[generator.icon as keyof typeof GENERATOR_ICONS];
+                  
+                  return (
+                    <Tooltip key={generator.id}>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleGeneratorClick(generator.id)}
+                          disabled={isGenerating}
+                          className="w-full justify-start gap-2 h-8 text-xs"
+                        >
+                          {IconComponent && <IconComponent className="w-3 h-3" />}
+                          {generator.name}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        <p className="text-xs">{generator.description}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </TooltipProvider>
             </div>
             
             {/* Generating Status */}
