@@ -289,6 +289,68 @@ if (u_type < 0.5) {
 5. Verify export integration by exporting an image/video with the effect active
 6. Test stacking: ensure the effect works at any position in the shader stack
 
+## 🌐 Gallery Integration
+
+When adding a new shader, you must also update the **gallery shader pipeline** so that the publish dialog preview, gallery cards, and project detail views render the effect correctly.
+
+The gallery uses a **self-contained** WebGL pipeline (no dependency on the main app's registry or stores). This file lives in two locations and must be updated in **both**:
+
+1. `packages/premium/src/community/utils/galleryShaderPipeline.ts`
+2. `packages/web/marketing/lib/gallery/galleryShaderPipeline.ts`
+
+These two files are identical copies. Changes must be made to both.
+
+### Steps to Add a Shader to the Gallery Pipeline
+
+**1. Add the GLSL fragment shader source**
+
+Near the top of `galleryShaderPipeline.ts`, find the GLSL shader string constants. Add a new `const` with your shader's fragment source, using the `buildFrag()` helper:
+
+```typescript
+const PIXELATE_FRAG = buildFrag(
+  `uniform float u_pixelSize;`,
+  `  vec2 cellSize = vec2(u_pixelSize) / u_resolution;
+  vec2 snapped = cellSize * floor(v_texCoord / cellSize) + cellSize * 0.5;
+  fragColor = texture(u_texture, snapped);`
+);
+```
+
+**2. Add a `SHADER_REGISTRY` entry**
+
+Find the `SHADER_REGISTRY` map and add an entry for your effect type:
+
+```typescript
+SHADER_REGISTRY.set('pixelate', {
+  fragmentShader: PIXELATE_FRAG,
+  passes: 1,
+  propertyDefs: [
+    { path: 'pixelSize', type: 'number', default: 3 },
+  ],
+});
+```
+
+For multi-pass effects, also add `passShaders` and `passUniforms`:
+
+```typescript
+SHADER_REGISTRY.set('myMultiPass', {
+  fragmentShader: DEFAULT_FRAG,         // fallback
+  passes: 2,
+  passShaders: [HORIZONTAL_FRAG, VERTICAL_FRAG],
+  passUniforms: [{ direction: 0 }, { direction: 1 }],
+  propertyDefs: [
+    { path: 'radius', type: 'number', default: 10 },
+  ],
+});
+```
+
+**3. Keep property definitions in sync**
+
+The `propertyDefs` array in the gallery pipeline must match the property definitions in the main app's `src/registry/postEffects/yourEffect.ts`. The property `path`, `type`, and `default` values must be identical so that keyframe data from the timeline serializes and evaluates correctly.
+
+### Why Duplicated?
+
+The `packages/premium` and `packages/web` packages are separate build targets that cannot import from `src/` (the main app). The gallery pipeline embeds all GLSL sources and property metadata directly to remain dependency-free.
+
 ## 📁 File Structure
 
 ```
@@ -312,4 +374,10 @@ src/
 │   └── postEffect.ts                  # Type definitions
 └── constants/
     └── postEffectDefaults.ts          # Default settings & UI definitions
+
+packages/
+├── premium/src/community/utils/
+│   └── galleryShaderPipeline.ts       # Gallery shader pipeline (premium)
+└── web/marketing/lib/gallery/
+    └── galleryShaderPipeline.ts       # Gallery shader pipeline (web, identical copy)
 ```
