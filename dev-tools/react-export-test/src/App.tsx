@@ -17,7 +17,7 @@
 // Uncomment the line above and update the filename to match your export.
 
 import { useCallback, useRef } from 'react';
-import ShaderTest01 from './shader-test-01';
+import ShaderTest02 from './shader-test-02';
 
 type PlaybackApi = {
   play: () => void;
@@ -34,7 +34,7 @@ export default function MyPage() {
 
   return (
     <div>
-      <ShaderTest01
+      <ShaderTest02
         autoPlay={true}
         onReady={handleReady}
       />
