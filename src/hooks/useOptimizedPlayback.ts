@@ -9,6 +9,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { playbackOnlyStore } from '../stores/playbackOnlyStore';
 import { renderFrameDirectly, type DirectRenderSettings } from '../utils/directCanvasRenderer';
 import { compositeLayersAtFrame } from '../utils/layerCompositing';
+import { applyPlaybackPostEffects, disposePlaybackPostEffects, getOverlayCanvas } from './usePostEffectsRenderer';
+import { hasAnyPostEffects } from '../utils/postEffectsPipeline';
 import type { Frame, FrameId } from '../types';
 
 /**
@@ -82,6 +84,9 @@ export const useOptimizedPlayback = () => {
 
     playbackOnlyStore.stop();
 
+    // Dispose the persistent WebGL processor used during playback
+    disposePlaybackPostEffects();
+
     const { setPlaybackMode } = useToolStore.getState();
     setPlaybackMode(false);
 
@@ -150,6 +155,10 @@ export const useOptimizedPlayback = () => {
       0,
     );
 
+    // Capture post effect state for the playback loop
+    const postEffectTracks = tlState.postEffectTracks;
+    const hasPostEffects = hasAnyPostEffects(postEffectTracks);
+
     // Set playback mode across the app
     const { setPlaybackMode } = useToolStore.getState();
     setPlaybackMode(true);
@@ -200,6 +209,21 @@ export const useOptimizedPlayback = () => {
       );
     }
 
+    // Apply post effects to the initial frame
+    if (hasPostEffects && canvasRef.current) {
+      const overlay = getOverlayCanvas();
+      if (overlay) {
+        applyPlaybackPostEffects(
+          canvasRef.current,
+          overlay,
+          postEffectTracks,
+          startingFrame,
+          config.frameRate,
+          useCanvasStore.getState().canvasBackgroundColor,
+        );
+      }
+    }
+
     // ── Playback loop ──
     let currentIndex = startingFrame;
     let lastFrameTime = performance.now();
@@ -230,6 +254,22 @@ export const useOptimizedPlayback = () => {
 
           // Render the pre-computed composited frame directly to canvas
           renderPrecomputedFrame(currentIndex);
+
+          // Apply post effects to the freshly-rendered Canvas2D
+          if (hasPostEffects && canvasRef.current) {
+            const overlay = getOverlayCanvas();
+            if (overlay) {
+              applyPlaybackPostEffects(
+                canvasRef.current,
+                overlay,
+                postEffectTracks,
+                currentIndex,
+                config.frameRate,
+                useCanvasStore.getState().canvasBackgroundColor,
+              );
+            }
+          }
+
           // Fixed timestep: advance by intended duration, not actual elapsed.
           // This prevents cumulative timing drift from rAF overshoot.
           lastFrameTime += frameDurationMs;
@@ -263,6 +303,22 @@ export const useOptimizedPlayback = () => {
             canvasRef as React.RefObject<HTMLCanvasElement>,
             renderSettingsRef.current!,
           );
+
+          // Apply post effects to the freshly-rendered Canvas2D
+          if (hasPostEffects && canvasRef.current) {
+            const overlay = getOverlayCanvas();
+            if (overlay) {
+              applyPlaybackPostEffects(
+                canvasRef.current,
+                overlay,
+                postEffectTracks,
+                currentIndex,
+                config.frameRate,
+                useCanvasStore.getState().canvasBackgroundColor,
+              );
+            }
+          }
+
           // Fixed timestep: advance by intended duration, not actual elapsed.
           lastFrameTime += currentFrame.duration;
           const { fpsMonitorCallback } = useAnimationStore.getState();

@@ -48,6 +48,13 @@ import {
 } from '../types/effectBlock';
 import { getEffect } from '../registry/effectRegistry';
 import { bakeEffectIntoFrames } from '../utils/effectsPipeline';
+import type { PostEffectTrack, PostEffectBlock, PostEffectKeyframe, PostEffectBlockId, PostEffectTrackId, PostEffectPropertyTrackId } from '../types/postEffect';
+import {
+  generatePostEffectBlockId,
+  generatePostEffectTrackId,
+  generatePostEffectPropertyTrackId,
+} from '../types/postEffect';
+import { getPostEffect } from '../registry/postEffectRegistry';
 
 /** Helper: find a track and a keyframe at a specific frame across layers, groups, and effect blocks */
 function findTrackKeyframeByFrame(
@@ -89,15 +96,30 @@ function findTrackKeyframeByFrame(
 }
 
 /**
+ * Helper: find the post effect block that owns a given property track.
+ * Returns { blockId, track } or null if not found.
+ */
+function findPostEffectTrackOwner(
+  postEffectTracks: PostEffectTrack[],
+  trackId: string,
+): { blockId: PostEffectBlockId; track: PostEffectTrack['effectBlock']['propertyTracks'][0] } | null {
+  for (const pet of postEffectTracks) {
+    const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === trackId);
+    if (pt) return { blockId: pet.effectBlock.id, track: pt };
+  }
+  return null;
+}
+
+/**
  * Helper: apply a keyframe updater to an effect property track by trackId.
  * Searches all layers' effectTracks, groups' effectTracks, and globalEffects.
  * Returns updated state slices if found, or null if the trackId was not found.
  */
 function updateEffectPropertyTrackKeyframes(
-  state: { layers: Layer[]; layerGroups: LayerGroup[]; globalEffects: EffectTrack[] },
+  state: { layers: Layer[]; layerGroups: LayerGroup[]; globalEffects: EffectTrack[]; postEffectTracks: PostEffectTrack[] },
   trackId: string,
   updater: (keyframes: EffectKeyframe[]) => EffectKeyframe[],
-): { layers?: Layer[]; layerGroups?: LayerGroup[]; globalEffects?: EffectTrack[] } | null {
+): { layers?: Layer[]; layerGroups?: LayerGroup[]; globalEffects?: EffectTrack[]; postEffectTracks?: PostEffectTrack[] } | null {
   // Search layers
   for (const layer of state.layers) {
     for (const et of (layer.effectTracks ?? [])) {
@@ -150,6 +172,22 @@ function updateEffectPropertyTrackKeyframes(
             ...t.effectBlock,
             propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
               (pt.id as string) !== trackId ? pt : { ...pt, keyframes: updater(pt.keyframes) },
+            ),
+          },
+        }),
+      };
+    }
+  }
+  // Search post effects
+  for (const pet of state.postEffectTracks) {
+    if (pet.effectBlock.propertyTracks.some((pt) => (pt.id as string) === trackId)) {
+      return {
+        postEffectTracks: state.postEffectTracks.map((t) => t.id !== pet.id ? t : {
+          ...t,
+          effectBlock: {
+            ...t.effectBlock,
+            propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+              (pt.id as string) !== trackId ? pt : { ...pt, keyframes: updater(pt.keyframes as unknown as EffectKeyframe[]) as unknown as typeof pt.keyframes },
             ),
           },
         }),
@@ -245,6 +283,9 @@ export interface TimelineState {
 
   // Global effects
   globalEffects: EffectTrack[];
+
+  // Post effects (WebGL shader-based, applied as final render pass)
+  postEffectTracks: PostEffectTrack[];
 
   // View state
   view: TimelineViewState;
@@ -548,6 +589,80 @@ export interface TimelineState {
   ) => void;
 
   // ============================================
+  // POST EFFECT ACTIONS (WebGL Shader Effects)
+  // ============================================
+
+  /** Add a post effect block to the post-processing chain */
+  addPostEffectBlock: (
+    postEffectType: string,
+    startFrame: number,
+    durationFrames: number,
+  ) => PostEffectBlockId | null;
+
+  /** Remove a post effect block */
+  removePostEffectBlock: (blockId: PostEffectBlockId) => void;
+
+  /** Update a post effect block's timing */
+  updatePostEffectBlockTiming: (
+    blockId: PostEffectBlockId,
+    startFrame: number,
+    durationFrames: number,
+  ) => void;
+
+  /** Update a post effect block's settings */
+  updatePostEffectBlockSettings: (
+    blockId: PostEffectBlockId,
+    settings: Partial<Record<string, unknown>>,
+  ) => void;
+
+  /** Reorder post effect tracks (changes render order) */
+  reorderPostEffectTracks: (fromIndex: number, toIndex: number) => void;
+
+  /** Toggle a post effect block's enabled state */
+  togglePostEffectBlockEnabled: (blockId: PostEffectBlockId) => void;
+
+  /** Add a property track to a post effect block */
+  addPostEffectPropertyTrack: (
+    blockId: PostEffectBlockId,
+    propertyPath: string,
+  ) => PostEffectPropertyTrackId | null;
+
+  /** Add a keyframe to a post effect property track */
+  addPostEffectKeyframe: (
+    blockId: PostEffectBlockId,
+    trackId: PostEffectPropertyTrackId,
+    frame: number,
+    value: PostEffectKeyframe['value'],
+  ) => KeyframeId;
+
+  /** Remove a keyframe from a post effect property track */
+  removePostEffectKeyframe: (
+    blockId: PostEffectBlockId,
+    trackId: PostEffectPropertyTrackId,
+    keyframeId: KeyframeId,
+  ) => void;
+
+  /** Update a keyframe on a post effect property track */
+  updatePostEffectKeyframe: (
+    blockId: PostEffectBlockId,
+    trackId: PostEffectPropertyTrackId,
+    keyframeId: KeyframeId,
+    updates: Partial<Pick<PostEffectKeyframe, 'frame' | 'value' | 'easing'>>,
+  ) => void;
+
+  /** Select a post effect block */
+  selectPostEffectBlock: (blockId: PostEffectBlockId | null) => void;
+
+  /** Toggle post effect track expanded (show property keyframe sub-rows) */
+  togglePostEffectTrackExpanded: (blockId: PostEffectBlockId) => void;
+
+  /** Set which post effect keyframe is being edited */
+  setEditingPostEffectKeyframe: (keyframeId: KeyframeId | null) => void;
+
+  /** Toggle post effects section expanded/collapsed */
+  togglePostEffectsExpanded: () => void;
+
+  // ============================================
   // PROJECT LIFECYCLE
   // ============================================
 
@@ -555,7 +670,7 @@ export interface TimelineState {
   createNewProject: () => void;
 
   /** Load state from session data (used by session importer) */
-  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>, layerGroups?: LayerGroup[], globalEffects?: EffectTrack[]) => void;
+  loadFromSessionData: (layers: Layer[], config: Partial<TimelineConfig>, viewState?: Partial<TimelineViewState>, layerGroups?: LayerGroup[], globalEffects?: EffectTrack[], postEffectTracks?: PostEffectTrack[]) => void;
 
   /** Serialize current state to SessionDataV2 format (used by session exporter) */
   getSessionData: () => SessionDataV2;
@@ -597,6 +712,10 @@ const INITIAL_VIEW: TimelineViewState = {
   expandedEffectTrackIds: new Set(),
   editingEffectKeyframeId: null,
   globalEffectsExpanded: true,
+  selectedPostEffectBlockId: null,
+  expandedPostEffectTrackIds: new Set(),
+  editingPostEffectKeyframeId: null,
+  postEffectsExpanded: true,
 };
 
 // ============================================
@@ -625,6 +744,7 @@ export const useTimelineStore = create<TimelineState>()(
     layers: [DEFAULT_LAYER],
     layerGroups: [],
     globalEffects: [],
+    postEffectTracks: [],
     view: { ...INITIAL_VIEW, activeLayerId: DEFAULT_LAYER.id },
 
     // ============================================
@@ -1952,6 +2072,23 @@ export const useTimelineStore = create<TimelineState>()(
           }
         }
       }
+      // Search post effect tracks
+      for (const pet of (get().postEffectTracks ?? [])) {
+        for (const pt of pet.effectBlock.propertyTracks) {
+          for (const kf of pt.keyframes) {
+            if (keyframeIds.includes(kf.id as KeyframeId)) {
+              entries.push({
+                layerId: (get().layers[0]?.id ?? '') as string,
+                trackId: pt.id as string,
+                propertyPath: pt.propertyPath,
+                frame: kf.frame,
+                value: kf.value as number,
+                easing: kf.easing as import('../types/timeline').Keyframe['easing'],
+              });
+            }
+          }
+        }
+      }
       if (entries.length === 0) return;
 
       // Sort all entries by frame to find the global first frame
@@ -2022,9 +2159,17 @@ export const useTimelineStore = create<TimelineState>()(
           if (targetPath) break;
         }
       }
+      // Search global effects
       if (!targetPath) {
         for (const et of (get().globalEffects ?? [])) {
           const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+          if (pt) { targetPath = pt.propertyPath; break; }
+        }
+      }
+      // Search post effects
+      if (!targetPath) {
+        for (const pet of (get().postEffectTracks ?? [])) {
+          const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
           if (pt) { targetPath = pt.propertyPath; break; }
         }
       }
@@ -2077,8 +2222,9 @@ export const useTimelineStore = create<TimelineState>()(
       } else if (targetMatchesCopied) {
         // Single-layer multi-track paste: paste to matching property tracks
         for (const entry of copiedKeyframes) {
-          // Find dest track on layer or group
+          // Find dest track on layer, group, or post effect
           let destTrackId: typeof trackId | undefined;
+          let destPostEffect: ReturnType<typeof findPostEffectTrackOwner> = null;
           if (targetLayer) {
             const dt = targetLayer.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
             if (dt) destTrackId = dt.id;
@@ -2089,24 +2235,50 @@ export const useTimelineStore = create<TimelineState>()(
               if (dt) { destTrackId = dt.id; break; }
             }
           }
-          if (!destTrackId) continue;
+          // Search post effects for matching property path
+          if (!destTrackId) {
+            for (const pet of (get().postEffectTracks ?? [])) {
+              const pt = pet.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+              if (pt) {
+                destPostEffect = { blockId: pet.effectBlock.id, track: pt };
+                break;
+              }
+            }
+          }
+          if (!destTrackId && !destPostEffect) continue;
+
           const targetFrame = atFrame + entry.frameOffset;
-          get().addKeyframe(layerId, destTrackId, targetFrame, entry.value);
-          // Apply easing
-          const { kf: addedKf } = findTrackKeyframeByFrame(get(), destTrackId, targetFrame);
-          if (addedKf) {
-            get().updateKeyframe(layerId, destTrackId, addedKf.id, { easing: entry.easing });
+          if (destPostEffect) {
+            const kfId = get().addPostEffectKeyframe(destPostEffect.blockId, destPostEffect.track.id, targetFrame, entry.value);
+            if (kfId) {
+              get().updatePostEffectKeyframe(destPostEffect.blockId, destPostEffect.track.id, kfId, { easing: entry.easing });
+            }
+          } else {
+            get().addKeyframe(layerId, destTrackId!, targetFrame, entry.value);
+            const { kf: addedKf } = findTrackKeyframeByFrame(get(), destTrackId!, targetFrame);
+            if (addedKf) {
+              get().updateKeyframe(layerId, destTrackId!, addedKf.id, { easing: entry.easing });
+            }
           }
         }
       } else {
         // Unmatched track: paste only trackIndex 0 keyframes from layerIndex 0
+        // Check if the target is a post effect track
+        const postEffectOwner = findPostEffectTrackOwner(get().postEffectTracks ?? [], trackId as string);
         for (const entry of copiedKeyframes) {
           if (entry.trackIndex !== 0 || entry.layerIndex !== 0) continue;
           const targetFrame = atFrame + entry.frameOffset;
-          get().addKeyframe(layerId, trackId, targetFrame, entry.value);
-          const { kf: addedKf } = findTrackKeyframeByFrame(get(), trackId, targetFrame);
-          if (addedKf) {
-            get().updateKeyframe(layerId, trackId, addedKf.id, { easing: entry.easing });
+          if (postEffectOwner) {
+            const kfId = get().addPostEffectKeyframe(postEffectOwner.blockId, postEffectOwner.track.id, targetFrame, entry.value);
+            if (kfId) {
+              get().updatePostEffectKeyframe(postEffectOwner.blockId, postEffectOwner.track.id, kfId, { easing: entry.easing });
+            }
+          } else {
+            get().addKeyframe(layerId, trackId, targetFrame, entry.value);
+            const { kf: addedKf } = findTrackKeyframeByFrame(get(), trackId, targetFrame);
+            if (addedKf) {
+              get().updateKeyframe(layerId, trackId, addedKf.id, { easing: entry.easing });
+            }
           }
         }
       }
@@ -2908,7 +3080,12 @@ export const useTimelineStore = create<TimelineState>()(
 
     selectEffectBlock: (blockId) => {
       set((state) => ({
-        view: { ...state.view, selectedEffectBlockId: blockId, editingKeyframeId: blockId ? null : state.view.editingKeyframeId },
+        view: {
+          ...state.view,
+          selectedEffectBlockId: blockId,
+          editingKeyframeId: blockId ? null : state.view.editingKeyframeId,
+          selectedPostEffectBlockId: blockId ? null : state.view.selectedPostEffectBlockId,
+        },
       }));
     },
 
@@ -3123,6 +3300,274 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     // ============================================
+    // POST EFFECT ACTIONS
+    // ============================================
+
+    addPostEffectBlock: (postEffectType, startFrame, durationFrames) => {
+      const entry = getPostEffect(postEffectType);
+      if (!entry) {
+        console.warn(`[Timeline] Unknown post effect type: ${postEffectType}`);
+        return null;
+      }
+
+      const blockId = generatePostEffectBlockId();
+      const trackId = generatePostEffectTrackId();
+
+      const block: PostEffectBlock = {
+        id: blockId,
+        postEffectType,
+        startFrame,
+        durationFrames,
+        enabled: true,
+        settings: { ...entry.defaultSettings },
+        propertyTracks: [],
+      };
+
+      const track: PostEffectTrack = {
+        id: trackId,
+        effectBlock: block,
+        collapsed: true,
+      };
+
+      set((state) => ({
+        postEffectTracks: [...state.postEffectTracks, track],
+      }));
+
+      return blockId;
+    },
+
+    removePostEffectBlock: (blockId) => {
+      set((state) => ({
+        postEffectTracks: state.postEffectTracks.filter(
+          (t) => t.effectBlock.id !== blockId,
+        ),
+        view: {
+          ...state.view,
+          selectedPostEffectBlockId:
+            state.view.selectedPostEffectBlockId === blockId
+              ? null
+              : state.view.selectedPostEffectBlockId,
+        },
+      }));
+    },
+
+    updatePostEffectBlockTiming: (blockId, startFrame, durationFrames) => {
+      set((state) => ({
+        postEffectTracks: state.postEffectTracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  startFrame: Math.max(0, startFrame),
+                  durationFrames: Math.max(1, durationFrames),
+                },
+              }
+            : t,
+        ),
+      }));
+    },
+
+    updatePostEffectBlockSettings: (blockId, settings) => {
+      set((state) => ({
+        postEffectTracks: state.postEffectTracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  settings: { ...t.effectBlock.settings, ...settings },
+                },
+              }
+            : t,
+        ),
+      }));
+    },
+
+    reorderPostEffectTracks: (fromIndex, toIndex) => {
+      set((state) => {
+        const tracks = [...state.postEffectTracks];
+        if (fromIndex < 0 || fromIndex >= tracks.length) return state;
+        if (toIndex < 0 || toIndex >= tracks.length) return state;
+        const [removed] = tracks.splice(fromIndex, 1);
+        tracks.splice(toIndex, 0, removed);
+        return { postEffectTracks: tracks };
+      });
+    },
+
+    togglePostEffectBlockEnabled: (blockId) => {
+      set((state) => ({
+        postEffectTracks: state.postEffectTracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  enabled: !t.effectBlock.enabled,
+                },
+              }
+            : t,
+        ),
+      }));
+    },
+
+    addPostEffectPropertyTrack: (blockId, propertyPath) => {
+      const state = get();
+      const track = state.postEffectTracks.find((t) => t.effectBlock.id === blockId);
+      if (!track) return null;
+
+      // Check if property track already exists
+      const existing = track.effectBlock.propertyTracks.find(
+        (pt) => pt.propertyPath === propertyPath,
+      );
+      if (existing) return existing.id;
+
+      const ptId = generatePostEffectPropertyTrackId();
+
+      set((s) => ({
+        postEffectTracks: s.postEffectTracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  propertyTracks: [
+                    ...t.effectBlock.propertyTracks,
+                    {
+                      id: ptId,
+                      propertyPath,
+                      keyframes: [],
+                      loopKeyframes: false,
+                    },
+                  ],
+                },
+              }
+            : t,
+        ),
+      }));
+
+      return ptId;
+    },
+
+    addPostEffectKeyframe: (blockId, trackId, frame, value) => {
+      const kfId = generateKeyframeId();
+
+      set((state) => ({
+        postEffectTracks: state.postEffectTracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+                    pt.id === trackId
+                      ? {
+                          ...pt,
+                          keyframes: [
+                            ...pt.keyframes.filter((kf) => kf.frame !== frame),
+                            { id: kfId, frame, value, easing: defaultEasing() },
+                          ].sort((a, b) => a.frame - b.frame),
+                        }
+                      : pt,
+                  ),
+                },
+              }
+            : t,
+        ),
+      }));
+
+      return kfId;
+    },
+
+    removePostEffectKeyframe: (blockId, trackId, keyframeId) => {
+      set((state) => ({
+        postEffectTracks: state.postEffectTracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+                    pt.id === trackId
+                      ? {
+                          ...pt,
+                          keyframes: pt.keyframes.filter((kf) => kf.id !== keyframeId),
+                        }
+                      : pt,
+                  ),
+                },
+              }
+            : t,
+        ),
+      }));
+    },
+
+    updatePostEffectKeyframe: (blockId, trackId, keyframeId, updates) => {
+      set((state) => ({
+        postEffectTracks: state.postEffectTracks.map((t) =>
+          t.effectBlock.id === blockId
+            ? {
+                ...t,
+                effectBlock: {
+                  ...t.effectBlock,
+                  propertyTracks: t.effectBlock.propertyTracks.map((pt) =>
+                    pt.id === trackId
+                      ? {
+                          ...pt,
+                          keyframes: pt.keyframes
+                            .map((kf) =>
+                              kf.id === keyframeId ? { ...kf, ...updates } : kf,
+                            )
+                            .sort((a, b) => a.frame - b.frame),
+                        }
+                      : pt,
+                  ),
+                },
+              }
+            : t,
+        ),
+      }));
+    },
+
+    selectPostEffectBlock: (blockId) => {
+      set((state) => ({
+        view: {
+          ...state.view,
+          selectedPostEffectBlockId: blockId,
+          editingPostEffectKeyframeId: null,
+          // Deselect standard effect block when selecting post effect
+          selectedEffectBlockId: blockId ? null : state.view.selectedEffectBlockId,
+        },
+      }));
+    },
+
+    togglePostEffectTrackExpanded: (blockId) => {
+      set((state) => {
+        const expanded = new Set(state.view.expandedPostEffectTrackIds);
+        if (expanded.has(blockId)) {
+          expanded.delete(blockId);
+        } else {
+          expanded.add(blockId);
+        }
+        return {
+          view: { ...state.view, expandedPostEffectTrackIds: expanded },
+        };
+      });
+    },
+
+    setEditingPostEffectKeyframe: (keyframeId) => {
+      set((state) => ({
+        view: { ...state.view, editingPostEffectKeyframeId: keyframeId },
+      }));
+    },
+
+    togglePostEffectsExpanded: () => {
+      set((state) => ({
+        view: { ...state.view, postEffectsExpanded: !state.view.postEffectsExpanded },
+      }));
+    },
+
+    // ============================================
     // PROJECT LIFECYCLE
     // ============================================
 
@@ -3133,6 +3578,7 @@ export const useTimelineStore = create<TimelineState>()(
         layers: [defaultLayer],
         layerGroups: [],
         globalEffects: [],
+        postEffectTracks: [],
         view: {
           ...INITIAL_VIEW,
           activeLayerId: defaultLayer.id,
@@ -3140,7 +3586,7 @@ export const useTimelineStore = create<TimelineState>()(
       });
     },
 
-    loadFromSessionData: (layers, config, viewState, layerGroups, globalEffects) => {
+    loadFromSessionData: (layers, config, viewState, layerGroups, globalEffects, postEffectTracks) => {
       const mergedConfig: TimelineConfig = {
         frameRate: config.frameRate ?? INITIAL_CONFIG.frameRate,
         durationFrames: config.durationFrames ?? INITIAL_CONFIG.durationFrames,
@@ -3155,6 +3601,7 @@ export const useTimelineStore = create<TimelineState>()(
         layers,
         layerGroups: layerGroups ?? [],
         globalEffects: globalEffects ?? [],
+        postEffectTracks: postEffectTracks ?? [],
         view: {
           ...INITIAL_VIEW,
           activeLayerId,
@@ -3316,6 +3763,33 @@ export const useTimelineStore = create<TimelineState>()(
                 })),
               },
               collapsed: et.collapsed,
+            }))
+          : undefined,
+
+        // Post effects (WebGL shader-based)
+        postEffectTracks: get().postEffectTracks.length > 0
+          ? get().postEffectTracks.map((t) => ({
+              id: t.id as string,
+              effectBlock: {
+                id: t.effectBlock.id as string,
+                postEffectType: t.effectBlock.postEffectType,
+                startFrame: t.effectBlock.startFrame,
+                durationFrames: t.effectBlock.durationFrames,
+                enabled: t.effectBlock.enabled,
+                settings: { ...t.effectBlock.settings },
+                propertyTracks: t.effectBlock.propertyTracks.map((pt) => ({
+                  id: pt.id as string,
+                  propertyPath: pt.propertyPath,
+                  keyframes: pt.keyframes.map((kf) => ({
+                    id: kf.id as string,
+                    frame: kf.frame,
+                    value: kf.value,
+                    easing: kf.easing,
+                  })),
+                  loopKeyframes: pt.loopKeyframes,
+                })),
+              },
+              collapsed: t.collapsed,
             }))
           : undefined,
       };

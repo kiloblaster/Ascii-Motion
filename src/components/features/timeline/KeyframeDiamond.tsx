@@ -50,6 +50,13 @@ function findTrackAndKeyframe(trackId: PropertyTrackId, kfId: KeyframeId) {
       return { track: ept as unknown as PropertyTrack, kf: (kf ?? null) as Keyframe | null };
     }
   }
+  for (const pet of (tl.postEffectTracks ?? [])) {
+    const ept = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+    if (ept) {
+      const kf = ept.keyframes.find((k) => k.id === kfId);
+      return { track: ept as unknown as PropertyTrack, kf: (kf ?? null) as Keyframe | null };
+    }
+  }
   return { track: null, kf: null };
 }
 
@@ -169,6 +176,16 @@ export const KeyframeDiamond: React.FC<KeyframeDiamondProps> = ({
         // Search global effects
         for (const et of (tl.globalEffects ?? [])) {
           for (const pt of et.effectBlock.propertyTracks) {
+            for (const kf of pt.keyframes) {
+              if (selectedIds.has(kf.id)) {
+                entries.push({ layerId: layerId, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });
+              }
+            }
+          }
+        }
+        // Search post effects
+        for (const pet of (tl.postEffectTracks ?? [])) {
+          for (const pt of pet.effectBlock.propertyTracks) {
             for (const kf of pt.keyframes) {
               if (selectedIds.has(kf.id)) {
                 entries.push({ layerId: layerId, trackId: pt.id as unknown as PropertyTrackId, kfId: kf.id as KeyframeId, startFrame: kf.frame, value: kf.value as number, easing: kf.easing });

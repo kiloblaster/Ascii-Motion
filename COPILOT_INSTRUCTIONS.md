@@ -6,7 +6,7 @@ ASCII Motion is a React + TypeScript web application for creating and animating 
 
 **Tech stack:** Vite, React 19, Zustand, Shadcn/ui, Tailwind CSS v3, TypeScript strict mode.
 
-**Version:** 2.0.0 (Layer Timeline System)
+**Version:** 2.1.0 (Shaders — GPU Post-Processing Effects)
 
 **MCP Server:** The companion `ascii-motion-mcp` package (separate repo) provides an MCP server for AI-assisted creation. It mirrors the app's tool/layer/keyframe API via WebSocket. When adding new tools or features, update the MCP server's tools and state model accordingly. See `ascii-motion-mcp/src/tools/` and `ascii-motion-mcp/src/state.ts`.
 

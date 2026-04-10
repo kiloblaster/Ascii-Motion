@@ -74,3 +74,26 @@ export const renderScheduler = new RenderScheduler();
 export const scheduleCanvasRender = (renderFn: RenderCallback): void => {
   renderScheduler.schedule(renderFn);
 };
+
+// ============================================
+// CANVAS RENDER NOTIFICATION
+// ============================================
+// Lightweight pub/sub so downstream consumers (e.g., the post-effects
+// overlay) can react to completed canvas renders without duplicating
+// the full dependency list of useCanvasRenderer.
+
+type RenderListener = () => void;
+const renderListeners = new Set<RenderListener>();
+
+/** Call after the main Canvas2D render completes. */
+export function notifyCanvasRendered(): void {
+  for (const fn of renderListeners) {
+    try { fn(); } catch (e) { console.error('[renderScheduler] listener error', e); }
+  }
+}
+
+/** Subscribe to canvas render completions. Returns an unsubscribe function. */
+export function onCanvasRendered(fn: RenderListener): () => void {
+  renderListeners.add(fn);
+  return () => { renderListeners.delete(fn); };
+}

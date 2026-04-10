@@ -16,6 +16,7 @@ import { useLayerLimit } from '../../../hooks/useLayerLimit';
 import { LayerListItem } from './LayerListItem';
 import { GroupHeader } from './GroupHeader';
 import { GlobalEffectsTrackHeader } from './GlobalEffectsTrackHeader';
+import { PostEffectsTrackHeader } from './PostEffectsTrackHeader';
 import { LayerContextMenu, type LayerContextMenuState } from './LayerContextMenu';
 import { LayerMenu } from './LayerMenu';
 import { cn } from '@/lib/utils';
@@ -342,7 +343,12 @@ export const LayerList: React.FC<LayerListProps> = ({ scrollRef }) => {
         const renderedGroupIds = new Set<string>();
         const items: React.ReactNode[] = [];
 
-        // Global effects track at top (always visible for adding effects)
+        // Post effects track at top (above global effects)
+        items.push(
+          <PostEffectsTrackHeader key="post-effects" />
+        );
+
+        // Global effects track (always visible for adding effects)
         items.push(
           <GlobalEffectsTrackHeader key="global-effects" />
         );

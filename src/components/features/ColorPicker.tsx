@@ -15,6 +15,7 @@ import { ImportPaletteDialog } from './ImportPaletteDialog';
 import { ExportPaletteDialog } from './ExportPaletteDialog';
 import { ManagePalettesDialog } from './ManagePalettesDialog';
 import { EffectsSection } from './EffectsSection';
+import { PostEffectsSection } from './PostEffectsSection';
 import { GeneratorsSection } from './GeneratorsSection';
 import { ANSI_COLORS } from '../../constants/colors';
 
@@ -667,7 +668,13 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({ className = '' }) => {
       {/* Generators Section */}
       <GeneratorsSection />
 
-      {/* Divider after Effects/Generators */}
+      {/* Divider between Generators and Shaders */}
+      <PanelSeparator side="right" />
+
+      {/* Shaders Section */}
+      <PostEffectsSection />
+
+      {/* Divider after Shaders */}
       <PanelSeparator side="right" />
 
       {/* Color Picker Modal */}

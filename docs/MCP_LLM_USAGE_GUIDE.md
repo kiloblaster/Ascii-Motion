@@ -268,3 +268,111 @@ LLMs can then request this resource before starting complex tasks:
 - `project://frames` - Frame list with metadata
 - `project://ascii` - Plain text ASCII preview
 - `guide://llm-best-practices` - This document (when implemented)
+
+---
+
+## ✨ Post Effects MCP Commands
+
+Post effects are GPU-accelerated (WebGL) shader effects applied as a final render pass. Use these commands to manage post effects programmatically.
+
+### `add_post_effect`
+Add a new post effect to the timeline.
+
+```json
+{
+  "type": "add_post_effect",
+  "postEffectType": "blur",
+  "startFrame": 0,
+  "durationFrames": 60,
+  "settings": { "radius": 10 }
+}
+```
+
+Available types: `chromatic-aberration`, `screen-distortion`, `glow`, `blur`
+
+### `remove_post_effect`
+Remove a post effect by block ID.
+
+```json
+{
+  "type": "remove_post_effect",
+  "blockId": "<block-id>"
+}
+```
+
+### `update_post_effect`
+Update settings, timing, or enabled state of a post effect.
+
+```json
+{
+  "type": "update_post_effect",
+  "blockId": "<block-id>",
+  "settings": { "radius": 20, "intensity": 0.8 },
+  "startFrame": 5,
+  "durationFrames": 50,
+  "enabled": true
+}
+```
+
+### `set_post_effect_keyframe`
+Set a keyframe on a post effect property.
+
+```json
+{
+  "type": "set_post_effect_keyframe",
+  "blockId": "<block-id>",
+  "propertyPath": "radius",
+  "frame": 30,
+  "value": 25
+}
+```
+
+### `remove_post_effect_keyframe`
+Remove a keyframe from a post effect property.
+
+```json
+{
+  "type": "remove_post_effect_keyframe",
+  "blockId": "<block-id>",
+  "propertyPath": "radius",
+  "frame": 30
+}
+```
+
+### `list_post_effects`
+List all registered post effect types and their properties.
+
+```json
+{
+  "type": "list_post_effects"
+}
+```
+
+### `get_post_effect_presets`
+Get default presets for all post effect types.
+
+```json
+{
+  "type": "get_post_effect_presets"
+}
+```
+
+### Post Effects in State Snapshots
+
+When post effects exist, the `state_snapshot` message includes a `postEffects` array:
+
+```json
+{
+  "type": "state_snapshot",
+  "postEffects": [
+    {
+      "blockId": "peb-abc123",
+      "type": "blur",
+      "enabled": true,
+      "startFrame": 0,
+      "durationFrames": 60,
+      "settings": { "radius": 10 }
+    }
+  ]
+}
+```

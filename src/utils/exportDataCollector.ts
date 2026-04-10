@@ -223,6 +223,11 @@ export class ExportDataCollector {
 
       // Layer data for session exports (raw structure, not composited)
       sessionDataV2: isLayerMode ? timelineState.getSessionData() : undefined,
+
+      // Post effect tracks for WebGL post-processing in visual exports
+      postEffectTracks: timelineState.postEffectTracks.length > 0
+        ? timelineState.postEffectTracks
+        : undefined,
     };
   }
 }
@@ -287,6 +292,7 @@ export const useExportDataCollector = (enabled: boolean = true): ExportDataBundl
   const timelineLayers = useTimelineStore(state => state.layers);
   const timelineConfig = useTimelineStore(state => state.config);
   const timelineView = useTimelineStore(state => state.view);
+  const postEffectTracks = useTimelineStore(state => state.postEffectTracks);
   const isLayerMode = timelineLayers.length > 0;
 
   // Get canvas context data (must be called before early return — React hooks rules)
@@ -409,6 +415,11 @@ export const useExportDataCollector = (enabled: boolean = true): ExportDataBundl
 
     // Layer data for session exports (raw structure, not composited)
     sessionDataV2: isLayerMode ? useTimelineStore.getState().getSessionData() : undefined,
+
+    // Post effect tracks for WebGL post-processing in visual exports
+    postEffectTracks: postEffectTracks.length > 0
+      ? postEffectTracks
+      : undefined,
   };
 };
 

@@ -7,6 +7,7 @@ import { useProjectMetadataStore } from '../stores/projectMetadataStore';
 import { useTimelineStore } from '../stores/timelineStore';
 import type { Cell, Tool } from '../types';
 import type { Layer, LayerId, ContentFrameId, PropertyTrackId, KeyframeId, LayerGroup, LayerGroupId, SessionDataV2 } from '../types/timeline';
+import type { PostEffectTrack, PostEffectTrackId, PostEffectBlockId, PostEffectPropertyTrackId, PostEffectKeyFrameId } from '../types/postEffect';
 import { DEFAULT_FRAME_DURATION } from '../constants';
 import type { TypographySettings } from './canvasSizeConversion';
 import type { ColorPalette, CharacterPalette, CharacterMappingSettings } from '../types/palette';
@@ -581,6 +582,31 @@ export class SessionImporter {
       collapsed: et.collapsed,
     }));
 
+    // Deserialize post effect tracks (WebGL shader-based post-processing)
+    const postEffectTracksData: PostEffectTrack[] = (sessionData.postEffectTracks ?? []).map((t) => ({
+      id: t.id as PostEffectTrackId,
+      effectBlock: {
+        id: t.effectBlock.id as PostEffectBlockId,
+        postEffectType: t.effectBlock.postEffectType,
+        startFrame: t.effectBlock.startFrame,
+        durationFrames: t.effectBlock.durationFrames,
+        enabled: t.effectBlock.enabled,
+        settings: t.effectBlock.settings ?? {},
+        propertyTracks: (t.effectBlock.propertyTracks ?? []).map((pt) => ({
+          id: pt.id as PostEffectPropertyTrackId,
+          propertyPath: pt.propertyPath,
+          keyframes: (pt.keyframes ?? []).map((kf) => ({
+            id: kf.id as PostEffectKeyFrameId,
+            frame: kf.frame,
+            value: kf.value,
+            easing: kf.easing,
+          })),
+          loopKeyframes: pt.loopKeyframes,
+        })),
+      },
+      collapsed: t.collapsed,
+    }));
+
     // Load layers and groups into timeline store.
     timelineStore.loadFromSessionData(
       layers,
@@ -593,6 +619,7 @@ export class SessionImporter {
       },
       layerGroups,
       globalEffectsData,
+      postEffectTracksData,
     );
 
     // Force activeLayerId change: null → layers[0].id

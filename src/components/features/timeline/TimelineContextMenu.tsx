@@ -322,6 +322,13 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
         if (pt) { targetPropertyPath = pt.propertyPath; break; }
       }
     }
+    // Search post effects
+    if (!targetPropertyPath) {
+      for (const pet of (tl.postEffectTracks ?? [])) {
+        const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (trackId as string));
+        if (pt) { targetPropertyPath = pt.propertyPath; break; }
+      }
+    }
     if (!targetPropertyPath) return;
 
     const copiedPaths = [...new Set(copiedKfs.map((kf) => kf.propertyPath))];
@@ -384,6 +391,13 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
             if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
           }
         }
+        // Search post effects
+        if (!destTrackId2) {
+          for (const pet of (useTimelineStore.getState().postEffectTracks ?? [])) {
+            const pt = pet.effectBlock.propertyTracks.find((t) => t.propertyPath === entry.propertyPath);
+            if (pt) { destTrackId2 = pt.id as unknown as typeof trackId; break; }
+          }
+        }
         if (!destTrackId2) continue;
         destTrackId = destTrackId2;
       } else {
@@ -392,9 +406,25 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
       }
 
       const targetFrame = atFrame + entry.frameOffset;
-      const kfId = addKeyframe(destLayerId, destTrackId, targetFrame, entry.value);
-      if (kfId) {
-        useTimelineStore.getState().updateKeyframe(destLayerId, destTrackId, kfId, { easing: entry.easing });
+
+      // Check if destination is a post effect track
+      let pastedViaPostEffect = false;
+      for (const pet of (useTimelineStore.getState().postEffectTracks ?? [])) {
+        const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (destTrackId as string));
+        if (pt) {
+          const kfId = useTimelineStore.getState().addPostEffectKeyframe(pet.effectBlock.id, pt.id, targetFrame, entry.value);
+          if (kfId) {
+            useTimelineStore.getState().updatePostEffectKeyframe(pet.effectBlock.id, pt.id, kfId, { easing: entry.easing });
+          }
+          pastedViaPostEffect = true;
+          break;
+        }
+      }
+      if (!pastedViaPostEffect) {
+        const kfId = addKeyframe(destLayerId, destTrackId, targetFrame, entry.value);
+        if (kfId) {
+          useTimelineStore.getState().updateKeyframe(destLayerId, destTrackId, kfId, { easing: entry.easing });
+        }
       }
     }
   }, [addKeyframe]);
@@ -632,11 +662,27 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
                     ...tl.layerGroups.flatMap((g) => (g.effectTracks ?? []).map((et) => et)),
                     ...(tl.globalEffects ?? []),
                   ];
+                  let found = false;
                   for (const et of allSources) {
                     const pt = et.effectBlock.propertyTracks.find((t) => (t.id as string) === (ctx.trackId as string));
                     if (pt) {
                       tl.removeEffectKeyframe(et.effectBlock.id, pt.id, kfId);
+                      found = true;
                       break;
+                    }
+                  }
+                  // Fall back to post effect tracks
+                  if (!found) {
+                    for (const pet of (tl.postEffectTracks ?? [])) {
+                      const pt = pet.effectBlock.propertyTracks.find((t) => (t.id as string) === (ctx.trackId as string));
+                      if (pt) {
+                        tl.removePostEffectKeyframe(
+                          pet.effectBlock.id,
+                          pt.id as import('../../../types/postEffect').PostEffectPropertyTrackId,
+                          kfId,
+                        );
+                        break;
+                      }
                     }
                   }
                 }

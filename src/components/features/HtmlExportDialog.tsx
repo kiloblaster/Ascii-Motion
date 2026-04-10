@@ -12,6 +12,7 @@ import { useExportStore } from '../../stores/exportStore';
 import type { HtmlExportSettings } from '../../types/export';
 import { useExportDataCollector } from '../../utils/exportDataCollector';
 import { useProjectMetadataStore } from '../../stores/projectMetadataStore';
+import { useTimelineStore } from '../../stores/timelineStore';
 import { ExportRenderer } from '../../utils/exportRenderer';
 
 /**
@@ -27,6 +28,7 @@ export const HtmlExportDialog: React.FC = () => {
   const setProgress = useExportStore(state => state.setProgress);
   const setIsExporting = useExportStore(state => state.setIsExporting);
   const isExporting = useExportStore(state => state.isExporting);
+  const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
   
   const isOpen = showExportModal && activeFormat === 'html';
   const exportData = useExportDataCollector(isOpen);
@@ -205,6 +207,22 @@ export const HtmlExportDialog: React.FC = () => {
                     disabled={isExporting}
                   />
                 </div>
+
+                {postEffectTracks.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label className="text-sm">Include Shaders</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Apply WebGL shader effects to the export
+                      </p>
+                    </div>
+                    <Switch
+                      checked={htmlSettings.includePostEffects !== false}
+                      onCheckedChange={(checked) => handleSettingChange('includePostEffects', checked)}
+                      disabled={isExporting}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 
