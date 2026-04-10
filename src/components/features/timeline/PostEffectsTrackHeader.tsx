@@ -22,7 +22,7 @@ import { Button } from '../../ui/button';
 import { getAllPostEffects, getPostEffect } from '../../../registry/postEffectRegistry';
 import { evaluatePostEffectBlock } from '../../../utils/postEffectsPipeline';
 import { usePostEffectBlockHistory } from '../../../hooks/usePostEffectBlockHistory';
-import type { PostEffectBlockId } from '../../../types/postEffect';
+import type { PostEffectPropertyTrackId } from '../../../types/postEffect';
 import type { KeyframeId } from '../../../types/timeline';
 
 // Category colors for shaders — matches global effects styling

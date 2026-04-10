@@ -1,12 +1,88 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.0.15";
-export const BUILD_DATE = "2026-03-31T22:34:50.336Z";
-export const BUILD_HASH = "f4c8fee";
+export const VERSION = "2.0.17";
+export const BUILD_DATE = "2026-04-10T02:21:09.384Z";
+export const BUILD_HASH = "d58b31c";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.17",
+    "date": "2026-04-10T02:21:09.384Z",
+    "commits": [
+      "fix: resolve 12 TypeScript compilation errors"
+    ]
+  },
+  {
+    "version": "2.0.16",
+    "date": "2026-04-10T02:17:52.301Z",
+    "commits": [
+      "Merge pull request #107 from CameronFoxly/cameronfoxly/post-effects-system",
+      "chore: bump version to 2.1.0 (Shaders release)",
+      "chore: clean up debug logging, prepare for merge",
+      "fix: pass postEffectTracks to preview regeneration on save/update",
+      "fix: resolve TS errors in gallery shader pipeline",
+      "fix: apply shaders to publish preview snapshot",
+      "feat: gallery shader integration + developer guide update",
+      "fix: .asciimtn import now restores shader (post effect) tracks",
+      "test: update react-export-test to shader-test-02 with fixed runtime",
+      "fix: shader export runtime missing snapshot texture and u_bgColor",
+      "test: add shader export component to react-export-test harness",
+      "ui: use standard Radix tooltips in Effects, Generators, and Shaders sections",
+      "ui: change pixelate default pixel size from 8 to 3",
+      "feat: add Pixelate shader effect + update developer guide",
+      "fix: glow compositing breaks when not first in shader stack",
+      "fix: distortion fills out-of-bounds pixels with canvas background color",
+      "ui: remove animate property from screen distortion, wave always animates",
+      "ui: screen distortion intensity step from 0.01 to 0.1",
+      "ui: update glow defaults to intensity:2, radius:48, threshold:0",
+      "feat: glow color mode (source/gradient), intensity up to 10, uncap radius",
+      "ui: glow threshold and color shift step to 0.1, fix mangled blendMode property",
+      "ui: glow intensity step to 0.1, radius max to 200",
+      "fix: increase radial blur quality to 129 samples (64 per side)",
+      "ui: change blur center X/Y drag step from 0.01 to 0.1",
+      "Merge pull request #106 from CameronFoxly/dependabot/npm_and_yarn/hono-4.12.12",
+      "Merge pull request #105 from CameronFoxly/dependabot/npm_and_yarn/dev-tools/react-export-test/vite-6.4.2",
+      "fix: shader program cache was returning programs from wrong GL context",
+      "fix: use readPixels+putImageData for shader export readback",
+      "fix: PNG export empty when shaders applied",
+      "fix: clicking effect block clears shader panel selection",
+      "fix: remove stray comment closing that caused esbuild parse error",
+      "feat: embed WebGL shader pipeline in React and HTML exports",
+      "ui: replace emoji with lucide Info icon in export dialogs",
+      "fix: export shader scaling, PNG output, and SVG toggle",
+      "fix: color picker positioning and radial blur rotation",
+      "feat: overhaul glow and blur shaders",
+      "fix: shader overlay refreshes on all canvas state changes",
+      "fix: screen distortion type selector and animate toggle",
+      "ui: rename \"Post Effects\" to \"Shaders\" and restyle timeline",
+      "feat: add drag-to-reorder for post effect tracks",
+      "fix: add full undo/redo support for all post effect actions",
+      "fix: post effect keyframe copy/paste and multi-select drag",
+      "fix: integrate post effects into optimized playback loop",
+      "fix: post effects missing from playback and exports",
+      "fix: match PostEffectPropertiesPanel UI to EffectPropertiesPanel patterns",
+      "Fix post effect keyframes to have full parity with global effect keyframes",
+      "Fix three post effects timeline integration bugs",
+      "fix: flip Y when uploading Canvas2D to WebGL texture",
+      "fix: post effects overlay DPI scaling, zoom sync, and live updates",
+      "feat: add Post Effects system with WebGL shader pipeline",
+      "chore(deps-dev): bump hono from 4.12.7 to 4.12.12",
+      "chore(deps-dev): bump vite in /dev-tools/react-export-test",
+      "Merge pull request #104 from CameronFoxly/dependabot/npm_and_yarn/vite-7.3.2",
+      "chore(deps-dev): bump vite from 7.2.4 to 7.3.2",
+      "Merge pull request #103 from CameronFoxly/dependabot/npm_and_yarn/dev-tools/react-export-test/picomatch-4.0.4",
+      "chore(deps): bump picomatch in /dev-tools/react-export-test",
+      "Merge pull request #102 from CameronFoxly/dependabot/npm_and_yarn/multi-580a7c2f10",
+      "Merge pull request #101 from CameronFoxly/dependabot/npm_and_yarn/yaml-2.8.3",
+      "Merge pull request #100 from CameronFoxly/dependabot/npm_and_yarn/multi-bf05dc1ecf",
+      "chore(deps): bump brace-expansion",
+      "chore(deps): bump yaml from 2.8.1 to 2.8.3",
+      "chore(deps): bump picomatch",
+      "chore: bump version to v2.0.15"
+    ]
+  },
   {
     "version": "2.0.15",
     "date": "2026-03-31T22:34:50.336Z",

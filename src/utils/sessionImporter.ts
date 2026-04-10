@@ -596,7 +596,7 @@ export class SessionImporter {
           id: pt.id as PostEffectPropertyTrackId,
           propertyPath: pt.propertyPath,
           keyframes: (pt.keyframes ?? []).map((kf) => ({
-            id: kf.id as PostEffectKeyFrameId,
+            id: kf.id as KeyframeId,
             frame: kf.frame,
             value: kf.value,
             easing: kf.easing,
