@@ -1,12 +1,26 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.0.17";
-export const BUILD_DATE = "2026-04-10T02:21:09.384Z";
-export const BUILD_HASH = "d58b31c";
+export const VERSION = "2.1.0";
+export const BUILD_DATE = "2026-04-10T04:47:06.644Z";
+export const BUILD_HASH = "b838579";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.0.19",
+    "date": "2026-04-10T04:47:06.644Z",
+    "commits": [
+      "docs: add Shaders documentation to docs site (web submodule update)"
+    ]
+  },
+  {
+    "version": "2.0.18",
+    "date": "2026-04-10T02:22:11.002Z",
+    "commits": [
+      "fix: remaining TS errors + update submodule pointers to feature/shaders"
+    ]
+  },
   {
     "version": "2.0.17",
     "date": "2026-04-10T02:21:09.384Z",
