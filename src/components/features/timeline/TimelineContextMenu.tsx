@@ -218,6 +218,10 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     let initialized = false;
     const handleClickOutside = (e: MouseEvent) => {
       if (!initialized) return;
+      // When the rename dialog is open, don't close on clicks outside the
+      // context menu — the dialog is rendered in a portal outside menuRef
+      // and its clicks would otherwise be treated as "outside" clicks.
+      if (renameState !== null) return;
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -238,7 +242,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
       document.removeEventListener('contextmenu', handleClickOutside, true);
       document.removeEventListener('keydown', handleEscape, true);
     };
-  }, [onClose]);
+  }, [onClose, renameState]);
 
   // Auto-position: prevent clipping at window edges
   useEffect(() => {
