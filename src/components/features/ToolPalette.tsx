@@ -355,11 +355,18 @@ export const ToolOptionsPanel = React.memo(({ activeTool }: { activeTool: Tool }
           </div>
           )}
           {(!shapeFilled || fillMode === 'lineart') && (
-            <div className="flex items-center gap-1">
-              <Label className="text-[10px] text-muted-foreground">Width:</Label>
-              <Slider min={0.1} max={10} step={0.1} value={strokeWidth} onValueChange={setStrokeWidth} className="w-16" />
-              <span className="text-[10px] text-muted-foreground tabular-nums w-6">{strokeWidth.toFixed(1)}</span>
-            </div>
+            <>
+              <div className="flex items-center gap-1">
+                <Label className="text-[10px] text-muted-foreground">Width:</Label>
+                <Slider min={0.1} max={10} step={0.1} value={strokeWidth} onValueChange={setStrokeWidth} className="w-16" />
+                <span className="text-[10px] text-muted-foreground tabular-nums w-6">{strokeWidth.toFixed(1)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Label className="text-[10px] text-muted-foreground">Taper:</Label>
+                <Slider min={0} max={1} step={0.01} value={strokeTaperStart} onValueChange={setStrokeTaperStart} className="w-12" />
+                <Slider min={0} max={1} step={0.01} value={strokeTaperEnd} onValueChange={setStrokeTaperEnd} className="w-12" />
+              </div>
+            </>
           )}
         </>
       )}
