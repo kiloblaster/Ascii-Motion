@@ -79,10 +79,40 @@ export const useAsciiBoxTool = () => {
     }
   }, [activeTool, isPanelOpen, openPanel]);
   
-  // Cancel preview and close panel when switching away from ASCII Box tool
+  // Auto-apply preview and close panel when switching away from ASCII Box tool
   useEffect(() => {
     if (activeTool !== 'asciibox' && isPanelOpen) {
-      // User switched tools - cancel preview (if any) and close panel
+      // User switched tools - auto-apply any pending work so it isn't lost
+      const boxState = useAsciiBoxStore.getState();
+
+      if (boxState.isApplying && boxState.previewData && boxState.previewData.size > 0) {
+        const canvasState = useCanvasStore.getState();
+        const currentCells = canvasState.cells;
+        const originalCells = new Map(currentCells);
+
+        const transformedPreview = transformCellMapToLocal(boxState.previewData);
+        const newCells = new Map(currentCells);
+        transformedPreview.forEach((cell, key) => {
+          newCells.set(key, { ...cell });
+        });
+
+        canvasState.setCanvasData(newCells);
+
+        // Push to undo history so the user can revert if they intended to cancel
+        const historyAction: CanvasHistoryAction = {
+          type: 'canvas_edit',
+          timestamp: Date.now(),
+          description: `ASCII Box Drawing (auto-applied on tool switch)`,
+          data: {
+            previousCanvasData: originalCells,
+            newCanvasData: newCells,
+            frameIndex: useTimelineStore.getState().view.currentFrame
+          }
+        };
+
+        useToolStore.getState().pushToHistory(historyAction);
+      }
+
       reset();
       closePanel();
     }
