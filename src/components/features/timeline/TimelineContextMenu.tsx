@@ -197,11 +197,11 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
 
   const handleRenameSubmit = useCallback(() => {
     if (renameState && renameValue.trim()) {
-      useTimelineStore.getState().renameContentFrame(renameState.layerId, renameState.frameId, renameValue.trim());
+      renameContentFrameHistory(renameState.layerId, renameState.frameId, renameValue.trim());
     }
     setRenameState(null);
     onClose();
-  }, [renameState, renameValue, onClose]);
+  }, [renameState, renameValue, onClose, renameContentFrameHistory]);
 
   const {
     removeContentFrame,
@@ -211,6 +211,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     addKeyframe,
     removeKeyframe,
     removeBlankSpace,
+    renameContentFrame: renameContentFrameHistory,
   } = useTimelineHistory();
 
   // Close on click outside or Escape
@@ -702,7 +703,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
 
   return (
     <>
-      {createPortal(
+      {renameState === null && createPortal(
         <div
           ref={menuRef}
           className="fixed z-[99999] min-w-[180px] rounded-md border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"
