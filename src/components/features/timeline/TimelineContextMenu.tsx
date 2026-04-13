@@ -189,6 +189,17 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
 
+  const {
+    removeContentFrame,
+    splitContentFrame,
+    duplicateContentFrame,
+    addContentFrame,
+    addKeyframe,
+    removeKeyframe,
+    removeBlankSpace,
+    renameContentFrame: renameContentFrameHistory,
+  } = useTimelineHistory();
+
   const handleRenameOpen = useCallback((layerId: LayerId, frameId: ContentFrameId, currentName: string) => {
     setRenameState({ layerId, frameId, currentName });
     setRenameValue(currentName);
@@ -202,17 +213,6 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     setRenameState(null);
     onClose();
   }, [renameState, renameValue, onClose, renameContentFrameHistory]);
-
-  const {
-    removeContentFrame,
-    splitContentFrame,
-    duplicateContentFrame,
-    addContentFrame,
-    addKeyframe,
-    removeKeyframe,
-    removeBlankSpace,
-    renameContentFrame: renameContentFrameHistory,
-  } = useTimelineHistory();
 
   // Close on click outside or Escape
   useEffect(() => {
