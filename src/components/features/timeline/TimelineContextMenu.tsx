@@ -189,20 +189,6 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
 
-  const handleRenameOpen = useCallback((layerId: LayerId, frameId: ContentFrameId, currentName: string) => {
-    setRenameState({ layerId, frameId, currentName });
-    setRenameValue(currentName);
-    // Don't close the context menu yet — dialog will handle that
-  }, []);
-
-  const handleRenameSubmit = useCallback(() => {
-    if (renameState && renameValue.trim()) {
-      useTimelineStore.getState().renameContentFrame(renameState.layerId, renameState.frameId, renameValue.trim());
-    }
-    setRenameState(null);
-    onClose();
-  }, [renameState, renameValue, onClose]);
-
   const {
     removeContentFrame,
     splitContentFrame,
@@ -211,13 +197,32 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
     addKeyframe,
     removeKeyframe,
     removeBlankSpace,
+    renameContentFrame: renameContentFrameHistory,
   } = useTimelineHistory();
+
+  const handleRenameOpen = useCallback((layerId: LayerId, frameId: ContentFrameId, currentName: string) => {
+    setRenameState({ layerId, frameId, currentName });
+    setRenameValue(currentName);
+    // Don't close the context menu yet — dialog will handle that
+  }, []);
+
+  const handleRenameSubmit = useCallback(() => {
+    if (renameState && renameValue.trim()) {
+      renameContentFrameHistory(renameState.layerId, renameState.frameId, renameValue.trim());
+    }
+    setRenameState(null);
+    onClose();
+  }, [renameState, renameValue, onClose, renameContentFrameHistory]);
 
   // Close on click outside or Escape
   useEffect(() => {
     let initialized = false;
     const handleClickOutside = (e: MouseEvent) => {
       if (!initialized) return;
+      // When the rename dialog is open, don't close on clicks outside the
+      // context menu — the dialog is rendered in a portal outside menuRef
+      // and its clicks would otherwise be treated as "outside" clicks.
+      if (renameState !== null) return;
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -238,7 +243,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
       document.removeEventListener('contextmenu', handleClickOutside, true);
       document.removeEventListener('keydown', handleEscape, true);
     };
-  }, [onClose]);
+  }, [onClose, renameState]);
 
   // Auto-position: prevent clipping at window edges
   useEffect(() => {
@@ -698,7 +703,7 @@ export const TimelineContextMenu: React.FC<Props> = ({ menu, onClose }) => {
 
   return (
     <>
-      {createPortal(
+      {renameState === null && createPortal(
         <div
           ref={menuRef}
           className="fixed z-[99999] min-w-[180px] rounded-md border border-border bg-popover p-1 shadow-lg animate-in fade-in-0 zoom-in-95"

@@ -996,6 +996,13 @@ const processHistoryAction = (
       break;
     }
 
+    case 'content_frame_rename': {
+      const tl = useTimelineStore.getState();
+      const name = isRedo ? action.data.newName : action.data.oldName;
+      tl.renameContentFrame(action.data.layerId as LayerId, action.data.frameId as ContentFrameId, name);
+      break;
+    }
+
     case 'layer_visibility': {
       const tl = useTimelineStore.getState();
       const visible = isRedo ? action.data.newVisible : action.data.oldVisible;

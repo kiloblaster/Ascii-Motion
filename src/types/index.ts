@@ -283,6 +283,7 @@ export type HistoryActionType =
   | 'content_frame_remove'
   | 'content_frame_timing'
   | 'content_frame_data'
+  | 'content_frame_rename'
   | 'keyframe_add'
   | 'keyframe_remove'
   | 'keyframe_update'
@@ -770,6 +771,16 @@ export interface ContentFrameDataHistoryAction extends HistoryAction {
   };
 }
 
+export interface ContentFrameRenameHistoryAction extends HistoryAction {
+  type: 'content_frame_rename';
+  data: {
+    layerId: string;
+    frameId: string;
+    oldName: string;
+    newName: string;
+  };
+}
+
 export interface KeyframeAddHistoryAction extends HistoryAction {
   type: 'keyframe_add';
   data: {
@@ -930,6 +941,7 @@ export type AnyHistoryAction =
   | ContentFrameRemoveHistoryAction
   | ContentFrameTimingHistoryAction
   | ContentFrameDataHistoryAction
+  | ContentFrameRenameHistoryAction
   | KeyframeAddHistoryAction
   | KeyframeRemoveHistoryAction
   | KeyframeUpdateHistoryAction

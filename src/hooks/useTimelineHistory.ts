@@ -26,6 +26,7 @@ import type {
   ContentFrameRemoveHistoryAction,
   ContentFrameTimingHistoryAction,
   ContentFrameDataHistoryAction,
+  ContentFrameRenameHistoryAction,
   KeyframeAddHistoryAction,
   KeyframeRemoveHistoryAction,
   KeyframeUpdateHistoryAction,
@@ -417,6 +418,28 @@ export function useTimelineHistory() {
     };
 
     updateContentFrameDataStore(layerId, frameId, data);
+    pushToHistory(historyAction);
+  }, [pushToHistory]);
+
+  const renameContentFrame = useCallback((layerId: LayerId, frameId: ContentFrameId, name: string) => {
+    const { getLayer, renameContentFrame: renameContentFrameStore } = useTimelineStore.getState();
+    const layer = getLayer(layerId);
+    const frame = layer?.contentFrames.find((cf) => cf.id === frameId);
+    if (!frame) return;
+
+    const historyAction: ContentFrameRenameHistoryAction = {
+      type: 'content_frame_rename',
+      timestamp: Date.now(),
+      description: `Rename frame "${frame.name}" → "${name}"`,
+      data: {
+        layerId: layerId as string,
+        frameId: frameId as string,
+        oldName: frame.name,
+        newName: name,
+      },
+    };
+
+    renameContentFrameStore(layerId, frameId, name);
     pushToHistory(historyAction);
   }, [pushToHistory]);
 
@@ -897,6 +920,7 @@ export function useTimelineHistory() {
     duplicateContentFrame,
     updateContentFrameTiming,
     updateContentFrameData,
+    renameContentFrame,
 
     // Property track & keyframe operations (with history)
     addPropertyTrack,
