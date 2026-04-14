@@ -1,12 +1,51 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.1.0";
-export const BUILD_DATE = "2026-04-10T04:47:06.644Z";
-export const BUILD_HASH = "b838579";
+export const VERSION = "2.1.3";
+export const BUILD_DATE = "2026-04-14T19:04:28.035Z";
+export const BUILD_HASH = "b76e9d4";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.1.3",
+    "date": "2026-04-14T19:04:28.035Z",
+    "commits": [
+      "Merge pull request #117 from CameronFoxly/cameronfoxly/fix-typography-menu-alignment",
+      "Add Menlo as a selectable font option",
+      "Fix fallback font reporting to detect actual monospace default",
+      "Rewrite font detection to use FontFace local() probing",
+      "Fix false-positive font detection for system fonts",
+      "Mark retro fonts as bundled and register in font loader",
+      "Fix typography menu right-aligning with trigger button"
+    ]
+  },
+  {
+    "version": "2.1.2",
+    "date": "2026-04-14T17:45:25.286Z",
+    "commits": [
+      "chore: update premium submodule to include preview data fix",
+      "Merge pull request #116 from CameronFoxly/cameronfoxly/fix-my-projects-dialog-bugs",
+      "fix: my projects dialog button disabled state and timestamp bugs",
+      "Merge pull request #115 from CameronFoxly/cameronfoxly/add-discord-link-about-dialog",
+      "Add Discord server link to About dialog"
+    ]
+  },
+  {
+    "version": "2.1.1",
+    "date": "2026-04-13T19:16:03.738Z",
+    "commits": [
+      "Merge pull request #113 from CameronFoxly/cameronfoxly/fix-frame-rename-dialog-click",
+      "Fix: move useTimelineHistory call before handleRenameSubmit",
+      "Fix: close context menu when rename dialog opens, add undo history",
+      "Merge pull request #112 from CameronFoxly/cameronfoxly/fix-taper-controls-rect-ellipse",
+      "Merge pull request #114 from CameronFoxly/cameronfoxly/fix-ascii-box-auto-apply-on-tool-switch",
+      "fix: auto-apply ASCII box work when switching tools instead of discarding",
+      "Fix: rename dialog clicks closing the dialog immediately",
+      "Add taper controls to rectangle and ellipse tool settings",
+      "chore: set version to 2.1.0 (Shaders major release)"
+    ]
+  },
   {
     "version": "2.0.19",
     "date": "2026-04-10T04:47:06.644Z",
