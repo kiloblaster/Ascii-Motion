@@ -4,6 +4,8 @@
  * Uses canvas text measurement technique to determine font availability
  */
 
+import { isFontLoaded as isBundledFontLoaded } from '@/utils/fontLoader';
+
 // Cache font availability results to avoid repeated checks
 const fontAvailabilityCache = new Map<string, boolean>();
 const detectedFontCache = new Map<string, string>();
@@ -21,11 +23,11 @@ export async function isFontAvailable(fontName: string): Promise<boolean> {
     return fontAvailabilityCache.get(fontName)!;
   }
 
-  // First, check if the font is available via CSS Font Loading API
-  // This catches fonts loaded via @font-face declarations
-  if (document.fonts) {
+  // For fonts we explicitly loaded via @font-face, document.fonts.check() is reliable.
+  // For system fonts it gives false positives (returns true even when the font isn't
+  // installed, because the browser can render with a fallback without downloading).
+  if (isBundledFontLoaded(fontName) && document.fonts) {
     try {
-      // Try with quotes (for fonts with spaces)
       const fontWithQuotes = fontName.includes(' ') ? `"${fontName}"` : fontName;
       const isAvailableViaCSS = document.fonts.check(`12px ${fontWithQuotes}`);
       if (isAvailableViaCSS) {
