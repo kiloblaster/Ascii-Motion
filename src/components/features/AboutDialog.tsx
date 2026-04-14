@@ -6,7 +6,7 @@ import { Card, CardContent } from '../ui/card';
 import { Separator } from '../ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { ExternalLink, ChevronDown, Calendar, GitCommit, Hash } from 'lucide-react';
-import { GitHubIcon } from '../icons';
+import { DiscordIcon, GitHubIcon } from '../icons';
 import { VERSION, BUILD_DATE, BUILD_HASH, VERSION_HISTORY } from '@/constants/version';
 
 interface AboutDialogProps {
@@ -104,6 +104,17 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({
                   >
                     <GitHubIcon className="mr-2 h-4 w-4" />
                     Report a Bug or Suggest a Feature
+                    <ExternalLink className="ml-auto h-3 w-3" />
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={() => window.open('https://discord.gg/PVbpGgKQMy', '_blank')}
+                  >
+                    <DiscordIcon className="mr-2 h-4 w-4" />
+                    Join the Discord
                     <ExternalLink className="ml-auto h-3 w-3" />
                   </Button>
                 </div>
