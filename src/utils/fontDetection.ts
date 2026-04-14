@@ -147,29 +147,56 @@ async function getActualUsedFont(fontStack: string): Promise<string> {
     }
   }
   
-  // If no font in the stack was detected, try common system fonts
-  // (covers the "auto" case where the stack might not list every system font)
-  const commonSystemFonts = [
-    'SF Mono',
-    'Menlo',
-    'Monaco', 
-    'Consolas',
-    'Courier New',
-    'Courier'
+  // No named font in the stack was available, so the browser is using
+  // the generic `monospace` fallback. Detect which concrete font that
+  // maps to by comparing canvas metrics against known candidates.
+  const resolvedMonospace = detectMonospaceDefault();
+  actualUsedFontCache.set(fontStack, resolvedMonospace);
+  return resolvedMonospace;
+}
+
+/**
+ * Detect which concrete font the browser's generic `monospace` maps to.
+ * Renders text with bare `monospace` and compares metrics against known
+ * monospace fonts to find the match.
+ */
+function detectMonospaceDefault(): string {
+  const candidates = [
+    'Menlo', 'SF Mono', 'Monaco', 'Consolas',
+    'Cascadia Code', 'Courier New', 'Courier'
   ];
-  
-  for (const systemFont of commonSystemFonts) {
-    if (fonts.includes(systemFont)) continue;
-    
-    const isAvailable = await isFontAvailable(systemFont);
-    if (isAvailable) {
-      actualUsedFontCache.set(fontStack, systemFont);
-      return systemFont;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 'monospace';
+
+  const testStrings = ['mmmmmmmmmmlli', 'iIl1O0', 'WMwm@#'];
+  const size = '72px';
+
+  // Measure the baseline: bare `monospace`
+  const baseWidths: number[] = [];
+  for (const s of testStrings) {
+    ctx.font = `${size} monospace`;
+    baseWidths.push(ctx.measureText(s).width);
+  }
+
+  // Find the candidate whose metrics match the baseline
+  for (const candidate of candidates) {
+    let allMatch = true;
+    for (let i = 0; i < testStrings.length; i++) {
+      ctx.font = `${size} "${candidate}", monospace`;
+      if (ctx.measureText(testStrings[i]).width !== baseWidths[i]) {
+        allMatch = false;
+        break;
+      }
+    }
+    // If all test strings match, this font IS the monospace default
+    // (its metrics are identical because the browser is already using it)
+    if (allMatch) {
+      return candidate;
     }
   }
-  
-  // Ultimate fallback
-  actualUsedFontCache.set(fontStack, 'monospace');
+
   return 'monospace';
 }
 
