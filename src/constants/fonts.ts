@@ -35,6 +35,15 @@ export const MONOSPACE_FONTS: MonospaceFont[] = [
     description: 'Classic macOS monospace - crisp and readable'
   },
   {
+    id: 'menlo',
+    name: 'Menlo',
+    displayName: 'Menlo (macOS)',
+    cssStack: 'Menlo, monospace',
+    category: 'system',
+    platforms: ['macos'],
+    description: 'macOS default monospace - clean and highly readable'
+  },
+  {
     id: 'consolas',
     name: 'Consolas',
     displayName: 'Consolas (Windows)',
