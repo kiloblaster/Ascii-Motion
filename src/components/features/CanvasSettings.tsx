@@ -245,15 +245,16 @@ export const CanvasSettings: React.FC = () => {
     }
   }, []);
 
-  // Calculate dropdown position
+  // Calculate dropdown position (right-aligned with the button)
   const calculatePosition = (buttonRef: HTMLDivElement | null) => {
     if (!buttonRef) return { top: 0, left: 0, width: 280 };
     
+    const dropdownWidth = 280;
     const rect = buttonRef.getBoundingClientRect();
     return {
       top: rect.bottom + 4,
-      left: rect.left,
-      width: 280  // Fixed width for typography dropdown
+      left: rect.right - dropdownWidth,
+      width: dropdownWidth
     };
   };
 
