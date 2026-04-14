@@ -183,6 +183,7 @@ export function ProjectsDialog({
   const [editingDescriptionId, setEditingDescriptionId] = useState<string | null>(null);
   const [newDescription, setNewDescription] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
   const [trashExpanded, setTrashExpanded] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getCachedUserProfile());
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
@@ -308,6 +309,7 @@ export function ProjectsDialog({
       setNewName('');
       setEditingDescriptionId(null);
       setNewDescription('');
+      setOpeningProjectId(null);
       hasLoadedOnce.current = false;
     }
   }, [open]);
@@ -342,6 +344,7 @@ export function ProjectsDialog({
   };
 
   const handleOpenProject = async (project: CloudProject) => {
+    setOpeningProjectId(project.id);
     try {
       const cloudProject = await loadFromCloud(project.id);
       if (cloudProject) {
@@ -351,6 +354,8 @@ export function ProjectsDialog({
       }
     } catch (err) {
       console.error('[ProjectsDialog] Load failed:', err);
+    } finally {
+      setOpeningProjectId(null);
     }
   };
 
@@ -754,10 +759,19 @@ export function ProjectsDialog({
                     <Button
                       className="w-full"
                       onClick={() => handleOpenProject(project)}
-                      disabled={loading}
+                      disabled={openingProjectId !== null}
                     >
-                      <FolderOpen className="h-4 w-4 mr-2" />
-                      Open
+                      {openingProjectId === project.id ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Opening...
+                        </>
+                      ) : (
+                        <>
+                          <FolderOpen className="h-4 w-4 mr-2" />
+                          Open
+                        </>
+                      )}
                     </Button>
                   </CardFooter>
                 </Card>
