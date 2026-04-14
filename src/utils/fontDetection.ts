@@ -1,7 +1,8 @@
 /**
  * Font Detection Utility
  * Detects which fonts are actually available on the user's system
- * Uses canvas text measurement technique to determine font availability
+ * Uses FontFace local() probing as the primary detection method,
+ * with canvas measurement as a fallback for older browsers.
  */
 
 import { isFontLoaded as isBundledFontLoaded } from '@/utils/fontLoader';
@@ -14,45 +15,38 @@ const detectedFontCache = new Map<string, string>();
 const actualUsedFontCache = new Map<string, string>();
 
 /**
- * Check if a specific font is available on the system
- * Uses canvas measurement with serif AND sans-serif baselines for better accuracy
+ * Probe whether a font is installed locally using the FontFace API.
+ * Creates a temporary FontFace with a local() source and attempts to load it.
+ * Resolves true if the font is found, false otherwise.
  */
-export async function isFontAvailable(fontName: string): Promise<boolean> {
-  // Check cache first
-  if (fontAvailabilityCache.has(fontName)) {
-    return fontAvailabilityCache.get(fontName)!;
-  }
+async function probeLocalFont(fontName: string): Promise<boolean> {
+  if (typeof FontFace === 'undefined') return false;
 
-  // For fonts we explicitly loaded via @font-face, document.fonts.check() is reliable.
-  // For system fonts it gives false positives (returns true even when the font isn't
-  // installed, because the browser can render with a fallback without downloading).
-  if (isBundledFontLoaded(fontName) && document.fonts) {
-    try {
-      const fontWithQuotes = fontName.includes(' ') ? `"${fontName}"` : fontName;
-      const isAvailableViaCSS = document.fonts.check(`12px ${fontWithQuotes}`);
-      if (isAvailableViaCSS) {
-        fontAvailabilityCache.set(fontName, true);
-        return true;
-      }
-    } catch {
-      // If check() throws, fall through to canvas measurement
-    }
-  }
-
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  
-  if (!context) {
-    fontAvailabilityCache.set(fontName, false);
+  try {
+    const face = new FontFace('__probe__', `local("${fontName}")`);
+    await face.load();
+    return true;
+  } catch {
     return false;
   }
+}
 
-  // Use multiple test strings and baseline fonts
-  const testStrings = ['mmmmmmmmmmlli', 'iIl1O0'];
+/**
+ * Canvas-based font detection fallback.
+ * Compares glyph widths against baseline generic fonts.
+ * Less reliable than FontFace local() — fonts whose metrics match
+ * the baseline will produce false negatives.
+ */
+function canvasFontDetection(fontName: string): boolean {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+
+  if (!context) return false;
+
+  const testStrings = ['mmmmmmmmmmlli', 'iIl1O0', 'WMwm@#'];
   const baselineFonts = ['monospace', 'sans-serif', 'serif'];
   const testSize = '72px';
-  
-  // Collect baseline measurements
+
   const baselines = new Map<string, number[]>();
   for (const baselineFont of baselineFonts) {
     const widths: number[] = [];
@@ -63,33 +57,55 @@ export async function isFontAvailable(fontName: string): Promise<boolean> {
     baselines.set(baselineFont, widths);
   }
 
-  // Test the font both with and without quotes (SF Mono behaves differently)
-  const fontVariations = [
-    `"${fontName}"`,
-    fontName
-  ];
+  const fontVariations = [`"${fontName}"`, fontName];
 
   for (const fontVariation of fontVariations) {
-    // Test against each baseline
     for (const baselineFont of baselineFonts) {
       const baselineWidths = baselines.get(baselineFont)!;
-      
+
       for (let i = 0; i < testStrings.length; i++) {
-        const testString = testStrings[i];
         context.font = `${testSize} ${fontVariation}, ${baselineFont}`;
-        const testWidth = context.measureText(testString).width;
-        
-        // If this width differs from the baseline, the font is available
+        const testWidth = context.measureText(testStrings[i]).width;
+
         if (testWidth !== baselineWidths[i]) {
-          fontAvailabilityCache.set(fontName, true);
           return true;
         }
       }
     }
   }
 
-  fontAvailabilityCache.set(fontName, false);
   return false;
+}
+
+/**
+ * Check if a specific font is available on the system.
+ * Uses FontFace local() probing (most reliable), falling back to
+ * canvas measurement for environments without FontFace support.
+ */
+export async function isFontAvailable(fontName: string): Promise<boolean> {
+  // Check cache first
+  if (fontAvailabilityCache.has(fontName)) {
+    return fontAvailabilityCache.get(fontName)!;
+  }
+
+  // For bundled fonts we loaded via @font-face, trust our own loader state
+  if (isBundledFontLoaded(fontName)) {
+    fontAvailabilityCache.set(fontName, true);
+    return true;
+  }
+
+  // Primary: FontFace local() probing — directly asks the browser
+  // whether the font is installed locally
+  const localResult = await probeLocalFont(fontName);
+  if (localResult) {
+    fontAvailabilityCache.set(fontName, true);
+    return true;
+  }
+
+  // Fallback: canvas measurement (for browsers where local() is restricted)
+  const canvasResult = canvasFontDetection(fontName);
+  fontAvailabilityCache.set(fontName, canvasResult);
+  return canvasResult;
 }
 
 /**
@@ -111,8 +127,8 @@ function parseFontStack(fontStack: string): string[] {
 }
 
 /**
- * Get the actual font being used by the browser for a given font stack
- * Tests each font in order and returns the first available one
+ * Get the actual font being used by the browser for a given font stack.
+ * Tests each font in stack order and returns the first available one.
  */
 async function getActualUsedFont(fontStack: string): Promise<string> {
   // Check cache first
@@ -122,7 +138,7 @@ async function getActualUsedFont(fontStack: string): Promise<string> {
 
   const fonts = parseFontStack(fontStack);
 
-  // Test each font in order
+  // Test each font in order — the browser uses the first available one
   for (const font of fonts) {
     const isAvailable = await isFontAvailable(font);
     if (isAvailable) {
@@ -131,37 +147,11 @@ async function getActualUsedFont(fontStack: string): Promise<string> {
     }
   }
   
-  // Special case: Some fonts (like SF Mono on macOS) have identical metrics to generic monospace
-  // and can't be detected via measurement, but ARE available. Check if we should trust the first font.
-  if (fonts.length > 0 && fonts.length <= 2) { // Only for specific font selections (not auto)
-    const firstFont = fonts[0];
-    
-    // List of fonts known to have identical metrics to system defaults on certain platforms
-    const platformIdenticalFonts = [
-      { font: 'SF Mono', platform: 'mac' },
-      { font: 'SFMono-Regular', platform: 'mac' }
-    ];
-    
-    const userAgent = navigator.userAgent.toLowerCase();
-    const isMac = userAgent.includes('mac');
-    
-    // Check if this font is known to be identical to system default on this platform
-    const isKnownIdentical = platformIdenticalFonts.some(
-      item => item.font === firstFont && 
-              ((item.platform === 'mac' && isMac))
-    );
-    
-    if (isKnownIdentical) {
-      actualUsedFontCache.set(fontStack, firstFont);
-      return firstFont;
-    }
-  }
-  
-  // For "auto" mode or if detection failed, try to detect the system's default
-  
+  // If no font in the stack was detected, try common system fonts
+  // (covers the "auto" case where the stack might not list every system font)
   const commonSystemFonts = [
-    'Menlo',
     'SF Mono',
+    'Menlo',
     'Monaco', 
     'Consolas',
     'Courier New',
@@ -169,7 +159,6 @@ async function getActualUsedFont(fontStack: string): Promise<string> {
   ];
   
   for (const systemFont of commonSystemFonts) {
-    // Skip if already tested
     if (fonts.includes(systemFont)) continue;
     
     const isAvailable = await isFontAvailable(systemFont);
@@ -179,7 +168,7 @@ async function getActualUsedFont(fontStack: string): Promise<string> {
     }
   }
   
-  // Ultimate fallback - couldn't detect specific font
+  // Ultimate fallback
   actualUsedFontCache.set(fontStack, 'monospace');
   return 'monospace';
 }
