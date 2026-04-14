@@ -107,7 +107,7 @@ export const MONOSPACE_FONTS: MonospaceFont[] = [
     cssStack: 'Px437 IBM VGA 9x14, monospace',
     category: 'web',
     description: 'Classic IBM VGA font - authentic retro terminal aesthetic',
-    isBundled: false,
+    isBundled: true,
     fileSize: '~25KB'
   },
   {
@@ -117,7 +117,7 @@ export const MONOSPACE_FONTS: MonospaceFont[] = [
     cssStack: 'Px437 IBM DOS ISO8, monospace',
     category: 'web',
     description: 'Classic IBM DOS font with ISO-8859-1 extended characters',
-    isBundled: false,
+    isBundled: true,
     fileSize: '~28KB'
   },
   {
@@ -127,7 +127,7 @@ export const MONOSPACE_FONTS: MonospaceFont[] = [
     cssStack: '"C64 Pro", monospace',
     category: 'web',
     description: 'Commodore 64 font - proportional variant for different rendering',
-    isBundled: false,
+    isBundled: true,
     fileSize: '~30KB'
   },
   {

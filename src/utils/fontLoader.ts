@@ -24,6 +24,15 @@ const BUNDLED_FONT_FILES: Record<string, { url: string; weight?: number; style?:
   ],
   'Geist Mono': [
     { url: '/fonts/GeistMono-Regular.woff2', weight: 400, style: 'normal' }
+  ],
+  'Px437 IBM VGA 9x14': [
+    { url: '/fonts/Px437_IBM_VGA_9x14.ttf', weight: 400, style: 'normal', format: 'truetype' }
+  ],
+  'Px437 IBM DOS ISO8': [
+    { url: '/fonts/Px437_IBM_DOS_ISO8.ttf', weight: 400, style: 'normal', format: 'truetype' }
+  ],
+  'C64 Pro': [
+    { url: '/fonts/C64_Pro-STYLE.ttf', weight: 400, style: 'normal', format: 'truetype' }
   ]
 };
 
