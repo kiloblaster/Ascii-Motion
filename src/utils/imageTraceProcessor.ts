@@ -182,7 +182,7 @@ function loadVideo(file: File): Promise<HTMLVideoElement> {
  * Detect video FPS using MP4Box metadata, falling back to 30fps.
  * Same logic as mediaProcessor.ts estimateVideoFrameRate.
  */
-async function detectVideoFps(video: HTMLVideoElement, file: File): Promise<number> {
+async function detectVideoFps(_video: HTMLVideoElement, file: File): Promise<number> {
   try {
     const arrayBuffer = await file.arrayBuffer();
     const fps = await parseMP4FrameRate(arrayBuffer);
