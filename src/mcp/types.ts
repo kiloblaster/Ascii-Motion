@@ -27,7 +27,14 @@ export type MCPCommand =
   | MCPSetForegroundColorCommand
   | MCPSetBackgroundColorCommand
   | MCPSelectRectangleCommand
-  | MCPClearSelectionCommand;
+  | MCPClearSelectionCommand
+  | MCPAddPostEffectCommand
+  | MCPRemovePostEffectCommand
+  | MCPUpdatePostEffectCommand
+  | MCPSetPostEffectKeyframeCommand
+  | MCPRemovePostEffectKeyframeCommand
+  | MCPListPostEffectsCommand
+  | MCPGetPostEffectPresetsCommand;
 
 export interface MCPSetCellCommand {
   type: 'set_cell';
@@ -130,6 +137,52 @@ export interface MCPClearSelectionCommand {
   type: 'clear_selection';
 }
 
+// Post-effect commands
+export interface MCPAddPostEffectCommand {
+  type: 'add_post_effect';
+  postEffectType: string;
+  startFrame?: number;
+  durationFrames?: number;
+  settings?: Record<string, unknown>;
+}
+
+export interface MCPRemovePostEffectCommand {
+  type: 'remove_post_effect';
+  blockId: string;
+}
+
+export interface MCPUpdatePostEffectCommand {
+  type: 'update_post_effect';
+  blockId: string;
+  settings?: Record<string, unknown>;
+  startFrame?: number;
+  durationFrames?: number;
+  enabled?: boolean;
+}
+
+export interface MCPSetPostEffectKeyframeCommand {
+  type: 'set_post_effect_keyframe';
+  blockId: string;
+  propertyPath: string;
+  frame: number;
+  value: number | boolean | string;
+}
+
+export interface MCPRemovePostEffectKeyframeCommand {
+  type: 'remove_post_effect_keyframe';
+  blockId: string;
+  propertyPath: string;
+  frame: number;
+}
+
+export interface MCPListPostEffectsCommand {
+  type: 'list_post_effects';
+}
+
+export interface MCPGetPostEffectPresetsCommand {
+  type: 'get_post_effect_presets';
+}
+
 /**
  * State updates sent from browser to MCP server
  */
@@ -197,6 +250,14 @@ export interface MCPClientStateSnapshot {
   project?: {
     name: string;
   };
+  postEffects?: Array<{
+    blockId: string;
+    type: string;
+    enabled: boolean;
+    startFrame: number;
+    durationFrames: number;
+    settings: Record<string, unknown>;
+  }>;
 }
 
 /**
