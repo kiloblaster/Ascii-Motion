@@ -189,6 +189,7 @@ export interface ValidationResult {
 
 export type Profile = {
   id: string;
+  is_admin: boolean;
   subscription_tier: {
     id: string;
     name: string;

@@ -78,7 +78,8 @@ function AppContent() {
   // Pro/admin users get unlimited layers, free users get FREE_TIER_MAX_LAYERS (5)
   useEffect(() => {
     registerSubscriptionLayerLimit(() => {
-      if (profile?.is_admin) return UNLIMITED_LAYERS;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((profile as any)?.is_admin) return UNLIMITED_LAYERS;
       if (profile?.subscription_tier?.name === 'pro') return UNLIMITED_LAYERS;
       return FREE_TIER_MAX_LAYERS;
     });
