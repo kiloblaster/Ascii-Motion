@@ -1,12 +1,48 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.1.3";
-export const BUILD_DATE = "2026-04-14T19:04:28.035Z";
-export const BUILD_HASH = "b76e9d4";
+export const VERSION = "2.1.7";
+export const BUILD_DATE = "2026-05-06T21:02:21.175Z";
+export const BUILD_HASH = "add8369";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.1.7",
+    "date": "2026-05-06T21:02:21.175Z",
+    "commits": [
+      "fix: resolve is_admin type mismatch in layer limit registration"
+    ]
+  },
+  {
+    "version": "2.1.6",
+    "date": "2026-05-06T20:57:05.755Z",
+    "commits": [
+      "feat: wire up unlimited layers for pro/admin accounts (#124)"
+    ]
+  },
+  {
+    "version": "2.1.5",
+    "date": "2026-05-06T18:41:41.431Z",
+    "commits": [
+      "feat: update premium submodule - mentions, quote-replies, notification fix (#122)"
+    ]
+  },
+  {
+    "version": "2.1.4",
+    "date": "2026-05-06T18:37:42.680Z",
+    "commits": [
+      "fix: add missing MCP post-effect types to fix tsc build",
+      "fix: prefix unused video param to fix tsc build",
+      "feat: Image Trace overlay for tracing reference images/videos (#120)",
+      "Merge pull request #119 from CameronFoxly/dependabot/npm_and_yarn/hono-4.12.14",
+      "Merge pull request #118 from CameronFoxly/dependabot/npm_and_yarn/dompurify-3.4.0",
+      "chore(deps-dev): bump hono from 4.12.12 to 4.12.14",
+      "chore(deps): bump dompurify from 3.3.2 to 3.4.0",
+      "Update flags",
+      "Fixed outdated typescript reference to baseURL"
+    ]
+  },
   {
     "version": "2.1.3",
     "date": "2026-04-14T19:04:28.035Z",
