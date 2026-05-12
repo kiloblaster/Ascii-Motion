@@ -1,4 +1,5 @@
 import { saveAs } from 'file-saver';
+import JSZip from 'jszip';
 import type { Font } from 'opentype.js';
 import type { 
   ExportDataBundle, 
@@ -23,9 +24,10 @@ import { applyPostEffectsToCanvas } from '../hooks/usePostEffectsRenderer';
 import { 
   generateSvgHeader, 
   generateSvgGrid, 
-  generateSvgTextElement, 
+  generateSvgContentGrouped,
   convertTextToPath,
-  minifySvg
+  minifySvg,
+  sanitizeFontStackForSvg
 } from './svgExportUtils';
 import { getPostEffect } from '../registry/postEffectRegistry';
 import { evaluatePostEffectBlock, getActivePostEffects } from './postEffectsPipeline';
@@ -197,13 +199,19 @@ export class ExportRenderer {
       const canvasWidth = data.canvasDimensions.width * cellWidth;
       const canvasHeight = data.canvasDimensions.height * cellHeight;
 
+      // Sanitize the font stack for desktop app compatibility — use the actually
+      // detected font when available to avoid Adobe apps choking on uninstalled fonts
+      const rawFontStack = data.fontMetrics?.fontFamily || 'SF Mono, Monaco, Cascadia Code, Consolas, JetBrains Mono, Fira Code, Monaspace Neon, Geist Mono, Courier New, monospace';
+      const fontStack = sanitizeFontStackForSvg(rawFontStack, data.typography?.actualFont);
+
       this.updateProgress('Generating SVG structure...', 20);
 
-      // Start SVG with header
+      // Start SVG with header and embedded text style
       let svg = generateSvgHeader(
         canvasWidth, 
         canvasHeight, 
-        svgSettings.includeBackground ? data.canvasBackgroundColor : undefined
+        svgSettings.includeBackground ? data.canvasBackgroundColor : undefined,
+        { fontFamily: fontStack, fontSize: actualFontSize }
       );
 
       // Add metadata as SVG comments
@@ -239,18 +247,15 @@ export class ExportRenderer {
       // Content group
       svg += '  <g id="content">\n';
 
-      // Font stack is already properly formatted (no quotes) from fontMetrics
-      const fontStack = data.fontMetrics?.fontFamily || 'SF Mono, Monaco, Cascadia Code, Consolas, JetBrains Mono, Fira Code, Monaspace Neon, Geist Mono, Courier New, monospace';
-
-      // Render each cell
-      let cellCount = 0;
-      const totalCells = currentFrame.size;
-      
-      currentFrame.forEach((cell, key) => {
-        const [x, y] = key.split(',').map(Number);
+      if (svgSettings.textAsOutlines) {
+        // Text-as-outlines: render each cell individually with path conversion
+        let cellCount = 0;
+        const totalCells = currentFrame.size;
         
-        if (cell.char) {
-          if (svgSettings.textAsOutlines) {
+        currentFrame.forEach((cell, key) => {
+          const [x, y] = key.split(',').map(Number);
+          
+          if (cell.char) {
             svg += convertTextToPath(
               cell.char,
               x, y,
@@ -260,28 +265,27 @@ export class ExportRenderer {
               cellHeight,
               actualFontSize,
               fontStack,
-              font // Pass the loaded font for opentype.js conversion
-            );
-          } else {
-            svg += generateSvgTextElement(
-              cell.char,
-              x, y,
-              cell.color || '#ffffff',
-              cell.bgColor,
-              cellWidth,
-              cellHeight,
-              actualFontSize,
-              fontStack
+              font
             );
           }
-        }
-        
-        cellCount++;
-        if (cellCount % 100 === 0) {
-          const progress = 50 + Math.floor((cellCount / totalCells) * 30);
-          this.updateProgress(`Rendering characters... (${cellCount}/${totalCells})`, progress);
-        }
-      });
+          
+          cellCount++;
+          if (cellCount % 100 === 0) {
+            const progress = 50 + Math.floor((cellCount / totalCells) * 30);
+            this.updateProgress(`Rendering characters... (${cellCount}/${totalCells})`, progress);
+          }
+        });
+      } else {
+        // Row-based grouped rendering — dramatically fewer SVG elements
+        // for compatibility with After Effects and other desktop apps
+        svg += generateSvgContentGrouped(
+          currentFrame,
+          data.canvasDimensions.width,
+          data.canvasDimensions.height,
+          cellWidth,
+          cellHeight
+        );
+      }
 
       svg += '  </g>\n';
       svg += '</svg>';
@@ -304,6 +308,221 @@ export class ExportRenderer {
       console.error('SVG export failed:', error);
       throw new Error(`SVG export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Export frames as an image sequence packaged in a .zip file.
+   * Supports PNG, JPEG, and SVG formats.
+   */
+  async exportImageSequence(
+    data: ExportDataBundle,
+    settings: ImageExportSettings,
+    filename: string
+  ): Promise<void> {
+    this.updateProgress('Preparing image sequence export...', 0);
+
+    try {
+      const totalFrames = data.frames.length;
+      if (totalFrames === 0) {
+        throw new Error('No frames available for export');
+      }
+
+      // Determine frame range
+      let startFrame = 0;
+      let endFrame = totalFrames - 1;
+
+      if (settings.sequenceRange && settings.sequenceRange !== 'all') {
+        startFrame = Math.max(0, settings.sequenceRange.start);
+        endFrame = Math.min(totalFrames - 1, settings.sequenceRange.end);
+      }
+
+      const frameCount = endFrame - startFrame + 1;
+      // Dynamic zero-padding based on total frame count
+      const padLength = Math.max(String(frameCount).length, 1);
+      const extension = settings.format === 'jpg' ? 'jpg' : settings.format === 'svg' ? 'svg' : 'png';
+
+      const zip = new JSZip();
+
+      // Pre-load font for SVG text-as-outlines if needed
+      let svgFont: Font | undefined;
+      if (settings.format === 'svg' && settings.svgSettings?.textAsOutlines) {
+        this.updateProgress('Loading font for outlines...', 2);
+        const { fontLoader } = await import('./font/fontLoader');
+        const fontId = settings.svgSettings.outlineFont || 'jetbrains-mono';
+        try {
+          const loadedFont = await fontLoader.loadFont(fontId, { cache: true, timeout: 10000 });
+          svgFont = loadedFont.font;
+        } catch {
+          svgFont = undefined;
+        }
+      }
+
+      // Reusable canvas for raster exports
+      let exportCanvas: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; scale: number } | null = null;
+      if (settings.format !== 'svg') {
+        exportCanvas = this.createExportCanvas(
+          data.canvasDimensions.width,
+          data.canvasDimensions.height,
+          settings.sizeMultiplier,
+          data.fontMetrics,
+          data.typography
+        );
+      }
+
+      for (let i = startFrame; i <= endFrame; i++) {
+        const frameIndex = i - startFrame;
+        const frameNumber = frameIndex + 1; // 1-indexed
+        const paddedNumber = String(frameNumber).padStart(padLength, '0');
+        const frameFilename = `${filename}_${paddedNumber}.${extension}`;
+
+        const progressPercent = Math.round((frameIndex / frameCount) * 90) + 5;
+        this.updateProgress(`Rendering frame ${frameNumber}/${frameCount}...`, progressPercent);
+
+        const frameData = data.frames[i]?.data || data.canvasData;
+
+        if (settings.format === 'svg') {
+          // Generate SVG for this frame
+          const svgContent = this.renderFrameAsSvg(
+            frameData,
+            data,
+            settings,
+            svgFont
+          );
+          zip.file(frameFilename, svgContent);
+        } else {
+          // Render raster frame
+          await this.renderFrame(
+            exportCanvas!.canvas,
+            frameData,
+            data.canvasDimensions.width,
+            data.canvasDimensions.height,
+            {
+              backgroundColor: data.canvasBackgroundColor,
+              showGrid: settings.includeGrid && data.showGrid,
+              fontMetrics: data.fontMetrics,
+              typography: data.typography,
+              sizeMultiplier: settings.sizeMultiplier,
+              theme: data.uiState.theme,
+              scale: exportCanvas!.scale
+            }
+          );
+
+          // Apply post effects if enabled
+          if (settings.includePostEffects !== false && data.postEffectTracks) {
+            applyPostEffectsToCanvas(
+              exportCanvas!.canvas,
+              data.postEffectTracks,
+              i,
+              data.frameRate,
+              data.canvasBackgroundColor,
+            );
+          }
+
+          const mimeType = settings.format === 'jpg' ? 'image/jpeg' : 'image/png';
+          const quality = settings.format === 'jpg' ? Math.min(Math.max(settings.quality, 10), 100) / 100 : undefined;
+          const blob = await this.canvasToBlob(exportCanvas!.canvas, mimeType, quality);
+          zip.file(frameFilename, blob);
+        }
+      }
+
+      this.updateProgress('Creating zip file...', 95);
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      saveAs(zipBlob, `${filename}_sequence.zip`);
+
+      this.updateProgress('Export complete!', 100);
+    } catch (error) {
+      console.error('Image sequence export failed:', error);
+      throw new Error(`Image sequence export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Render a single frame as SVG string (used by image sequence export)
+   */
+  private renderFrameAsSvg(
+    frameData: Map<string, Cell>,
+    data: ExportDataBundle,
+    settings: ImageExportSettings,
+    font?: Font
+  ): string {
+    const svgSettings = settings.svgSettings!;
+
+    const actualFontSize = data.typography?.fontSize || data.fontMetrics?.fontSize || 16;
+    const characterSpacing = data.typography?.characterSpacing || 1.0;
+    const lineSpacing = data.typography?.lineSpacing || 1.0;
+
+    const baseCharWidth = actualFontSize * 0.6;
+    const baseCharHeight = actualFontSize;
+
+    const cellWidth = baseCharWidth * characterSpacing;
+    const cellHeight = baseCharHeight * lineSpacing;
+
+    const canvasWidth = data.canvasDimensions.width * cellWidth;
+    const canvasHeight = data.canvasDimensions.height * cellHeight;
+
+    const rawFontStack = data.fontMetrics?.fontFamily || 'SF Mono, Monaco, Cascadia Code, Consolas, JetBrains Mono, Fira Code, Monaspace Neon, Geist Mono, Courier New, monospace';
+    const fontStack = sanitizeFontStackForSvg(rawFontStack, data.typography?.actualFont);
+
+    let svg = generateSvgHeader(
+      canvasWidth,
+      canvasHeight,
+      svgSettings.includeBackground ? data.canvasBackgroundColor : undefined,
+      { fontFamily: fontStack, fontSize: actualFontSize }
+    );
+
+    if (svgSettings.includeGrid) {
+      const gridColor = calculateAdaptiveGridColor(
+        data.canvasBackgroundColor,
+        data.uiState.theme as 'light' | 'dark'
+      );
+      svg += generateSvgGrid(
+        data.canvasDimensions.width,
+        data.canvasDimensions.height,
+        cellWidth,
+        cellHeight,
+        gridColor
+      );
+    }
+
+    svg += '  <g id="content">\n';
+
+    if (svgSettings.textAsOutlines) {
+      frameData.forEach((cell, key) => {
+        const [x, y] = key.split(',').map(Number);
+
+        if (cell.char) {
+          svg += convertTextToPath(
+            cell.char,
+            x, y,
+            cell.color || '#ffffff',
+            cell.bgColor,
+            cellWidth,
+            cellHeight,
+            actualFontSize,
+            fontStack,
+            font
+          );
+        }
+      });
+    } else {
+      svg += generateSvgContentGrouped(
+        frameData,
+        data.canvasDimensions.width,
+        data.canvasDimensions.height,
+        cellWidth,
+        cellHeight
+      );
+    }
+
+    svg += '  </g>\n';
+    svg += '</svg>';
+
+    if (!svgSettings.prettify) {
+      svg = minifySvg(svg);
+    }
+
+    return svg;
   }
 
   /**

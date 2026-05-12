@@ -4,21 +4,105 @@
  */
 
 import type { Font } from 'opentype.js';
+import type { Cell } from '../types';
 import { convertGlyphToSvgPath, generateSvgPathElement } from './font/opentypePathConverter';
 
 /**
- * Generate SVG header with proper namespaces and viewBox
+ * CSS-only font keywords and system UI keywords that are not valid font names
+ * in desktop applications like Adobe Illustrator, After Effects, etc.
+ * These must be filtered out of SVG font-family attributes.
+ */
+const CSS_ONLY_FONT_KEYWORDS = new Set([
+  'ui-monospace',
+  'ui-sans-serif',
+  'ui-serif',
+  'ui-rounded',
+  'system-ui',
+  '-apple-system',
+  'BlinkMacSystemFont',
+]);
+
+/**
+ * Sanitize a CSS font stack for SVG export.
+ * For desktop app compatibility (Illustrator, After Effects), we should only
+ * include fonts that are actually available — not the entire CSS fallback chain.
+ * If an actualFont is provided (from font detection), use only that + monospace.
+ * Otherwise, filter out CSS-only keywords and keep the stack.
+ *
+ * Multi-word font names are single-quoted per SVG/CSS spec (e.g. 'SF Mono').
+ * After Effects' SVG parser is strict about this — unquoted multi-word names crash it.
+ */
+export function sanitizeFontStackForSvg(fontStack: string, actualFont?: string | null): string {
+  // If we know the actual detected font, use only that + generic fallback.
+  if (actualFont) {
+    const bare = actualFont.replace(/['"]/g, '');
+    if (CSS_ONLY_FONT_KEYWORDS.has(bare) || bare === 'monospace') {
+      return 'monospace';
+    }
+    return `${quoteFontName(bare)}, monospace`;
+  }
+
+  // Fallback: filter out CSS-only keywords from the stack
+  const fonts = fontStack.split(',').map(f => f.trim()).filter(f => f.length > 0);
+  const sanitized = fonts
+    .filter(f => {
+      const bare = f.replace(/['"]/g, '');
+      return !CSS_ONLY_FONT_KEYWORDS.has(bare);
+    })
+    .map(f => quoteFontName(f.replace(/['"]/g, '')));
+
+  // Ensure we have at least a generic fallback
+  if (sanitized.length === 0 || sanitized[sanitized.length - 1] !== 'monospace') {
+    sanitized.push('monospace');
+  }
+
+  return sanitized.join(', ');
+}
+
+/** Single-quote a font name if it contains spaces; leave generic families unquoted. */
+function quoteFontName(name: string): string {
+  const generic = ['monospace', 'serif', 'sans-serif', 'cursive', 'fantasy'];
+  if (generic.includes(name)) return name;
+  if (name.includes(' ')) return `'${name}'`;
+  return name;
+}
+
+/**
+ * Generate SVG header with proper namespaces and viewBox.
+ * Uses a <defs> block with inline presentation attributes for text styling
+ * rather than CSS <style> — After Effects does not support <style> elements
+ * or CSS properties like dominant-baseline, and crashes on import.
  */
 export function generateSvgHeader(
   width: number,
   height: number,
-  backgroundColor?: string
+  backgroundColor?: string,
+  textStyle?: { fontFamily: string; fontSize: number }
 ): string {
   const bgRect = backgroundColor
     ? `  <rect width="100%" height="100%" fill="${backgroundColor}"/>\n`
     : '';
   
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">\n${bgRect}`;
+  // Store textStyle params for use by text generation functions.
+  // We avoid <style> blocks entirely for After Effects compatibility.
+  if (textStyle) {
+    _currentTextStyle = textStyle;
+  }
+  
+  // Round dimensions to avoid floating-point noise (e.g. 863.9999999999999)
+  const w = Math.round(width * 100) / 100;
+  const h = Math.round(height * 100) / 100;
+  
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n${bgRect}`;
+}
+
+// Module-level state to pass text style from header to content generators
+// without threading it through every call. Reset per export.
+let _currentTextStyle: { fontFamily: string; fontSize: number } | null = null;
+
+/** Get the current text style set by generateSvgHeader */
+export function getCurrentTextStyle(): { fontFamily: string; fontSize: number } | null {
+  return _currentTextStyle;
 }
 
 /**
@@ -50,7 +134,10 @@ export function generateSvgGrid(
 }
 
 /**
- * Generate SVG text element for a character
+ * Generate SVG text element for a character.
+ * Uses inline presentation attributes (no CSS classes or dominant-baseline)
+ * for maximum compatibility with After Effects and other desktop apps.
+ * Vertical centering uses dy="0.35em" instead of dominant-baseline="central".
  */
 export function generateSvgTextElement(
   char: string,
@@ -72,19 +159,78 @@ export function generateSvgTextElement(
     elements += `    <rect x="${rectX}" y="${rectY}" width="${cellWidth}" height="${cellHeight}" fill="${bgColor}"/>\n`;
   }
   
-  // Text element centered in cell
+  // Text element — position y at baseline offset for approximate vertical centering
   const textX = x * cellWidth + cellWidth / 2;
-  const textY = y * cellHeight + cellHeight / 2;
+  const textY = y * cellHeight + fontSize * 0.85;
   
-  // Escape special XML characters
   const escapedChar = escapeXml(char);
-  
-  // Escape quotes in font-family for XML attribute
   const escapedFontFamily = fontFamily.replace(/"/g, '&quot;');
   
-  elements += `    <text x="${textX}" y="${textY}" fill="${color}" font-family="${escapedFontFamily}, monospace" font-size="${fontSize}px" text-anchor="middle" dominant-baseline="central">${escapedChar}</text>\n`;
+  elements += `    <text x="${textX}" y="${textY}" fill="${color}" font-family="${escapedFontFamily}" font-size="${fontSize}" text-anchor="middle">${escapedChar}</text>\n`;
   
   return elements;
+}
+
+/**
+ * Generate SVG content from a frame's cell data.
+ * Uses individual <text> elements with minimal attributes — no <tspan>,
+ * no dominant-baseline, no CSS classes. After Effects cannot parse <tspan>
+ * elements and crashes on import. Simple <text> elements with only x, y,
+ * fill, font-family, and font-size are the safest cross-app format.
+ */
+export function generateSvgContentGrouped(
+  frameData: Map<string, Cell>,
+  gridWidth: number,
+  gridHeight: number,
+  cellWidth: number,
+  cellHeight: number
+): string {
+  let svg = '';
+  const style = getCurrentTextStyle();
+  const fontFamily = style ? style.fontFamily.replace(/"/g, '&quot;') : 'monospace';
+  const fontSize = style?.fontSize ?? 16;
+
+  // Build a 2D grid for efficient row-based traversal
+  type CellInfo = { char: string; color: string; bgColor?: string };
+  const grid: (CellInfo | null)[][] = Array.from({ length: gridHeight }, () =>
+    Array.from({ length: gridWidth }, () => null)
+  );
+
+  frameData.forEach((cell, key) => {
+    const [x, y] = key.split(',').map(Number);
+    if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && cell.char) {
+      grid[y][x] = { char: cell.char, color: cell.color || '#ffffff', bgColor: cell.bgColor };
+    }
+  });
+
+  // Helper to round coordinates and avoid floating-point noise
+  const r = (n: number) => Math.round(n * 100) / 100;
+
+  for (let row = 0; row < gridHeight; row++) {
+    const rowCells = grid[row];
+    // Position y at the baseline offset for approximate vertical centering
+    const textY = r(row * cellHeight + fontSize * 0.85);
+
+    // Emit background rects for this row
+    for (let col = 0; col < gridWidth; col++) {
+      const cell = rowCells[col];
+      if (cell?.bgColor && cell.bgColor !== 'transparent') {
+        svg += `    <rect x="${r(col * cellWidth)}" y="${r(row * cellHeight)}" width="${r(cellWidth)}" height="${r(cellHeight)}" fill="${cell.bgColor}"/>\n`;
+      }
+    }
+
+    // Emit individual <text> elements — no <tspan> for AE compatibility
+    for (let col = 0; col < gridWidth; col++) {
+      const cell = rowCells[col];
+      if (!cell) continue;
+
+      const textX = r(col * cellWidth + cellWidth / 2);
+      const escapedChar = escapeXml(cell.char);
+      svg += `    <text x="${textX}" y="${textY}" fill="${cell.color}" font-family="${fontFamily}" font-size="${fontSize}" text-anchor="middle">${escapedChar}</text>\n`;
+    }
+  }
+
+  return svg;
 }
 
 /**
@@ -177,10 +323,9 @@ function convertTextToPathPixelTracing(
   if (!ctx) {
     // Fallback to text element if canvas context unavailable
     const textX = x * cellWidth + cellWidth / 2;
-    const textY = y * cellHeight + cellHeight / 2;
+    const textY = y * cellHeight + fontSize * 0.85;
     const escapedChar = escapeXml(char);
-    const escapedFontFamily = fontFamily.replace(/"/g, '&quot;');
-    elements += `    <text x="${textX}" y="${textY}" fill="${color}" font-family="${escapedFontFamily}, monospace" font-size="${fontSize}px" text-anchor="middle" dominant-baseline="central">${escapedChar}</text>\n`;
+    elements += `    <text x="${textX}" y="${textY}" fill="${color}" font-family="${fontFamily.replace(/"/g, '&quot;')}" font-size="${fontSize}" text-anchor="middle">${escapedChar}</text>\n`;
     return elements;
   }
   
@@ -209,10 +354,9 @@ function convertTextToPathPixelTracing(
   } else {
     // Fallback to text element if path extraction fails
     const textX = x * cellWidth + cellWidth / 2;
-    const textY = y * cellHeight + cellHeight / 2;
+    const textY = y * cellHeight + fontSize * 0.85;
     const escapedChar = escapeXml(char);
-    const escapedFontFamily = fontFamily.replace(/"/g, '&quot;');
-    elements += `    <text x="${textX}" y="${textY}" fill="${color}" font-family="${escapedFontFamily}, monospace" font-size="${fontSize}px" text-anchor="middle" dominant-baseline="central">${escapedChar}</text>\n`;
+    elements += `    <text x="${textX}" y="${textY}" fill="${color}" font-family="${fontFamily.replace(/"/g, '&quot;')}" font-size="${fontSize}" text-anchor="middle">${escapedChar}</text>\n`;
   }
   
   return elements;

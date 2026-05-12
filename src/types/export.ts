@@ -33,6 +33,9 @@ export interface ImageExportSettings {
   includePostEffects?: boolean; // Apply WebGL post effects (default: true)
   // SVG-specific settings (only used when format === 'svg')
   svgSettings?: SvgExportSettings;
+  // Image sequence export settings
+  sequenceMode?: boolean; // true = export all frames as a sequence, false/undefined = current frame only
+  sequenceRange?: { start: number; end: number } | 'all'; // Frame range (0-indexed) or 'all' for entire timeline
 }
 
 export interface ReactExportSettings {
@@ -167,6 +170,7 @@ export interface ExportDataBundle {
     characterSpacing: number;
     lineSpacing: number;
     selectedFontId: string;
+    actualFont?: string | null; // The font actually detected/rendered (for SVG export compatibility)
   };
   
   // Tool state (for session saves)
