@@ -62,7 +62,6 @@ export const ImageExportDialog: React.FC = () => {
 	const projectName = useProjectMetadataStore((state) => state.projectName);
 	const { selectedFontId, actualFont: canvasActualFont, isFontDetecting: canvasIsFontDetecting } = useCanvasContext();
 	const postEffectTracks = useTimelineStore((s) => s.postEffectTracks);
-	const timelineConfig = useTimelineStore((s) => s.config);
 
 	const [filename, setFilename] = useState(projectName || 'ascii-motion-frame');
 	const [sequenceMode, setSequenceMode] = useState(false);

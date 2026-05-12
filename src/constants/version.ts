@@ -1,12 +1,25 @@
 // Auto-generated version file - DO NOT EDIT MANUALLY
 // This file is updated by scripts/version-bump.js during deployment
 
-export const VERSION = "2.1.7";
-export const BUILD_DATE = "2026-05-06T21:02:21.175Z";
-export const BUILD_HASH = "add8369";
+export const VERSION = "2.1.8";
+export const BUILD_DATE = "2026-05-12T19:05:36.647Z";
+export const BUILD_HASH = "16c6971";
 
 // Version history with commit messages
 export const VERSION_HISTORY = [
+  {
+    "version": "2.1.8",
+    "date": "2026-05-12T19:05:36.647Z",
+    "commits": [
+      "feat: add image sequence export and improve SVG compatibility (#130)",
+      "chore(deps-dev): bump fast-uri from 3.1.0 to 3.1.2 (#129)",
+      "chore(deps-dev): bump hono from 4.12.14 to 4.12.18 (#128)",
+      "chore(deps): bump postcss in /dev-tools/react-export-test (#127)",
+      "chore(deps): bump ip-address and express-rate-limit (#126)",
+      "chore(deps-dev): bump postcss from 8.5.6 to 8.5.14 (#125)",
+      "Update version flags"
+    ]
+  },
   {
     "version": "2.1.7",
     "date": "2026-05-06T21:02:21.175Z",
